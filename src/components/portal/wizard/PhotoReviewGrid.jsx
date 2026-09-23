@@ -1,7 +1,7 @@
 import React, { useState, useRef } from "react";
-import { base44 } from "@/api/base44Client";
 import { Check, X, Upload, Camera, Loader2, ChevronLeft } from "lucide-react";
 import { compressImage } from "@/lib/imageCompression";
+import { uploadPropertyImage } from "@/lib/propertyImagesBlob";
 
 // Photo review grid shown after AI extraction. Lets the partner confirm which
 // scraped photos actually belong to the target property before saving.
@@ -53,8 +53,7 @@ export default function PhotoReviewGrid({ initialPhotos, onContinue, onBack }) {
     for (const file of Array.from(files)) {
       try {
         const compressed = await compressImage(file);
-        const { file_url } = await base44.integrations.Core.UploadFile({ file: compressed });
-        uploadedUrls.push(file_url);
+        uploadedUrls.push(await uploadPropertyImage(compressed));
       } catch (e) {
         console.error("Upload failed:", e);
       }

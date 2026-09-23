@@ -5,6 +5,7 @@
 import React, { useState } from "react";
 import { base44 } from "@/api/base44Client";
 import { toast } from "sonner";
+import { uploadPropertyImage } from "@/lib/propertyImagesBlob";
 import { ChevronRight, Save, Send, Upload, AlertCircle, X } from "lucide-react";
 
 const AMENITY_OPTIONS = [
@@ -47,8 +48,7 @@ export default function PropertyEditForm({ property, user, onBack, onSubmitted }
     setUploading(true);
     const urls = [];
     for (const file of files) {
-      const { file_url } = await base44.integrations.Core.UploadFile({ file });
-      urls.push(file_url);
+      urls.push(await uploadPropertyImage(file));
     }
     set("photo_urls", [...data.photo_urls, ...urls]);
     setUploading(false);

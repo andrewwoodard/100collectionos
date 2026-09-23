@@ -29,13 +29,17 @@ export function newId() {
   return Date.now().toString(16) + Math.random().toString(16).slice(2, 10);
 }
 
-export function readBody(req: { on: Function }): Promise<string> {
+export function readBuffer(req: { on: Function }): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
     req.on("data", (chunk: Buffer) => chunks.push(chunk));
-    req.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
+    req.on("end", () => resolve(Buffer.concat(chunks)));
     req.on("error", reject);
   });
+}
+
+export function readBody(req: { on: Function }): Promise<string> {
+  return readBuffer(req).then((buf) => buf.toString("utf8"));
 }
 
 export function json(res: any, status: number, body: unknown) {

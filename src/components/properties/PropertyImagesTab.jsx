@@ -7,6 +7,7 @@ import { Trash2, Plus, ImageIcon, GripVertical, UploadCloud } from "lucide-react
 import { imageUrlFromMetadata, normalizeStorageUrl } from "@/lib/supabase";
 import { compressImage } from "@/lib/imageCompression";
 import { getImageUrl } from "@/lib/imageUrl";
+import { uploadPropertyImage } from "@/lib/propertyImagesBlob";
 import {
   Dialog,
   DialogContent,
@@ -38,12 +39,12 @@ export default function PropertyImagesTab({ listingUrl, propertyImages = [], sup
     try {
       for (const file of Array.from(files)) {
         if (!file.type.startsWith("image/")) continue;
-        const res = await base44.integrations.Core.UploadFile({ file: await compressImage(file) });
-        if (res?.file_url) {
+        const fileUrl = await uploadPropertyImage(await compressImage(file));
+        if (fileUrl) {
           await base44.functions.invoke("imageMetadata", {
             action: "create",
             data: {
-              original_url: res.file_url,
+              original_url: fileUrl,
               alttext: file.name.replace(/\.[^.]+$/, ""),
               proppage: listingUrl,
               property_url: listingUrl,
@@ -70,12 +71,12 @@ export default function PropertyImagesTab({ listingUrl, propertyImages = [], sup
     try {
       for (const file of Array.from(files)) {
         if (!file.type.startsWith("image/")) continue;
-        const res = await base44.integrations.Core.UploadFile({ file: await compressImage(file) });
-        if (res?.file_url) {
+        const fileUrl = await uploadPropertyImage(await compressImage(file));
+        if (fileUrl) {
           await base44.functions.invoke("imageMetadata", {
             action: "create",
             data: {
-              original_url: res.file_url,
+              original_url: fileUrl,
               alttext: file.name.replace(/\.[^.]+$/, ""),
               proppage: listingUrl,
               property_url: listingUrl,

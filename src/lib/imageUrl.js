@@ -10,7 +10,7 @@ const SIZE_PRESETS = {
  * Returns a responsive image URL for the given display context.
  * For Supabase Storage URLs, appends on-demand transform params
  * (?width=X&quality=85&resize=cover) so the CDN serves a right-sized image.
- * For all other URLs (Base44 storage, Sanity CDN, external), returns as-is.
+ * For all other URLs (Vercel Blob, Base44 storage, Sanity CDN, external), returns as-is.
  *
  * @param {string} url  - The original image URL.
  * @param {"thumb"|"small"|"medium"|"large"|"hero"|"original"} size - Display context.

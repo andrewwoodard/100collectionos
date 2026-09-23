@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { base44 } from "@/api/base44Client";
 import { Check, Loader2, AlertTriangle, ChevronLeft } from "lucide-react";
 import PhotoReviewGrid from "@/components/portal/wizard/PhotoReviewGrid";
+import { ingestPropertyImages } from "@/lib/propertyImagesBlob";
 
 const SUBSTEPS = [
   { key: "validating", label: "Validating listing URL" },
@@ -14,12 +15,10 @@ const SUBSTEPS = [
 
 async function reuploadExternalImages(photoUrls, photoConfidence, onProgress) {
   if (!photoUrls?.length) return [];
-  // Re-host ALL extracted photos to Base44 storage (no 15-photo cap) so the
-  // images field in Supabase propertiesbase44 shows Base44 URLs instead of the
-  // original source (e.g. track-pm.s3.amazonaws.com).
+  // Re-host newly found listing photos to Vercel Blob. Already-hosted Sanity,
+  // Supabase, Base44, and Blob URLs stay on those hosts.
   const urls = photoUrls;
 
-  // Build confidence lookup: original URL -> {confidence, slugMatch}
   const confMap = {};
   if (photoConfidence) {
     photoConfidence.forEach(pc => {
@@ -27,33 +26,12 @@ async function reuploadExternalImages(photoUrls, photoConfidence, onProgress) {
     });
   }
 
-  let done = 0;
-  const results = await Promise.allSettled(
-    urls.map(async (url) => {
-      const conf = confMap[url] || { confidence: "low", slugMatch: false };
-      if (url.includes("base44.app") || url.includes("base44.com")) {
-        done++;
-        onProgress(done, urls.length);
-        return { url, ...conf };
-      }
-      try {
-        const res = await base44.functions.invoke("imageProxy", { url });
-        const dataUrl = res.data?.data_url;
-        if (!dataUrl) return null;
-        const blob = await fetch(dataUrl).then(r => r.blob());
-        const file = new File([blob], "photo.jpg", { type: blob.type || "image/jpeg" });
-        const { file_url } = await base44.integrations.Core.UploadFile({ file });
-        done++;
-        onProgress(done, urls.length);
-        return { url: file_url, ...conf };
-      } catch {
-        done++;
-        onProgress(done, urls.length);
-        return null;
-      }
-    })
-  );
-  return results.map(r => r.status === "fulfilled" ? r.value : null).filter(Boolean);
+  const hosted = await ingestPropertyImages(urls);
+  onProgress(hosted.length, urls.length);
+  return hosted.map((url, i) => ({
+    url,
+    ...(confMap[urls[i]] || { confidence: "low", slugMatch: false }),
+  }));
 }
 
 export default function Step2Extracting({ url, onComplete, onBack }) {

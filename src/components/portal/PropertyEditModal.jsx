@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { base44 } from "@/api/base44Client";
 import { compressImage } from "@/lib/imageCompression";
+import { uploadPropertyImage } from "@/lib/propertyImagesBlob";
 import { X, Save, Send, Upload, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 import { usePortalPartnerRollup } from "@/hooks/usePortalPartnerRollup";
@@ -44,8 +45,7 @@ export default function PropertyEditModal({ property, basePropertyId, user, onCl
     const urls = [];
     for (const file of files) {
       const compressed = await compressImage(file);
-      const { file_url } = await base44.integrations.Core.UploadFile({ file: compressed });
-      urls.push(file_url);
+      urls.push(await uploadPropertyImage(compressed));
     }
     set("photo_urls", [...(data.photo_urls || []), ...urls]);
     setUploading(false);

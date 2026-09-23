@@ -13,3 +13,4 @@ dist
 .agents
 .better_auth_secret.tmp
 !.env.example
+.env*

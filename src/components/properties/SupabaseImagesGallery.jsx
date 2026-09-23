@@ -7,6 +7,7 @@ import { Trash2, Plus, ImageIcon, GripVertical, UploadCloud } from "lucide-react
 import { normalizeStorageUrl } from "@/lib/supabase";
 import { compressImage } from "@/lib/imageCompression";
 import { getImageUrl } from "@/lib/imageUrl";
+import { uploadPropertyImage } from "@/lib/propertyImagesBlob";
 import {
   Dialog,
   DialogContent,
@@ -71,8 +72,7 @@ export default function SupabaseImagesGallery({ images: propImages = [], supabas
       const urls = [];
       for (const file of Array.from(files)) {
         if (!file.type.startsWith("image/")) continue;
-        const res = await base44.integrations.Core.UploadFile({ file: await compressImage(file) });
-        if (res?.file_url) urls.push(res.file_url);
+        urls.push(await uploadPropertyImage(await compressImage(file)));
       }
       if (urls.length > 0) {
         const updated = [...localImages, ...urls];
@@ -95,8 +95,7 @@ export default function SupabaseImagesGallery({ images: propImages = [], supabas
       const urls = [];
       for (const file of Array.from(files)) {
         if (!file.type.startsWith("image/")) continue;
-        const res = await base44.integrations.Core.UploadFile({ file: await compressImage(file) });
-        if (res?.file_url) urls.push(res.file_url);
+        urls.push(await uploadPropertyImage(await compressImage(file)));
       }
       if (urls.length > 0) {
         const updated = [...localImages, ...urls];

@@ -15,6 +15,7 @@ import {
 import { Loader2, Code2, Check, ImageIcon } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 import { normalizeStorageUrl } from "@/lib/supabase";
+import { ingestPropertyImages } from "@/lib/propertyImagesBlob";
 
 const SOURCE_META = {
   img: { label: "img", color: "bg-blue-100 text-blue-700" },
@@ -100,7 +101,9 @@ export default function PasteHtmlModal({
     try {
       const norm = (u) => (u ? normalizeStorageUrl(u) || u : u);
       const existingSet = new Set((currentImages || []).map(norm));
-      const newUrls = Array.from(selected).filter((u) => !existingSet.has(norm(u)));
+      const newUrls = await ingestPropertyImages(
+        Array.from(selected).filter((u) => !existingSet.has(norm(u)))
+      );
       if (newUrls.length === 0) {
         toast({
           title: "Already up to date",

@@ -1,7 +1,7 @@
 import React, { useState, useRef, useCallback } from "react";
-import { base44 } from "@/api/base44Client";
 import { compressImage } from "@/lib/imageCompression";
 import { getImageUrl } from "@/lib/imageUrl";
+import { uploadPropertyImage } from "@/lib/propertyImagesBlob";
 import { useToast } from "@/components/ui/use-toast";
 import { Star, Trash2, Upload, GripVertical, ImageIcon, Loader2 } from "lucide-react";
 
@@ -108,8 +108,7 @@ export default function PhotoCurationGrid({ photos, onChange, propertyName = "Pr
         // Re-wrap as a plain File to avoid any webkitRelativePath quirks
         const cleanFile = new File([file], file.name, { type: file.type });
         const compressed = await compressImage(cleanFile);
-        const res = await base44.integrations.Core.UploadFile({ file: compressed });
-        const url = res?.file_url;
+        const url = await uploadPropertyImage(compressed);
         if (!url) throw new Error("No file URL returned");
         // Append to the latest snapshot so concurrent edits aren't overwritten
         onChange([...(photosRef.current || []), url]);

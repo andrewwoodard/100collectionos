@@ -1,4 +1,5 @@
 import { getNeonPool, json, newId, quoteIdent, readBody } from "./neon-db.ts";
+import { ingestRemoteImages } from "./blob.ts";
 
 const TABLE_SEARCH_FIELDS: Record<string, string[]> = {
   partners: ["partner_name", "company_name", "market", "primary_contact_name", "primary_contact_email", "stripe_billing_email"],
@@ -370,6 +371,14 @@ async function handleSupabaseData(res: any, body: any) {
   return json(res, 400, { error: "Unknown action" });
 }
 
+async function withIngestedImages(record: Record<string, any>) {
+  if (record.images == null) return record;
+  const list = parseImages(record.images);
+  if (!list.length) return record;
+  record.images = JSON.stringify(await ingestRemoteImages(list));
+  return record;
+}
+
 function toPropertyRecord(data: any) {
   const record = pickColumns(data, PROP_COLUMNS, PROP_ALIASES);
   if (data?.listing_url && !record.vrm_url) record.vrm_url = data.listing_url;
@@ -443,11 +452,11 @@ async function handleSupabaseProperties(res: any, body: any) {
   }
 
   if (action === "create") {
-    const record = toPropertyRecord({
+    const record = await withIngestedImages(toPropertyRecord({
       ...data,
       row_id: data?.row_id || Date.now(),
       created_at: data?.created_at || new Date().toISOString(),
-    });
+    }));
     if (!record.name) record.name = data?.property_name || data?.name || "Untitled property";
     const insert = buildInsert("supabase.propertiesbase44", {
       id: String(record.row_id || newId()),
@@ -458,7 +467,7 @@ async function handleSupabaseProperties(res: any, body: any) {
   }
 
   if (action === "update") {
-    const record = toPropertyRecord(data || {});
+    const record = await withIngestedImages(toPropertyRecord(data || {}));
     if (!Object.keys(record).length) return json(res, 400, { error: "No updatable fields" });
     const update = buildUpdate(
       "supabase.propertiesbase44",

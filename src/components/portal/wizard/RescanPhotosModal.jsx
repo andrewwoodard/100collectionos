@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/dialog";
 import { Loader2, Sparkles, ImageIcon, Check } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
+import { ingestPropertyImages } from "@/lib/propertyImagesBlob";
 
 const SOURCE_META = {
   img: { label: "img", color: "bg-blue-100 text-blue-700" },
@@ -107,7 +108,9 @@ export default function RescanPhotosModal({
       }
 
       const existingSet = new Set((currentPhotos || []).map((u) => (u || "").trim()));
-      const newUrls = photoUrls.filter((u) => u && !existingSet.has(u.trim()));
+      const newUrls = await ingestPropertyImages(
+        photoUrls.filter((u) => u && !existingSet.has(u.trim()))
+      );
       if (newUrls.length === 0) {
         toast({
           title: "Already up to date",
