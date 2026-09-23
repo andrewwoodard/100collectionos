@@ -1,5 +1,5 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { handleAdminUsers } from "../../server/admin-users.ts";
+import { handleAdminUsers } from "../../server/admin-users.js";
 
 export const config = {
   api: {

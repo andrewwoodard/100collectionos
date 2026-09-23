@@ -1,4 +1,4 @@
-import { getNeonPool } from "./neon-db.ts";
+import { getNeonPool } from "./neon-db.js";
 
 const LOGO_URL =
   "https://media.base44.com/images/public/69aee092656fb9813439389b/389d00003_logoXd.png?v=logo2";

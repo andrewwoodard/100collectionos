@@ -1,9 +1,9 @@
 import { randomBytes } from "node:crypto";
 import { hashPassword } from "better-auth/crypto";
 import { fromNodeHeaders } from "better-auth/node";
-import { auth } from "./auth.ts";
-import { getNeonPool, json, newId, readBody } from "./neon-db.ts";
-import { takeResetResult } from "./reset-email.ts";
+import { auth } from "./auth.js";
+import { getNeonPool, json, newId, readBody } from "./neon-db.js";
+import { takeResetResult } from "./reset-email.js";
 
 const APP_ROLES = new Set(["admin", "operations", "onboarding", "finance", "marketing", "partner", "user"]);
 const PARTNER_ROLES = new Set(["owner", "marketing", "finance", "operations"]);

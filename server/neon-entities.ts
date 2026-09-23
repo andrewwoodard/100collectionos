@@ -1,4 +1,4 @@
-import { getNeonPool, json, newId, readBody, toSnake } from "./neon-db.ts";
+import { getNeonPool, json, newId, readBody, toSnake } from "./neon-db.js";
 
 function toRecord(row: any) {
   const data = row?.data && typeof row.data === "object" ? row.data : {};

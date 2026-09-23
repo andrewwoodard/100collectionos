@@ -1,6 +1,6 @@
-import { json, readBody, readBuffer } from "./neon-db.ts";
-import { requireSession } from "./require-session.ts";
-import { blobConfigured, ingestRemoteImages, putImageBuffer } from "./blob.ts";
+import { json, readBody, readBuffer } from "./neon-db.js";
+import { requireSession } from "./require-session.js";
+import { blobConfigured, ingestRemoteImages, putImageBuffer } from "./blob.js";
 
 export async function handleBlobUpload(req: any, res: any) {
   try {

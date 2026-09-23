@@ -1,6 +1,6 @@
 import { betterAuth } from "better-auth";
 import { Pool } from "pg";
-import { deliverPasswordResetEmail } from "./reset-email.ts";
+import { deliverPasswordResetEmail } from "./reset-email.js";
 
 const databaseUrl = process.env.DATABASE_URL;
 

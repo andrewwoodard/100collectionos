@@ -1,5 +1,5 @@
-import { getNeonPool, json, newId, quoteIdent, readBody } from "./neon-db.ts";
-import { ingestRemoteImages } from "./blob.ts";
+import { getNeonPool, json, newId, quoteIdent, readBody } from "./neon-db.js";
+import { ingestRemoteImages } from "./blob.js";
 
 const TABLE_SEARCH_FIELDS: Record<string, string[]> = {
   partners: ["partner_name", "company_name", "market", "primary_contact_name", "primary_contact_email", "stripe_billing_email"],

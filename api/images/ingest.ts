@@ -1,5 +1,5 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { handleImageIngest } from "../../server/blob-http.ts";
+import { handleImageIngest } from "../../server/blob-http.js";
 
 export const maxDuration = 60;
 
