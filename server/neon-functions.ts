@@ -1,5 +1,6 @@
 import { getNeonPool, json, newId, quoteIdent, readBody } from "./neon-db.js";
 import { ingestRemoteImages } from "./blob.js";
+import { handleStripeFunction, STRIPE_FUNCTIONS } from "./stripe-functions.js";
 
 const TABLE_SEARCH_FIELDS: Record<string, string[]> = {
   partners: ["partner_name", "company_name", "market", "primary_contact_name", "primary_contact_email", "stripe_billing_email"],
@@ -659,13 +660,23 @@ async function handleManagePartnerTeam(res: any, body: any) {
   return json(res, 400, { error: "Unknown action" });
 }
 
-const LOCAL_FUNCTIONS = new Set(["supabaseData", "supabaseProperties", "getPartnerTeam", "managePartnerTeam"]);
+export const LOCAL_FUNCTIONS = new Set([
+  "supabaseData",
+  "supabaseProperties",
+  "getPartnerTeam",
+  "managePartnerTeam",
+  ...STRIPE_FUNCTIONS,
+]);
 
 export async function handleNeonFunction(req: any, res: any, functionName: string) {
   if (!LOCAL_FUNCTIONS.has(functionName)) return false;
   try {
     const raw = await readBody(req);
     const body = raw ? JSON.parse(raw) : {};
+    if (STRIPE_FUNCTIONS.has(functionName)) {
+      await handleStripeFunction(req, res, functionName, body);
+      return true;
+    }
     if (functionName === "supabaseData") await handleSupabaseData(res, body);
     else if (functionName === "supabaseProperties") await handleSupabaseProperties(res, body);
     else if (functionName === "getPartnerTeam") await handleGetPartnerTeam(res, body);

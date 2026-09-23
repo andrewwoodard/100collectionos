@@ -2,7 +2,7 @@
   "rewrites": [
     {
       "source": "/api/apps/:path*",
-      "destination": "https://100c-os.base44.app/api/apps/:path*"
+      "destination": "/api/apps-handler?path=:path*"
     },
     {
       "source": "/api/auth/:path*",
