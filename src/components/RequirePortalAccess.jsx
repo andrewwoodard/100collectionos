@@ -10,7 +10,7 @@ export default function RequirePortalAccess({ children }) {
   const { data: linkedPartners, isLoading: isLoadingPartners, refetch } = useQuery({
     queryKey: ["portal-access-check", user?.id],
     queryFn: () => base44.entities.Partner.filter({ portal_user_ids: { $in: [user.id] } }),
-    enabled: !!user?.id,
+    enabled: !!user?.id && user?.role !== "admin",
   });
 
   const [reconciled, setReconciled] = useState(false);
@@ -35,7 +35,7 @@ export default function RequirePortalAccess({ children }) {
     })();
   }, [user?.id, user?.role, isLoadingPartners, linkedPartners, reconciled, refetch]);
 
-  if (isLoadingAuth || isLoadingPartners || reconciling) {
+  if (isLoadingAuth) {
     return (
       <div className="fixed inset-0 flex items-center justify-center">
         <div className="w-8 h-8 border-4 border-slate-200 border-t-slate-800 rounded-full animate-spin"></div>
@@ -47,6 +47,14 @@ export default function RequirePortalAccess({ children }) {
 
   // Admins can access portal for testing
   if (user.role === "admin") return children;
+
+  if (isLoadingPartners || reconciling) {
+    return (
+      <div className="fixed inset-0 flex items-center justify-center">
+        <div className="w-8 h-8 border-4 border-slate-200 border-t-slate-800 rounded-full animate-spin"></div>
+      </div>
+    );
+  }
 
   // Partner (or unknown role) with linked partner record → normal portal access
   if (linkedPartners && linkedPartners.length > 0) return children;

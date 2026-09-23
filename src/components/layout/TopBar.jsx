@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { Search, Bell, LogOut, Menu, ChevronRight } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -14,9 +14,10 @@ import {
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
+import { useAuth } from "@/lib/AuthContext";
 
 export default function TopBar({ title, onMenuClick }) {
-  const [user, setUser] = useState(null);
+  const { user, logout } = useAuth();
   const [searchQuery, setSearchQuery] = useState("");
   const navigate = useNavigate();
   const qc = useQueryClient();
@@ -57,10 +58,6 @@ export default function TopBar({ title, onMenuClick }) {
       toast({ title: "Failed to clear notifications", description: error?.message || "Something went wrong.", variant: "destructive" });
     },
   });
-
-  useEffect(() => {
-    base44.auth.me().then(setUser).catch(() => {});
-  }, []);
 
   const handleSearch = (e) => {
     e.preventDefault();
@@ -160,7 +157,7 @@ export default function TopBar({ title, onMenuClick }) {
               <span className="font-medium">{user?.full_name || "User"}</span>
             </DropdownMenuItem>
             <DropdownMenuItem
-              onClick={() => base44.auth.logout()}
+              onClick={() => logout()}
               className="text-red-600"
             >
               <LogOut className="w-4 h-4 mr-2" />

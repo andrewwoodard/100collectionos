@@ -13,13 +13,15 @@ import AdminOffboarding from "./AdminOffboarding";
 import AdminOrphanedProperties from "@/components/portal/admin/AdminOrphanedProperties";
 import AdminPageMeta from "@/components/portal/admin/AdminPageMeta";
 import AdminApplyMedia from "./AdminApplyMedia";
+import AdminUsers from "./AdminUsers";
 import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
-import { ClipboardList, Users, UserCircle, DollarSign, FileText, Inbox, Edit3, PowerOff, Mail, AlertTriangle, Globe, Share2, UserPlus, ImagePlus } from "lucide-react";
+import { ClipboardList, Users, UserCircle, DollarSign, FileText, Inbox, Edit3, PowerOff, Mail, AlertTriangle, Share2, UserPlus, ImagePlus, UserCog } from "lucide-react";
 
 const TABS = [
   { id: "queue",        label: "Submission Queue",  icon: ClipboardList, desc: "Property submissions awaiting review" },
   { id: "access_queue", label: "Access Requests",   icon: UserPlus,      desc: "Unified queue: cold signups, team access requests, new applicants" },
+  { id: "users",        label: "Users",             icon: UserCog,       desc: "Accounts, passwords, and password reset emails" },
   { id: "applications", label: "Applications",       icon: Inbox,         desc: "New partner applications" },
   { id: "partners",     label: "Partners",           icon: Users,         desc: "Manage existing partners" },
   { id: "invitations",  label: "Invitations",        icon: Mail,          desc: "Pending & accepted portal invitations" },
@@ -89,6 +91,7 @@ export default function AdminHub() {
     switch (activeTab) {
       case "queue":        return <AdminQueue embedded />;
       case "access_queue": return <AdminAccessQueue embedded applications={applications} />;
+      case "users":        return <AdminUsers embedded />;
       case "applications": return <AdminApplications embedded />;
       case "partners":     return <AdminPartners embedded />;
       case "invitations":  return <AdminInvitations embedded />;

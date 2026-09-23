@@ -1,5 +1,16 @@
 {
   "rewrites": [
-    { "source": "/((?!api/).*)", "destination": "/index.html" }
+    {
+      "source": "/api/apps/:path*",
+      "destination": "https://100c-os.base44.app/api/apps/:path*"
+    },
+    {
+      "source": "/api/auth/:path*",
+      "destination": "/api/auth-handler?path=:path*"
+    },
+    {
+      "source": "/((?!api/).*)",
+      "destination": "/index.html"
+    }
   ]
 }

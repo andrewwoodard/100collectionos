@@ -1,0 +1,10 @@
+.npm-cache
+.agents
+.DS_Store
+*.zip
+the-100-collection-os-main.zip
+.env
+.env.local
+.env.local.bak
+.env.vercel
+.better_auth_secret.tmp

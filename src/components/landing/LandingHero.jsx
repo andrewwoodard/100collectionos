@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
 import { ChevronDown, ArrowRight } from "lucide-react";
-import { base44 } from "@/api/base44Client";
 import ApplyImage from "@/components/apply/ApplyImage";
 
 // Full-viewport cinematic hero for the public landing page. Reuses the
@@ -68,7 +67,9 @@ export default function LandingHero({ images, altTexts }) {
     };
   }, [slides.length]);
 
-  const handleSignIn = () => base44.auth.redirectToLogin("/portal/dashboard");
+  const handleSignIn = () => {
+    window.location.href = "/login?returnTo=" + encodeURIComponent("/portal/dashboard");
+  };
 
   return (
     <section className="relative h-screen min-h-[600px] w-full overflow-hidden bg-[#0D1B2A]">

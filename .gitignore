@@ -2,13 +2,14 @@ node_modules
 dist
 .env
 .env.local
+.env.local.bak
+.env.vercel
 .env.*.local
 .DS_Store
 *.log
 .vite
 .npm-cache
 .vercel
-.env
-.env.local
-.env.*.local
+.agents
+.better_auth_secret.tmp
 !.env.example
