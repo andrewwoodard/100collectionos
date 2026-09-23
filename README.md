@@ -18,15 +18,18 @@ Any change pushed to the repo will also be reflected in the Base44 Builder.
 4. Create an `.env.local` file and set the right environment variables
 
 ```
-VITE_BASE44_APP_ID=your_app_id
-VITE_BASE44_APP_BASE_URL=your_backend_url
-
-e.g.
-VITE_BASE44_APP_ID=cbef744a8545c389ef439ea6
-VITE_BASE44_APP_BASE_URL=https://my-to-do-list-81bfaad7.base44.app
+VITE_BASE44_APP_ID=69aee092656fb9813439389b
+VITE_BASE44_APP_BASE_URL=https://100c-os.base44.app
 ```
 
-Run the app: `npm run dev`
+Copy `.env.example` to `.env.local` if you need to recreate it, then run:
+
+```
+npm install
+npm run dev
+```
+
+The Vite app is at http://localhost:5173 and proxies `/api` to the hosted Base44 backend.
 
 **Publish your changes**
 
