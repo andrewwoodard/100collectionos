@@ -1,0 +1,128 @@
+{
+  "name": "MediaAsset",
+  "type": "object",
+  "properties": {
+    "asset_name": {
+      "type": "string"
+    },
+    "asset_type": {
+      "type": "string",
+      "enum": [
+        "photo",
+        "video",
+        "logo",
+        "pdf",
+        "brand_asset",
+        "other"
+      ]
+    },
+    "file_url": {
+      "type": "string"
+    },
+    "thumbnail_url": {
+      "type": "string"
+    },
+    "folder_id": {
+      "type": "string",
+      "description": "ID of the MediaFolder this asset belongs to"
+    },
+    "partner_id": {
+      "type": "string"
+    },
+    "partner_name": {
+      "type": "string"
+    },
+    "property_id": {
+      "type": "string"
+    },
+    "property_name": {
+      "type": "string"
+    },
+    "market": {
+      "type": "string"
+    },
+    "approval_status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "approved",
+        "rejected"
+      ],
+      "default": "pending"
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "notes": {
+      "type": "string"
+    },
+    "drive_file_id": {
+      "type": "string",
+      "description": "Google Drive file ID for referenced Drive files"
+    },
+    "drive_file_url": {
+      "type": "string",
+      "description": "Full Google Drive URL"
+    },
+    "drive_mime_type": {
+      "type": "string",
+      "description": "MIME type from Drive"
+    }
+  },
+  "required": [
+    "asset_name"
+  ],
+  "rls": {
+    "create": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "created_by_id": "{{user.id}}"
+        }
+      ]
+    },
+    "read": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "created_by_id": "{{user.id}}"
+        }
+      ]
+    },
+    "update": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "created_by_id": "{{user.id}}"
+        }
+      ]
+    },
+    "delete": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "created_by_id": "{{user.id}}"
+        }
+      ]
+    }
+  }
+}

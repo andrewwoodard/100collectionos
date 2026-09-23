@@ -1,0 +1,84 @@
+{
+  "name": "ReviewNote",
+  "type": "object",
+  "properties": {
+    "submission_id": {
+      "type": "string"
+    },
+    "author": {
+      "type": "string"
+    },
+    "author_role": {
+      "type": "string",
+      "enum": [
+        "admin",
+        "partner"
+      ]
+    },
+    "content": {
+      "type": "string"
+    },
+    "field_ref": {
+      "type": "string"
+    },
+    "is_resolved": {
+      "type": "boolean",
+      "default": false
+    },
+    "mentioned_user_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "User IDs tagged via @-mention in this note",
+      "default": []
+    }
+  },
+  "required": [
+    "submission_id",
+    "content"
+  ],
+  "rls": {
+    "create": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "data.author": "{{user.email}}"
+        }
+      ]
+    },
+    "read": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "data.author": "{{user.email}}"
+        }
+      ]
+    },
+    "update": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "data.author": "{{user.email}}"
+        }
+      ]
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

@@ -1,0 +1,35 @@
+{
+  "name": "User",
+  "type": "object",
+  "properties": {
+    "role": {
+      "type": "string",
+      "enum": [
+        "admin",
+        "operations",
+        "onboarding",
+        "finance",
+        "marketing",
+        "partner"
+      ],
+      "default": "partner"
+    },
+    "partner_role": {
+      "type": "string",
+      "enum": [
+        "owner",
+        "marketing",
+        "finance",
+        "operations"
+      ],
+      "default": "owner",
+      "description": "Sub-role within the partner portal. Only relevant when role === 'partner'. Controls sidebar visibility, route access, and notification routing. Defaults to 'owner' for backward compatibility."
+    },
+    "pending_notification_sent_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Timestamp when the pending-approval notification email was sent. Used for idempotency."
+    }
+  },
+  "required": []
+}

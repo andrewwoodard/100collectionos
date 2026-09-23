@@ -1,0 +1,166 @@
+{
+  "name": "ApplyPageMedia",
+  "type": "object",
+  "properties": {
+    "hero_rotation_urls": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "default": [],
+      "description": "Up to 5 rotating hero photos on the /apply landing page, in order."
+    },
+    "hero_rotation_alt_texts": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "default": [],
+      "description": "Alt text per hero photo, aligned by index with hero_rotation_urls."
+    },
+    "manager_card_hero_url": {
+      "type": "string",
+      "description": "Photo for the VRM chooser card on the /apply landing page."
+    },
+    "manager_card_hero_alt": {
+      "type": "string",
+      "description": "Alt text for the VRM chooser card photo."
+    },
+    "homeowner_card_hero_url": {
+      "type": "string",
+      "description": "Photo for the homeowner chooser card on the /apply landing page."
+    },
+    "homeowner_card_hero_alt": {
+      "type": "string",
+      "description": "Alt text for the homeowner chooser card photo."
+    },
+    "existing_partner_card_hero_url": {
+      "type": "string",
+      "description": "Photo for the portal access chooser card on the /apply landing page."
+    },
+    "existing_partner_card_hero_alt": {
+      "type": "string",
+      "description": "Alt text for the portal access chooser card photo."
+    },
+    "closing_editorial_url": {
+      "type": "string",
+      "description": "Full-width closing image at the bottom of the /apply landing page."
+    },
+    "closing_editorial_alt": {
+      "type": "string",
+      "description": "Alt text for the closing image."
+    },
+    "closing_editorial_quote": {
+      "type": "string",
+      "description": "Serif quote overlaid on the closing image. Defaults to 'Every home is a story worth telling.'"
+    },
+    "manager_form_hero_url": {
+      "type": "string",
+      "description": "Optional large photo above the application form on /apply/property-manager. Blank = no hero image."
+    },
+    "homeowner_form_hero_url": {
+      "type": "string",
+      "description": "Optional large photo used on /apply/homeowner. Blank = auto-selected editorial hero."
+    },
+    "featured_property_1_url": {
+      "type": "string",
+      "description": "Curator-picked featured property 1 \u2014 full URL to the property page on theonehundredcollection.com."
+    },
+    "featured_property_1_name": {
+      "type": "string",
+      "description": "Display name for featured property 1 (e.g. 'Abode at Buena Vista')."
+    },
+    "featured_property_1_partner_name": {
+      "type": "string",
+      "description": "Partner name for featured property 1. Manual entry; not derivable from the URL."
+    },
+    "featured_property_1_market": {
+      "type": "string",
+      "description": "Market/destination label for featured property 1 (e.g. 'Park City')."
+    },
+    "featured_property_1_photo_url": {
+      "type": "string",
+      "description": "Hero photo URL for featured property 1. Auto-scraped from og:image or manually uploaded."
+    },
+    "featured_property_1_photo_alt": {
+      "type": "string",
+      "description": "Alt text for the featured property 1 hero photo."
+    },
+    "featured_property_2_url": {
+      "type": "string",
+      "description": "Curator-picked featured property 2 \u2014 full URL to the property page on theonehundredcollection.com."
+    },
+    "featured_property_2_name": {
+      "type": "string",
+      "description": "Display name for featured property 2."
+    },
+    "featured_property_2_partner_name": {
+      "type": "string",
+      "description": "Partner name for featured property 2. Manual entry."
+    },
+    "featured_property_2_market": {
+      "type": "string",
+      "description": "Market/destination label for featured property 2."
+    },
+    "featured_property_2_photo_url": {
+      "type": "string",
+      "description": "Hero photo URL for featured property 2."
+    },
+    "featured_property_2_photo_alt": {
+      "type": "string",
+      "description": "Alt text for the featured property 2 hero photo."
+    },
+    "featured_property_3_url": {
+      "type": "string",
+      "description": "Curator-picked featured property 3 \u2014 full URL to the property page on theonehundredcollection.com."
+    },
+    "featured_property_3_name": {
+      "type": "string",
+      "description": "Display name for featured property 3."
+    },
+    "featured_property_3_partner_name": {
+      "type": "string",
+      "description": "Partner name for featured property 3. Manual entry."
+    },
+    "featured_property_3_market": {
+      "type": "string",
+      "description": "Market/destination label for featured property 3."
+    },
+    "featured_property_3_photo_url": {
+      "type": "string",
+      "description": "Hero photo URL for featured property 3."
+    },
+    "featured_property_3_photo_alt": {
+      "type": "string",
+      "description": "Alt text for the featured property 3 hero photo."
+    },
+    "updated_by": {
+      "type": "string",
+      "description": "User ID of the admin who last saved."
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the media was last saved."
+    }
+  },
+  "required": [],
+  "rls": {
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "read": null,
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

@@ -1,0 +1,189 @@
+{
+  "name": "Document",
+  "type": "object",
+  "properties": {
+    "title": {
+      "type": "string"
+    },
+    "file_url": {
+      "type": "string"
+    },
+    "doc_type": {
+      "type": "string",
+      "enum": [
+        "contract",
+        "addendum",
+        "tax_doc",
+        "onboarding_form",
+        "invoice",
+        "brand_guidelines",
+        "photography_release",
+        "miscellaneous",
+        "google_sheet",
+        "google_doc",
+        "msa",
+        "nda",
+        "vendor_agreement",
+        "receipt",
+        "financial_statement",
+        "marketing_asset",
+        "sop",
+        "reference",
+        "hr_doc",
+        "insurance_doc",
+        "crm_export"
+      ]
+    },
+    "folder_id": {
+      "type": "string",
+      "description": "ID of the DocumentFolder this document belongs to"
+    },
+    "partner_id": {
+      "type": "string"
+    },
+    "partner_name": {
+      "type": "string"
+    },
+    "property_id": {
+      "type": "string"
+    },
+    "property_name": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "draft",
+        "sent",
+        "signed",
+        "archived"
+      ],
+      "default": "draft"
+    },
+    "expiration_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "uploaded_by": {
+      "type": "string"
+    },
+    "notes": {
+      "type": "string"
+    },
+    "google_sheet_id": {
+      "type": "string",
+      "description": "Google Sheets spreadsheet ID"
+    },
+    "google_sheet_url": {
+      "type": "string",
+      "description": "Full Google Sheets URL"
+    },
+    "google_sheet_tab": {
+      "type": "string",
+      "description": "Default sheet/tab name to display"
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Free-form multi-tag labels",
+      "default": []
+    },
+    "visibility": {
+      "type": "string",
+      "enum": [
+        "internal",
+        "partner_visible",
+        "public"
+      ],
+      "default": "internal",
+      "description": "Who can see this document"
+    },
+    "pinned_by": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Array of User ids who have pinned this doc",
+      "default": []
+    },
+    "last_modified_by": {
+      "type": "string",
+      "description": "User id or email of last editor"
+    },
+    "archived_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Set when status flips to archived"
+    },
+    "drive_file_id": {
+      "type": "string",
+      "description": "Google Drive file ID for referenced Drive files"
+    },
+    "drive_file_url": {
+      "type": "string",
+      "description": "Full Google Drive URL"
+    },
+    "drive_mime_type": {
+      "type": "string",
+      "description": "MIME type from Drive (e.g. application/vnd.google-apps.document)"
+    }
+  },
+  "required": [
+    "title"
+  ],
+  "rls": {
+    "create": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "created_by_id": "{{user.id}}"
+        }
+      ]
+    },
+    "read": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "created_by_id": "{{user.id}}"
+        },
+        {
+          "data.uploaded_by": "{{user.email}}"
+        }
+      ]
+    },
+    "update": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "created_by_id": "{{user.id}}"
+        }
+      ]
+    },
+    "delete": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "created_by_id": "{{user.id}}"
+        }
+      ]
+    }
+  }
+}

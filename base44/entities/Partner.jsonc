@@ -1,0 +1,277 @@
+{
+  "name": "Partner",
+  "type": "object",
+  "properties": {
+    "partner_name": {
+      "type": "string",
+      "description": "Partner display name"
+    },
+    "parent_partner_id": {
+      "type": "string",
+      "description": "ID of the parent Partner (for sub-brands). Null = top-level. Two-level hierarchy only."
+    },
+    "company_name": {
+      "type": "string",
+      "description": "Company name"
+    },
+    "primary_contact_name": {
+      "type": "string"
+    },
+    "primary_contact_email": {
+      "type": "string",
+      "format": "email"
+    },
+    "primary_contact_phone": {
+      "type": "string"
+    },
+    "market": {
+      "type": "string"
+    },
+    "region": {
+      "type": "string"
+    },
+    "partner_type": {
+      "type": "string",
+      "enum": [
+        "property_manager",
+        "owner",
+        "developer",
+        "hospitality_group",
+        "other"
+      ]
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "lead",
+        "vetting",
+        "approved",
+        "onboarding",
+        "live",
+        "live_non_renewed",
+        "paused",
+        "inactive"
+      ],
+      "default": "lead",
+      "description": "live_non_renewed = partner is still live on the site but will not be renewed at the end of the current term."
+    },
+    "onboarding_stage": {
+      "type": "string",
+      "enum": [
+        "approved",
+        "agreement_sent",
+        "agreement_signed",
+        "billing_setup",
+        "asset_collection",
+        "property_info_received",
+        "photography_received",
+        "listing_build",
+        "qa_review",
+        "live"
+      ],
+      "default": "approved"
+    },
+    "funnel_stage": {
+      "type": "string",
+      "enum": [
+        "approved",
+        "contracted",
+        "content",
+        "build",
+        "listed"
+      ],
+      "description": "Derived from FunnelTracker sub-task states. Never manually set \u2014 computed by recomputeFunnelStage backend function."
+    },
+    "funnel_stage_regression": {
+      "type": "boolean",
+      "default": false,
+      "description": "Flagged true when a sub-task is unchecked after funnel_stage reached 'listed'. Ops review required."
+    },
+    "contract_status": {
+      "type": "string",
+      "enum": [
+        "none",
+        "draft",
+        "sent",
+        "signed",
+        "expired"
+      ],
+      "default": "none"
+    },
+    "billing_status": {
+      "type": "string",
+      "enum": [
+        "not_setup",
+        "active",
+        "overdue",
+        "paused"
+      ],
+      "default": "not_setup"
+    },
+    "automated_billing": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether Stripe auto-charges this partner for license renewals. When off, billing is manual."
+    },
+    "assigned_internal_owner": {
+      "type": "string"
+    },
+    "start_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "go_live_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "renewal_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "notes": {
+      "type": "string"
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "portal_user_id": {
+      "type": "string",
+      "description": "User ID of the primary contact portal account (the authoritative team manager). Always present in portal_user_ids."
+    },
+    "portal_user_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "All User IDs linked to this partner portal. Always includes portal_user_id (the primary). undefined/null treated as visible for legacy data.",
+      "default": []
+    },
+    "stripe_billing_email": {
+      "type": "string",
+      "format": "email",
+      "description": "Stripe customer billing email address"
+    },
+    "discount_percent": {
+      "type": "number",
+      "default": 0,
+      "description": "Discount percentage 0-100. Admin-set per partner."
+    },
+    "discount_label": {
+      "type": "string",
+      "description": "Display label for the deal, e.g. '15% Discount (20+)', 'No Discount'. Admin-set."
+    },
+    "stripe_promotion_code": {
+      "type": "string",
+      "description": "Stripe promotion code ID (promo_xxx) to pre-apply at checkout. Admin-set after creating in Stripe Dashboard."
+    },
+    "license_unit_price": {
+      "type": "number",
+      "default": 1200,
+      "description": "Annual license unit price (USD) charged to this partner for a single property license. Defaults to 1200; admin can override per partner to any value. Applied to the 'Purchase a License' checkout and portal price display."
+    },
+    "interview_scheduled_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Datetime when interview was scheduled"
+    },
+    "interview_completed_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Datetime when interview was completed"
+    },
+    "interview_notes": {
+      "type": "string",
+      "description": "Admin notes from the interview"
+    },
+    "job_apps_last_viewed_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Timestamp when the partner last viewed the Applications tab. Used to compute unread job application count."
+    },
+    "member_since": {
+      "type": "string",
+      "format": "date",
+      "description": "The real date this partner joined The 100 Collection (may predate the OS). Nullable \u2014 hidden in UI when not set."
+    },
+    "is_up_to_date": {
+      "type": "boolean",
+      "default": false,
+      "description": "Admin-only flag indicating the partner's information is up to date. Only visible to admins."
+    },
+    "onboarding_shown_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the partner first saw/completed the onboarding wizard popup. Null = the onboarding popup should be shown on the next portal visit (first-login detection). Persisted server-side so it only fires once across all devices and browsers."
+    },
+    "hundred_collection_url": {
+      "type": "string",
+      "description": "URL of this partner's page on theonehundredcollection.com. When empty, public partner strips fall back to the partner's destination page (matched via market) or render as plain text with no link."
+    },
+    "logo_url": {
+      "type": "string",
+      "description": "Public URL of the partner's logo image, shown in the 'Trusted by partners' logo grid on /join. Null = the partner name renders in serif as a fallback. Uploaded from the admin Partners page."
+    }
+  },
+  "required": [
+    "partner_name"
+  ],
+  "rls": {
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "read": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "data.portal_user_ids": {
+            "$in": [
+              "{{user.id}}"
+            ]
+          }
+        },
+        {
+          "data.portal_user_id": "{{user.id}}"
+        },
+        {
+          "data.primary_contact_email": "{{user.email}}"
+        }
+      ]
+    },
+    "update": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "data.portal_user_ids": {
+            "$in": [
+              "{{user.id}}"
+            ]
+          }
+        },
+        {
+          "data.portal_user_id": "{{user.id}}"
+        },
+        {
+          "data.primary_contact_email": "{{user.email}}"
+        }
+      ]
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

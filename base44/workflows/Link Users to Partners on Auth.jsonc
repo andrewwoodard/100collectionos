@@ -1,0 +1,40 @@
+{
+  "description": "Auto-links a newly-signed-up user to a Partner by email match so direct-signup partners aren't stranded on /portal/pending. Idempotent \u2014 skips users already linked.",
+  "trigger": {
+    "condition": null,
+    "config": {
+      "trigger_type": "app_user_auth",
+      "events": [
+        "signup"
+      ]
+    }
+  },
+  "definition": {
+    "document": {
+      "dsl": "1.0.0",
+      "name": "link_users_to_partners_on_auth",
+      "version": "1.0",
+      "namespace": "base44"
+    },
+    "do": [
+      {
+        "reconcile": {
+          "call": "invoke_backend_function",
+          "with": {
+            "function_name": "reconcileUserPartnerLinks",
+            "args": {
+              "user_id": "${ .trigger.user_id }",
+              "email": "${ .trigger.email }"
+            }
+          },
+          "then": "end",
+          "x-base44": {
+            "title": "Link user to partner by email",
+            "description": "Email-match reconciliation"
+          }
+        }
+      }
+    ]
+  },
+  "name": "Link Users to Partners on Auth"
+}

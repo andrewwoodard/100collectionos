@@ -1,0 +1,123 @@
+{
+  "name": "PortalNotification",
+  "type": "object",
+  "properties": {
+    "recipient_email": {
+      "type": "string"
+    },
+    "recipient_role": {
+      "type": "string",
+      "enum": [
+        "admin",
+        "partner"
+      ]
+    },
+    "type": {
+      "type": "string",
+      "enum": [
+        "submitted",
+        "under_review",
+        "approved",
+        "needs_revision",
+        "rejected",
+        "licensed",
+        "billed",
+        "general",
+        "job_posting"
+      ]
+    },
+    "title": {
+      "type": "string"
+    },
+    "message": {
+      "type": "string"
+    },
+    "submission_id": {
+      "type": "string"
+    },
+    "property_name": {
+      "type": "string"
+    },
+    "is_read": {
+      "type": "boolean",
+      "default": false
+    },
+    "dedup_key": {
+      "type": "string",
+      "description": "Idempotency key: {submission_id}__{type}. If a notification with this key already exists, creation is skipped."
+    },
+    "link": {
+      "type": "string",
+      "description": "Optional in-app URL to navigate to when the notification is clicked (e.g. /admin/hub?tab=submissions&submissionId=abc123). Null = no navigation target."
+    },
+    "target_partner_roles": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "owner",
+          "marketing",
+          "finance",
+          "operations"
+        ]
+      },
+      "default": [],
+      "description": "Which partner sub-roles should see this notification. Empty array = all roles (backward compatible with existing notifications). Only relevant when recipient_role === 'partner'."
+    }
+  },
+  "required": [
+    "recipient_email",
+    "title",
+    "message"
+  ],
+  "rls": {
+    "create": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "data.recipient_email": "{{user.email}}"
+        }
+      ]
+    },
+    "read": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "data.recipient_email": "{{user.email}}"
+        }
+      ]
+    },
+    "update": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "data.recipient_email": "{{user.email}}"
+        }
+      ]
+    },
+    "delete": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "data.recipient_email": "{{user.email}}"
+        }
+      ]
+    }
+  }
+}

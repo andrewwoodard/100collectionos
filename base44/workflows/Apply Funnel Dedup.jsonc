@@ -1,0 +1,47 @@
+{
+  "name": "Apply Funnel Dedup",
+  "trigger": {
+    "condition": null,
+    "config": {
+      "trigger_type": "scheduled",
+      "events": [],
+      "schedule_mode": "recurring",
+      "cron_expression": "0 4 * * 1",
+      "one_time_date": null,
+      "timezone": "UTC",
+      "interval_value": null,
+      "interval_unit": null,
+      "interval_anchor": null,
+      "ends_type": "never",
+      "ends_on_date": null,
+      "ends_after_count": null
+    }
+  },
+  "definition": {
+    "document": {
+      "dsl": "1.0.0",
+      "name": "apply_funnel_dedup",
+      "version": "1.0",
+      "namespace": "base44"
+    },
+    "do": [
+      {
+        "dedup": {
+          "call": "invoke_backend_function",
+          "with": {
+            "function_name": "applyFunnelMaintenance",
+            "args": {
+              "action": "dedup"
+            }
+          },
+          "then": "end",
+          "x-base44": {
+            "title": "Mark returning visitors",
+            "description": "Collapses repeat-email sessions"
+          }
+        }
+      }
+    ]
+  },
+  "description": "Weekly job that marks ApplyFunnelEvent sessions whose email also appears in an earlier session as is_returning=true, surfacing returning visitors in the admin funnel view."
+}

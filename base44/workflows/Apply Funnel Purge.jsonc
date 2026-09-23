@@ -1,0 +1,47 @@
+{
+  "name": "Apply Funnel Purge",
+  "trigger": {
+    "condition": null,
+    "config": {
+      "trigger_type": "scheduled",
+      "events": [],
+      "schedule_mode": "recurring",
+      "cron_expression": "0 3 * * *",
+      "one_time_date": null,
+      "timezone": "UTC",
+      "interval_value": null,
+      "interval_unit": null,
+      "interval_anchor": null,
+      "ends_type": "never",
+      "ends_on_date": null,
+      "ends_after_count": null
+    }
+  },
+  "definition": {
+    "document": {
+      "dsl": "1.0.0",
+      "name": "apply_funnel_purge",
+      "version": "1.0",
+      "namespace": "base44"
+    },
+    "do": [
+      {
+        "purge": {
+          "call": "invoke_backend_function",
+          "with": {
+            "function_name": "applyFunnelMaintenance",
+            "args": {
+              "action": "purge"
+            }
+          },
+          "then": "end",
+          "x-base44": {
+            "title": "Purge old funnel events",
+            "description": "Delete >90d, keep submitted"
+          }
+        }
+      }
+    ]
+  },
+  "description": "Daily purge of ApplyFunnelEvent records older than 90 days, except 'submitted' events which are kept indefinitely for historical funnel comparisons."
+}

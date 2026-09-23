@@ -1,0 +1,82 @@
+{
+  "name": "DocumentFolder",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Folder name"
+    },
+    "parent_id": {
+      "type": "string",
+      "description": "ID of parent folder, null for root folders"
+    },
+    "color": {
+      "type": "string",
+      "description": "Folder color hex or tailwind color name",
+      "default": "blue"
+    },
+    "partner_id": {
+      "type": "string"
+    },
+    "partner_name": {
+      "type": "string"
+    },
+    "property_id": {
+      "type": "string",
+      "description": "ID of the Property this folder belongs to"
+    }
+  },
+  "required": [
+    "name"
+  ],
+  "rls": {
+    "create": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "created_by_id": "{{user.id}}"
+        }
+      ]
+    },
+    "read": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "created_by_id": "{{user.id}}"
+        }
+      ]
+    },
+    "update": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "created_by_id": "{{user.id}}"
+        }
+      ]
+    },
+    "delete": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "created_by_id": "{{user.id}}"
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,133 @@
+{
+  "name": "PartnerProfile",
+  "type": "object",
+  "properties": {
+    "partner_email": {
+      "type": "string",
+      "description": "Email of the partner user who owns this profile"
+    },
+    "partner_id": {
+      "type": "string"
+    },
+    "partner_name": {
+      "type": "string"
+    },
+    "display_name": {
+      "type": "string",
+      "description": "Full name shown on website (e.g. Buck Cumbo)"
+    },
+    "title": {
+      "type": "string",
+      "description": "Title shown under name (e.g. Founder & CEO)"
+    },
+    "company_name": {
+      "type": "string"
+    },
+    "company_bio": {
+      "type": "string",
+      "description": "A short bio about the PM company, shown on the public profile"
+    },
+    "personal_phone": {
+      "type": "string",
+      "description": "PM's personal phone number"
+    },
+    "reservation_phone": {
+      "type": "string",
+      "description": "Phone number for reservations"
+    },
+    "reservation_email": {
+      "type": "string",
+      "description": "Email address for reservations"
+    },
+    "profile_photo_url": {
+      "type": "string",
+      "description": "Headshot photo URL"
+    },
+    "company_logo_url": {
+      "type": "string",
+      "description": "Company logo URL"
+    },
+    "about_bio": {
+      "type": "string",
+      "description": "Personal bio shown in the About section"
+    },
+    "favorite_restaurants": {
+      "type": "string",
+      "description": "Comma-separated list of favorite restaurants"
+    },
+    "favorite_breweries": {
+      "type": "string",
+      "description": "Comma-separated list of favorite breweries"
+    },
+    "favorite_bakery": {
+      "type": "string",
+      "description": "Favorite bakery or cafe"
+    },
+    "favorite_shops": {
+      "type": "string",
+      "description": "Comma-separated list of favorite shops"
+    },
+    "favorite_things_to_do": {
+      "type": "string",
+      "description": "Favorite local activities and things to do"
+    },
+    "market": {
+      "type": "string",
+      "description": "Primary market/destination (e.g. North Myrtle Beach)"
+    },
+    "website_url": {
+      "type": "string"
+    },
+    "profile_status": {
+      "type": "string",
+      "enum": [
+        "draft",
+        "submitted",
+        "published"
+      ],
+      "default": "draft"
+    }
+  },
+  "required": [
+    "partner_email"
+  ],
+  "rls": {
+    "create": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "data.partner_email": "{{user.email}}"
+        }
+      ]
+    },
+    "read": null,
+    "update": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "data.partner_email": "{{user.email}}"
+        }
+      ]
+    },
+    "delete": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "data.partner_email": "{{user.email}}"
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,59 @@
+{
+  "name": "SpamAttempt",
+  "type": "object",
+  "properties": {
+    "attempted_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the rejected submission attempt arrived."
+    },
+    "ip_address": {
+      "type": "string",
+      "description": "Requester IP (best-effort from forwarded headers)."
+    },
+    "honeypot_triggered": {
+      "type": "boolean",
+      "default": false,
+      "description": "True when the invisible honeypot field was filled by a bot."
+    },
+    "time_to_submit_ms": {
+      "type": "number",
+      "description": "Elapsed ms between form mount and submit, as reported by the client. Null when not provided."
+    },
+    "spam_score": {
+      "type": "number",
+      "description": "Composite spam score at reject time (0-1+)."
+    },
+    "reason": {
+      "type": "string",
+      "description": "Which defense layer triggered the reject (honeypot, rate_limit, time_to_submit, disposable_email, spam_score)."
+    },
+    "raw_payload": {
+      "type": "object",
+      "description": "What the bot submitted, kept for tuning the detector later."
+    },
+    "email": {
+      "type": "string",
+      "description": "Submitted email address \u2014 searchable in case a legitimate person got caught."
+    }
+  },
+  "required": [],
+  "rls": {
+    "create": null,
+    "read": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

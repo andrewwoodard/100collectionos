@@ -1,0 +1,52 @@
+{
+  "name": "OffboardingRecord",
+  "type": "object",
+  "properties": {
+    "partner_name": {
+      "type": "string"
+    },
+    "contract_end_date": {
+      "type": "string"
+    },
+    "offboarding_email_sent": {
+      "type": "string"
+    },
+    "taken_off_site": {
+      "type": "string"
+    },
+    "our_brand_removed": {
+      "type": "string"
+    },
+    "reason": {
+      "type": "string"
+    },
+    "time_with_us": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "partner_name"
+  ],
+  "rls": {
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "read": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

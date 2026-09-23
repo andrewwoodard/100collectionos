@@ -1,0 +1,49 @@
+{
+  "name": "PropertyImageOrder",
+  "type": "object",
+  "properties": {
+    "property_url": {
+      "type": "string",
+      "description": "The listing URL used to identify the property's images"
+    },
+    "ordered_image_ids": {
+      "type": "array",
+      "items": {
+        "type": "number"
+      },
+      "description": "Image metadata IDs in the desired display order"
+    }
+  },
+  "required": [
+    "property_url"
+  ],
+  "rls": {
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "read": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "created_by_id": "{{user.id}}"
+        }
+      ]
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

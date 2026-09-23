@@ -1,0 +1,37 @@
+{
+  "name": "Notify on ReviewNote @-mention",
+  "description": "When a ReviewNote is created with mentioned_user_ids, sends in-app + email notifications to each mentioned user.",
+  "trigger": {
+    "condition": null,
+    "config": {
+      "trigger_type": "entity",
+      "events": [
+        "create"
+      ],
+      "entity_name": "ReviewNote"
+    }
+  },
+  "definition": {
+    "document": {
+      "dsl": "1.0.0",
+      "name": "notify_on_reviewnote_mention",
+      "version": "1.0",
+      "namespace": "base44"
+    },
+    "do": [
+      {
+        "run_function": {
+          "call": "invoke_backend_function",
+          "with": {
+            "function_name": "onReviewNoteCreate",
+            "args": {}
+          },
+          "then": "end"
+        }
+      }
+    ]
+  },
+  "x-base44-migrated-from-automation": {
+    "legacy_payload_function": "onReviewNoteCreate"
+  }
+}

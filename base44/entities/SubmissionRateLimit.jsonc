@@ -1,0 +1,46 @@
+{
+  "name": "SubmissionRateLimit",
+  "type": "object",
+  "properties": {
+    "ip_address": {
+      "type": "string",
+      "description": "Requester IP this counter applies to."
+    },
+    "window_start": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Start of the current 1-hour counting window."
+    },
+    "count": {
+      "type": "number",
+      "default": 0,
+      "description": "Successful submissions created within the current window."
+    },
+    "last_created_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When this IP last had a submission accepted (created or quarantined)."
+    }
+  },
+  "required": [
+    "ip_address"
+  ],
+  "rls": {
+    "create": null,
+    "read": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

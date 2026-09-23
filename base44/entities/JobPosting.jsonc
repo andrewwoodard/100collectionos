@@ -1,0 +1,164 @@
+{
+  "name": "JobPosting",
+  "type": "object",
+  "properties": {
+    "partner_id": {
+      "type": "string",
+      "description": "ID of the partner who posted this job"
+    },
+    "partner_name": {
+      "type": "string"
+    },
+    "title": {
+      "type": "string",
+      "description": "Job title"
+    },
+    "location": {
+      "type": "string",
+      "description": "Job location (city, state or remote)"
+    },
+    "job_type": {
+      "type": "string",
+      "enum": [
+        "full_time",
+        "part_time",
+        "contract",
+        "seasonal",
+        "internship"
+      ],
+      "default": "full_time"
+    },
+    "department": {
+      "type": "string",
+      "enum": [
+        "operations",
+        "guest_services",
+        "housekeeping",
+        "maintenance",
+        "marketing",
+        "management",
+        "other"
+      ]
+    },
+    "description": {
+      "type": "string",
+      "description": "Full job description"
+    },
+    "requirements": {
+      "type": "string",
+      "description": "Requirements and qualifications"
+    },
+    "compensation": {
+      "type": "string",
+      "description": "Salary range or compensation details"
+    },
+    "application_email": {
+      "type": "string",
+      "format": "email",
+      "description": "Email address for applications"
+    },
+    "application_url": {
+      "type": "string",
+      "description": "External application URL if applicable"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "draft",
+        "active",
+        "closed"
+      ],
+      "default": "active"
+    },
+    "closes_at": {
+      "type": "string",
+      "format": "date",
+      "description": "Application deadline"
+    },
+    "admin_notified_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Timestamp when admin notification email was sent. Set by onJobPostingCreate automation."
+    },
+    "admin_reviewed_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Timestamp when an admin first opened the detail modal or took an action. Used for unread badge count."
+    },
+    "admin_review_note": {
+      "type": "string",
+      "description": "Note written by admin when sending a posting back to the partner for revision. Partner sees this on their Careers page."
+    },
+    "closed_reason": {
+      "type": "string",
+      "enum": [
+        "filled",
+        "no_hire",
+        "other"
+      ],
+      "description": "Why the posting was closed. 'filled' = hired someone; 'no_hire' = didn't find the right fit; 'other' = no longer needed or other reason."
+    },
+    "closed_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Timestamp when the partner closed this posting."
+    },
+    "hired_person_name": {
+      "type": "string",
+      "description": "Name of the person hired (if the position was filled)."
+    },
+    "hired_from_application_id": {
+      "type": "string",
+      "description": "Supabase job_application id if the hired person applied through the platform."
+    },
+    "hired_person_start_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Start date of the hired person."
+    }
+  },
+  "required": [
+    "title",
+    "partner_name",
+    "compensation"
+  ],
+  "rls": {
+    "create": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "created_by_id": "{{user.id}}"
+        }
+      ]
+    },
+    "read": null,
+    "update": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "created_by_id": "{{user.id}}"
+        }
+      ]
+    },
+    "delete": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "created_by_id": "{{user.id}}"
+        }
+      ]
+    }
+  }
+}

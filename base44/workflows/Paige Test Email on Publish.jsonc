@@ -1,0 +1,37 @@
+{
+  "definition": {
+    "document": {
+      "dsl": "1.0.0",
+      "name": "paige_test_email_on_publish",
+      "version": "1.0",
+      "namespace": "base44"
+    },
+    "do": [
+      {
+        "fire_test_email": {
+          "call": "invoke_backend_function",
+          "with": {
+            "function_name": "sendPaigeTestEmail",
+            "args": {}
+          },
+          "then": "end",
+          "x-base44": {
+            "title": "Fire Paige test email",
+            "description": "One-shot deliverability check"
+          }
+        }
+      }
+    ]
+  },
+  "trigger": {
+    "condition": null,
+    "config": {
+      "trigger_type": "app_publish",
+      "events": [
+        "published"
+      ]
+    }
+  },
+  "name": "Paige Test Email on Publish",
+  "description": "One-shot deploy verification: fires sendPaigeTestEmail when the app publishes to confirm Paige and the admin recipients receive notifications. The function is idempotent (checks AuditEntry 'paige_test_email_sent') so it only actually sends once across all deploys."
+}

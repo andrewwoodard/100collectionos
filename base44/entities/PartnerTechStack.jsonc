@@ -1,0 +1,352 @@
+{
+  "name": "PartnerTechStack",
+  "type": "object",
+  "properties": {
+    "partner_id": {
+      "type": "string",
+      "description": "FK \u2192 Partner.id"
+    },
+    "last_updated_by": {
+      "type": "string",
+      "description": "User email who last updated"
+    },
+    "last_updated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "pms": {
+      "type": "string",
+      "enum": [
+        "Streamline",
+        "Track",
+        "Escapia / V12.NET",
+        "Hostfully",
+        "Guesty",
+        "OwnerRez",
+        "LiveRez",
+        "BookerVille",
+        "Rezfusion / Hospitality Cloud",
+        "Direct (custom)",
+        "Other"
+      ]
+    },
+    "pms_other": {
+      "type": "string"
+    },
+    "booking_engine": {
+      "type": "string",
+      "enum": [
+        "Rezfusion",
+        "Bookerville",
+        "Lodgify",
+        "Smoobu",
+        "Custom / In-house",
+        "Same as PMS",
+        "Other"
+      ]
+    },
+    "booking_engine_other": {
+      "type": "string"
+    },
+    "channel_manager": {
+      "type": "string",
+      "enum": [
+        "Rentals United",
+        "Hostaway",
+        "MyVR",
+        "Hostex",
+        "NextPax",
+        "Same as PMS",
+        "None",
+        "Other"
+      ]
+    },
+    "channel_manager_other": {
+      "type": "string"
+    },
+    "otas": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "Airbnb",
+          "VRBO",
+          "Booking.com",
+          "Expedia",
+          "Marriott Homes & Villas",
+          "Plum Guide",
+          "Tablet Hotels",
+          "None",
+          "Other"
+        ]
+      }
+    },
+    "otas_other": {
+      "type": "string"
+    },
+    "dynamic_pricing": {
+      "type": "string",
+      "enum": [
+        "PriceLabs",
+        "Wheelhouse",
+        "Beyond Pricing",
+        "DPGO",
+        "AirDNA Rentalizer",
+        "Manual / In-house",
+        "None",
+        "Other"
+      ]
+    },
+    "dynamic_pricing_other": {
+      "type": "string"
+    },
+    "cleaning_software": {
+      "type": "string",
+      "enum": [
+        "Breezeway",
+        "Properly",
+        "Operto Teams",
+        "Turno (TurnoverBnB)",
+        "ResortCleaning",
+        "Manual / Spreadsheets",
+        "Other"
+      ]
+    },
+    "cleaning_software_other": {
+      "type": "string"
+    },
+    "smart_locks": {
+      "type": "string",
+      "enum": [
+        "RemoteLock",
+        "PointCentral",
+        "August",
+        "Schlage Encode",
+        "Operto Boost",
+        "NUKI",
+        "None",
+        "Other"
+      ]
+    },
+    "smart_locks_other": {
+      "type": "string"
+    },
+    "noise_monitoring": {
+      "type": "string",
+      "enum": [
+        "NoiseAware",
+        "Minut",
+        "Roomonitor",
+        "None",
+        "Other"
+      ]
+    },
+    "noise_monitoring_other": {
+      "type": "string"
+    },
+    "guest_communication": {
+      "type": "string",
+      "enum": [
+        "Hostfully Inbox",
+        "Guesty Inbox",
+        "Hospitable (Smartbnb)",
+        "Enso Connect",
+        "Touch Stay messaging",
+        "Manual / Email",
+        "Other"
+      ]
+    },
+    "guest_communication_other": {
+      "type": "string"
+    },
+    "digital_guidebook": {
+      "type": "string",
+      "enum": [
+        "Touch Stay",
+        "Hostfully Guidebooks",
+        "RueBaRue",
+        "YourWelcome",
+        "None",
+        "Other"
+      ]
+    },
+    "digital_guidebook_other": {
+      "type": "string"
+    },
+    "guest_screening": {
+      "type": "string",
+      "enum": [
+        "SuperHog",
+        "Safely",
+        "Autohost",
+        "Know Your Guest",
+        "None",
+        "Other"
+      ]
+    },
+    "guest_screening_other": {
+      "type": "string"
+    },
+    "damage_protection": {
+      "type": "string",
+      "enum": [
+        "Safely",
+        "RentalGuardian",
+        "SuperHog",
+        "Waivo",
+        "Self-insured",
+        "None",
+        "Other"
+      ]
+    },
+    "damage_protection_other": {
+      "type": "string"
+    },
+    "website_platform": {
+      "type": "string",
+      "enum": [
+        "WordPress",
+        "Squarespace",
+        "Webflow",
+        "Shopify",
+        "Custom / Bespoke",
+        "Hosted PMS site",
+        "Other"
+      ]
+    },
+    "website_platform_other": {
+      "type": "string"
+    },
+    "crm": {
+      "type": "string",
+      "enum": [
+        "HubSpot",
+        "Salesforce",
+        "Pipedrive",
+        "ActiveCampaign",
+        "Spreadsheets",
+        "None",
+        "Other"
+      ]
+    },
+    "crm_other": {
+      "type": "string"
+    },
+    "email_marketing": {
+      "type": "string",
+      "enum": [
+        "Klaviyo",
+        "Mailchimp",
+        "ActiveCampaign",
+        "Sendlane",
+        "Sendinblue / Brevo",
+        "None",
+        "Other"
+      ]
+    },
+    "email_marketing_other": {
+      "type": "string"
+    },
+    "analytics": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "Google Analytics 4",
+          "Google Tag Manager",
+          "Plausible",
+          "Mixpanel",
+          "PMS Native",
+          "None",
+          "Other"
+        ]
+      }
+    },
+    "analytics_other": {
+      "type": "string"
+    },
+    "payment_processor": {
+      "type": "string",
+      "enum": [
+        "Stripe",
+        "Lynnbrook Group",
+        "Ascent",
+        "Yapstone",
+        "Square",
+        "PMS Default",
+        "Other"
+      ]
+    },
+    "payment_processor_other": {
+      "type": "string"
+    },
+    "accounting": {
+      "type": "string",
+      "enum": [
+        "QuickBooks",
+        "Xero",
+        "Bookkeeper360",
+        "Wave",
+        "Manual / Spreadsheets",
+        "Other"
+      ]
+    },
+    "accounting_other": {
+      "type": "string"
+    },
+    "additional_tools": {
+      "type": "string",
+      "description": "Free-form text for anything else"
+    },
+    "notes": {
+      "type": "string",
+      "description": "Internal admin notes \u2014 not partner-visible"
+    }
+  },
+  "required": [
+    "partner_id"
+  ],
+  "rls": {
+    "create": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "created_by_id": "{{user.id}}"
+        }
+      ]
+    },
+    "read": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "created_by_id": "{{user.id}}"
+        }
+      ]
+    },
+    "update": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "created_by_id": "{{user.id}}"
+        }
+      ]
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

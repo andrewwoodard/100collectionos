@@ -1,0 +1,105 @@
+{
+  "name": "ApplyFunnelEvent",
+  "type": "object",
+  "properties": {
+    "session_id": {
+      "type": "string",
+      "description": "UUID generated on the frontend and persisted in sessionStorage for the visitor's tab session. The join key that connects a visitor's events across /apply pages."
+    },
+    "event_type": {
+      "type": "string",
+      "enum": [
+        "page_view",
+        "path_selected",
+        "field_touched",
+        "email_captured",
+        "name_captured",
+        "company_captured",
+        "form_abandoned",
+        "submitted"
+      ],
+      "description": "Where the visitor is in the apply funnel. *_captured fire on blur when a legit value is typed into email/full_name/company_name."
+    },
+    "event_data": {
+      "type": "object",
+      "description": "Freeform context for the event: { path_slug } for path_selected, { field_name } for field_touched, { field, value } for *_captured, { touched_fields, last_field } for form_abandoned."
+    },
+    "applicant_type": {
+      "type": "string",
+      "enum": [
+        "property_manager",
+        "homeowner",
+        "existing_partner",
+        null
+      ],
+      "description": "Which apply track. Null for landing-page views before a path is chosen."
+    },
+    "email": {
+      "type": "string",
+      "description": "Captured on email field blur if the value passes email regex. Null otherwise. Used for the 'Reach out' action."
+    },
+    "full_name": {
+      "type": "string",
+      "description": "Captured on name field blur if it has vowels and is at least 2 chars."
+    },
+    "company_name": {
+      "type": "string",
+      "description": "Captured on company field blur if non-empty."
+    },
+    "page_path": {
+      "type": "string",
+      "description": "Which /apply route the event fired on (e.g. /apply, /apply/property-manager)."
+    },
+    "attribution_source_label": {
+      "type": "string",
+      "description": "Human-readable inferred signup source (Direct, Email, Organic search, etc.) from getAttributionSnapshot."
+    },
+    "ip_address": {
+      "type": "string",
+      "description": "Requester IP (best-effort from forwarded headers) for rate limiting and dedup."
+    },
+    "user_agent": {
+      "type": "string"
+    },
+    "referrer": {
+      "type": "string"
+    },
+    "spam_score": {
+      "type": "number",
+      "description": "Composite spam score 0-1 computed at event time from any captured email/name/company. Events scoring > 0.5 are tagged spam and hidden from default admin views."
+    },
+    "ignored": {
+      "type": "boolean",
+      "default": false,
+      "description": "Admin-marked 'Ignore' \u2014 hides the session from the default abandoned-applicants view without penalty. Set from the admin funnel page."
+    },
+    "is_returning": {
+      "type": "boolean",
+      "default": false,
+      "description": "Set by the weekly dedup job when this session's email also appears in an earlier session, indicating a returning visitor."
+    }
+  },
+  "required": [
+    "session_id",
+    "event_type",
+    "page_path"
+  ],
+  "rls": {
+    "create": null,
+    "read": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

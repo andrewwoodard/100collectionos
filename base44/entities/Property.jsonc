@@ -1,0 +1,277 @@
+{
+  "name": "Property",
+  "type": "object",
+  "properties": {
+    "property_name": {
+      "type": "string"
+    },
+    "partner_id": {
+      "type": "string",
+      "description": "ID of the partner this property belongs to (may be a User ID for portal-linked partners)"
+    },
+    "partner_name": {
+      "type": "string",
+      "description": "Denormalized partner name for display"
+    },
+    "market": {
+      "type": "string"
+    },
+    "address": {
+      "type": "string",
+      "description": "Street or descriptive address for the property. Geocoded to latitude/longitude on save."
+    },
+    "latitude": {
+      "type": "number",
+      "description": "Geocoded latitude from the property address (OpenStreetMap Nominatim)."
+    },
+    "longitude": {
+      "type": "number",
+      "description": "Geocoded longitude from the property address (OpenStreetMap Nominatim)."
+    },
+    "location_city": {
+      "type": "string",
+      "description": "City the property is in (e.g. Nags Head)."
+    },
+    "location_state": {
+      "type": "string",
+      "description": "State/region the property is in (e.g. NC)."
+    },
+    "location_country": {
+      "type": "string",
+      "description": "Country the property is in (e.g. United States)."
+    },
+    "location_full": {
+      "type": "string",
+      "description": "Formatted 'City, State, Country' string for display."
+    },
+    "property_type": {
+      "type": "string",
+      "enum": [
+        "villa",
+        "apartment",
+        "house",
+        "condo",
+        "estate",
+        "cabin",
+        "other"
+      ]
+    },
+    "bedrooms": {
+      "type": "number"
+    },
+    "bathrooms": {
+      "type": "number"
+    },
+    "half_bathrooms": {
+      "type": "number",
+      "description": "Number of half bathrooms (no shower/tub)."
+    },
+    "sleeps": {
+      "type": "number"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "draft",
+        "active",
+        "paused",
+        "inactive"
+      ],
+      "default": "draft"
+    },
+    "onboarding_status": {
+      "type": "string",
+      "enum": [
+        "not_started",
+        "in_progress",
+        "complete"
+      ],
+      "default": "not_started"
+    },
+    "photography_status": {
+      "type": "string",
+      "enum": [
+        "not_started",
+        "scheduled",
+        "completed",
+        "approved"
+      ],
+      "default": "not_started"
+    },
+    "listing_url": {
+      "type": "string"
+    },
+    "vrm_url": {
+      "type": "string",
+      "description": "URL to the property's listing on the partner's VRM (Vacation Rental Manager) site. Typically the same as listing_url but stored separately for clarity."
+    },
+    "hundred_collection_url": {
+      "type": "string",
+      "description": "URL where this property lives on theonehundredcollection.com. Populated after Andrew's publish hook syncs to Supabase."
+    },
+    "short_summary": {
+      "type": "string"
+    },
+    "excerpt": {
+      "type": "string",
+      "description": "Short summary shown on the property card. Usually 1-2 sentences."
+    },
+    "description": {
+      "type": "string",
+      "description": "Full long-form description of the property. Rendered as the main body copy on the property page."
+    },
+    "text": {
+      "type": "string"
+    },
+    "headline": {
+      "type": "string",
+      "description": "Marketing headline for the property, shown above the description."
+    },
+    "unique_features": {
+      "type": "string",
+      "description": "What makes this property distinctive. Free text, 1-2 sentences."
+    },
+    "unique_feature": {
+      "type": "string"
+    },
+    "why_100_collection": {
+      "type": "string",
+      "description": "Why this property is a fit for The 100 Collection curation standards. Internal-facing but visible to partners."
+    },
+    "best_fit_guest": {
+      "type": "string",
+      "description": "Ideal guest profile for this property. E.g. 'Couples seeking a quiet retreat' or 'Families of 6-8'."
+    },
+    "design_style_notes": {
+      "type": "string",
+      "description": "Notes on the property's design aesthetic. Used for editorial copy."
+    },
+    "amenities": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "default": [],
+      "description": "List of amenities (Community pool, Elevator access, Fast WiFi, etc.)."
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "default": [],
+      "description": "Search/discovery tags (Soundfront, Sunset Views, Condo, etc.)."
+    },
+    "photo_urls": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "default": [],
+      "description": "Ordered list of photo URLs. First is typically the hero image."
+    },
+    "photo_alt_texts": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "default": [],
+      "description": "AI-generated accessibility alt text for each photo in photo_urls, aligned by index. Generated by the generatePropertyAltText backend function."
+    },
+    "internal_notes": {
+      "type": "string"
+    },
+    "launch_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "portal_visible": {
+      "type": "boolean",
+      "default": true,
+      "description": "Whether this property is visible in the partner's portal. Newly added properties default to visible."
+    },
+    "archived_at": {
+      "type": "string",
+      "description": "Timestamp when the property was archived; null = active"
+    },
+    "archived_by_user_id": {
+      "type": "string",
+      "description": "User.id of the admin who archived the property; null = active"
+    },
+    "supabase_property_id": {
+      "type": "string",
+      "description": "ID of the corresponding record in the Supabase properties table (set after sync from Base44 to Supabase)"
+    },
+    "offboarding_status": {
+      "type": "string",
+      "enum": [
+        "temporary_offline",
+        "scheduled",
+        "terminated"
+      ],
+      "description": "Offboarding lifecycle state. null = active and live. temporary_offline = hidden from public site but kept in inventory. scheduled = set to terminate on a future date. terminated = permanently removed from The 100 Collection."
+    },
+    "termination_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Future date when the property should be terminated. Only set when offboarding_status = 'scheduled'."
+    },
+    "offboarding_reason": {
+      "type": "string",
+      "description": "Partner's or admin's note about why the property is being offboarded."
+    },
+    "offboarding_initiated_by": {
+      "type": "string",
+      "description": "Email of the user who initiated the offboarding."
+    },
+    "offboarding_initiated_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the offboarding was initiated."
+    },
+    "offboarding_approved_by": {
+      "type": "string",
+      "description": "Admin who approved a termination. null if pending or if the state doesn't require approval."
+    },
+    "offboarding_approved_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When a termination was approved."
+    }
+  },
+  "required": [
+    "property_name"
+  ],
+  "rls": {
+    "create": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "created_by_id": "{{user.id}}"
+        }
+      ]
+    },
+    "read": null,
+    "update": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "created_by_id": "{{user.id}}"
+        }
+      ]
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

@@ -1,0 +1,52 @@
+{
+  "name": "PartnerAudit",
+  "type": "object",
+  "properties": {
+    "company": {
+      "type": "string"
+    },
+    "analytics_given": {
+      "type": "string"
+    },
+    "website_access_given": {
+      "type": "string"
+    },
+    "proud_header_added": {
+      "type": "string"
+    },
+    "vrm_landing_page_added": {
+      "type": "string"
+    },
+    "homepage_link": {
+      "type": "string"
+    },
+    "lander_link": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "company"
+  ],
+  "rls": {
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "read": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

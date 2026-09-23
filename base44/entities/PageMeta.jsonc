@@ -1,0 +1,56 @@
+{
+  "name": "PageMeta",
+  "type": "object",
+  "properties": {
+    "page_key": {
+      "type": "string",
+      "description": "Unique slug identifying the page (e.g. 'apply', 'apply_property_manager', 'landing')"
+    },
+    "page_label": {
+      "type": "string",
+      "description": "Display label shown in the admin list"
+    },
+    "title": {
+      "type": "string",
+      "description": "Browser tab title and og:title"
+    },
+    "description": {
+      "type": "string",
+      "description": "Meta description and og:description"
+    },
+    "og_image_url": {
+      "type": "string",
+      "description": "Social share image URL (og:image / twitter:image). Recommended 1200x630px."
+    },
+    "og_image_alt": {
+      "type": "string",
+      "description": "Alt text for the social share image"
+    },
+    "canonical_url": {
+      "type": "string",
+      "description": "Optional canonical URL for SEO"
+    }
+  },
+  "required": [
+    "page_key",
+    "page_label"
+  ],
+  "rls": {
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "read": null,
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

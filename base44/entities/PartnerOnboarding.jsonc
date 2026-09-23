@@ -1,0 +1,145 @@
+{
+  "name": "PartnerOnboarding",
+  "type": "object",
+  "properties": {
+    "partner_name": {
+      "type": "string",
+      "description": "Display name \u2014 kept for readability but NOT the join key. Use partner_id."
+    },
+    "partner_id": {
+      "type": "string",
+      "description": "Foreign key \u2192 Partner.id. This is the canonical join key between FunnelTracker and Partner."
+    },
+    "live_url": {
+      "type": "string"
+    },
+    "contract_sent": {
+      "type": "string"
+    },
+    "contract_signed": {
+      "type": "string"
+    },
+    "stripe_added": {
+      "type": "string"
+    },
+    "onboarding_fee_invoiced": {
+      "type": "string"
+    },
+    "onboarding_fee_paid": {
+      "type": "string"
+    },
+    "kickoff_email_sent": {
+      "type": "string"
+    },
+    "partner_folder_created": {
+      "type": "string"
+    },
+    "intake_form_done": {
+      "type": "string"
+    },
+    "post_call_recap": {
+      "type": "string"
+    },
+    "writer_interview": {
+      "type": "string"
+    },
+    "writeup_completed": {
+      "type": "string"
+    },
+    "destination_writeup_approved": {
+      "type": "string"
+    },
+    "properties_given": {
+      "type": "string"
+    },
+    "analytics_given": {
+      "type": "string"
+    },
+    "gtag_given": {
+      "type": "string"
+    },
+    "website_access_given": {
+      "type": "string"
+    },
+    "fully_live": {
+      "type": "string"
+    },
+    "live_email_sent": {
+      "type": "string"
+    },
+    "proud_header_mockup": {
+      "type": "string"
+    },
+    "proud_header_added": {
+      "type": "string"
+    },
+    "vrm_landing_page": {
+      "type": "string"
+    },
+    "landing_page_added": {
+      "type": "string"
+    },
+    "social_media_announced": {
+      "type": "string"
+    },
+    "in_category": {
+      "type": "string"
+    },
+    "licensing_fee_deal": {
+      "type": "string"
+    },
+    "licensing_fees_invoiced": {
+      "type": "string"
+    },
+    "internal_notes": {
+      "type": "string",
+      "description": "Internal-only notes for the ops team \u2014 never partner-visible."
+    }
+  },
+  "required": [
+    "partner_name"
+  ],
+  "rls": {
+    "create": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "created_by_id": "{{user.id}}"
+        }
+      ]
+    },
+    "read": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "created_by_id": "{{user.id}}"
+        }
+      ]
+    },
+    "update": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "created_by_id": "{{user.id}}"
+        }
+      ]
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

@@ -1,0 +1,89 @@
+{
+  "name": "FunnelComment",
+  "type": "object",
+  "properties": {
+    "partner_id": {
+      "type": "string",
+      "description": "FK \u2192 Partner.id \u2014 which partner this comment thread belongs to"
+    },
+    "partner_name": {
+      "type": "string",
+      "description": "Denormalized partner name for display"
+    },
+    "author_email": {
+      "type": "string",
+      "format": "email"
+    },
+    "author_name": {
+      "type": "string"
+    },
+    "content": {
+      "type": "string",
+      "description": "Comment body \u2014 can contain @-mention markers"
+    },
+    "mentioned_user_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "User IDs tagged via @-mention in this comment",
+      "default": []
+    },
+    "is_resolved": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether the thread has been resolved. Currently informational; used to hide the blue-dot indicator on resolved threads."
+    }
+  },
+  "required": [
+    "partner_id",
+    "author_email",
+    "content"
+  ],
+  "rls": {
+    "create": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "data.author_email": "{{user.email}}"
+        }
+      ]
+    },
+    "read": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "data.author_email": "{{user.email}}"
+        },
+        {
+          "created_by_id": "{{user.id}}"
+        }
+      ]
+    },
+    "update": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "data.author_email": "{{user.email}}"
+        }
+      ]
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

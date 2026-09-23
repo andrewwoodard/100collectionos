@@ -1,0 +1,91 @@
+{
+  "name": "BillingRecord",
+  "type": "object",
+  "properties": {
+    "partner_id": {
+      "type": "string"
+    },
+    "partner_name": {
+      "type": "string"
+    },
+    "invoice_number": {
+      "type": "string"
+    },
+    "billing_type": {
+      "type": "string",
+      "enum": [
+        "setup_fee",
+        "monthly",
+        "commission",
+        "photography",
+        "marketing",
+        "other"
+      ]
+    },
+    "amount": {
+      "type": "number"
+    },
+    "invoice_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "due_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "paid_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "draft",
+        "sent",
+        "paid",
+        "overdue",
+        "void"
+      ],
+      "default": "draft"
+    },
+    "billing_contact": {
+      "type": "string"
+    },
+    "notes": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "partner_id",
+    "amount"
+  ],
+  "rls": {
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "read": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "created_by_id": "{{user.id}}"
+        }
+      ]
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

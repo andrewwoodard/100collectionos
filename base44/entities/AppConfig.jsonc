@@ -1,0 +1,42 @@
+{
+  "name": "AppConfig",
+  "type": "object",
+  "properties": {
+    "key": {
+      "type": "string",
+      "description": "Config key (e.g. RESEND_API_KEY, RESEND_FROM, ADMIN_NOTIFICATION_LIST)"
+    },
+    "value": {
+      "type": "string",
+      "description": "Config value"
+    },
+    "updated_by": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "key"
+  ],
+  "rls": {
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "read": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

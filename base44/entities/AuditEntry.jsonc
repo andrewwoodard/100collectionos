@@ -1,0 +1,78 @@
+{
+  "name": "AuditEntry",
+  "type": "object",
+  "properties": {
+    "actor_email": {
+      "type": "string"
+    },
+    "actor_role": {
+      "type": "string",
+      "enum": [
+        "admin",
+        "partner",
+        "system"
+      ]
+    },
+    "action": {
+      "type": "string"
+    },
+    "entity_type": {
+      "type": "string"
+    },
+    "entity_id": {
+      "type": "string"
+    },
+    "target_name": {
+      "type": "string",
+      "description": "Display name of the audited entity (e.g. candidate name, property name)"
+    },
+    "property_name": {
+      "type": "string"
+    },
+    "partner_name": {
+      "type": "string"
+    },
+    "details": {
+      "type": "string"
+    },
+    "old_value": {
+      "type": "string"
+    },
+    "new_value": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "actor_email",
+    "action"
+  ],
+  "rls": {
+    "create": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "data.actor_email": "{{user.email}}"
+        }
+      ]
+    },
+    "read": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

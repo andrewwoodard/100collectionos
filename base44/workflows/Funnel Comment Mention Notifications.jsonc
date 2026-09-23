@@ -1,0 +1,37 @@
+{
+  "name": "Funnel Comment Mention Notifications",
+  "description": "When a FunnelComment is created, notify all @-mentioned users via in-app notification + email",
+  "trigger": {
+    "condition": null,
+    "config": {
+      "trigger_type": "entity",
+      "events": [
+        "create"
+      ],
+      "entity_name": "FunnelComment"
+    }
+  },
+  "definition": {
+    "document": {
+      "dsl": "1.0.0",
+      "name": "funnel_comment_mention_notifications",
+      "version": "1.0",
+      "namespace": "base44"
+    },
+    "do": [
+      {
+        "run_function": {
+          "call": "invoke_backend_function",
+          "with": {
+            "function_name": "onFunnelCommentCreate",
+            "args": {}
+          },
+          "then": "end"
+        }
+      }
+    ]
+  },
+  "x-base44-migrated-from-automation": {
+    "legacy_payload_function": "onFunnelCommentCreate"
+  }
+}

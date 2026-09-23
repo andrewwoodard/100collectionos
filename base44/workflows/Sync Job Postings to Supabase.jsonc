@@ -1,0 +1,47 @@
+{
+  "name": "Sync Job Postings to Supabase",
+  "definition": {
+    "document": {
+      "dsl": "1.0.0",
+      "name": "sync_job_postings_to_supabase",
+      "version": "1.0",
+      "namespace": "base44"
+    },
+    "do": [
+      {
+        "sync_record": {
+          "call": "invoke_backend_function",
+          "with": {
+            "function_name": "syncJobPostingToSupabaseV2",
+            "args": {
+              "event_type": "${ .trigger.event_type }",
+              "entity_id": "${ .trigger.entity_id }",
+              "data": "${ .trigger.data }"
+            }
+          },
+          "then": "end",
+          "x-base44": {
+            "title": "Sync job posting to Supabase",
+            "description": "Single-record create/update/delete"
+          }
+        }
+      }
+    ]
+  },
+  "trigger": {
+    "condition": null,
+    "config": {
+      "trigger_type": "entity",
+      "events": [
+        "create",
+        "update",
+        "delete"
+      ],
+      "entity_name": "JobPosting"
+    }
+  },
+  "description": "Syncs any JobPosting create/update/delete to the job_postings table in Supabase",
+  "x-base44-migrated-from-automation": {
+    "legacy_payload_function": "syncJobPostingToSupabase"
+  }
+}

@@ -1,0 +1,243 @@
+{
+  "name": "PropertySubmission",
+  "type": "object",
+  "properties": {
+    "partner_id": {
+      "type": "string"
+    },
+    "partner_name": {
+      "type": "string"
+    },
+    "partner_email": {
+      "type": "string"
+    },
+    "property_name": {
+      "type": "string"
+    },
+    "listing_url": {
+      "type": "string"
+    },
+    "property_type": {
+      "type": "string",
+      "enum": [
+        "villa",
+        "house",
+        "condo",
+        "estate",
+        "cabin",
+        "penthouse",
+        "chalet",
+        "farmhouse",
+        "other"
+      ]
+    },
+    "location_city": {
+      "type": "string"
+    },
+    "location_state": {
+      "type": "string"
+    },
+    "location_country": {
+      "type": "string"
+    },
+    "location_full": {
+      "type": "string"
+    },
+    "market": {
+      "type": "string",
+      "description": "Market/destination inherited from the partner at submission time, so the property links to the correct destination page."
+    },
+    "bedrooms": {
+      "type": "number"
+    },
+    "bathrooms": {
+      "type": "number"
+    },
+    "half_bathrooms": {
+      "type": "number"
+    },
+    "sleeps": {
+      "type": "number"
+    },
+    "short_summary": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string"
+    },
+    "headline": {
+      "type": "string"
+    },
+    "amenities": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "design_style_notes": {
+      "type": "string"
+    },
+    "why_100_collection": {
+      "type": "string"
+    },
+    "unique_features": {
+      "type": "string"
+    },
+    "best_fit_guest": {
+      "type": "string"
+    },
+    "photo_urls": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "video_url": {
+      "type": "string"
+    },
+    "notes_to_team": {
+      "type": "string"
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "submission_type": {
+      "type": "string",
+      "enum": [
+        "new",
+        "edit",
+        "termination_request"
+      ],
+      "default": "new",
+      "description": "new = first submission; edit = change request for an existing Property; termination_request = partner request to permanently terminate a property (requires admin approval)"
+    },
+    "source": {
+      "type": "string",
+      "description": "Origin of this submission (e.g. 'homeowner_application', 'portal_add_property', 'admin_import')"
+    },
+    "source_property_id": {
+      "type": "string",
+      "description": "ID of the existing Property record this edit or termination targets (set when submission_type=edit or termination_request)"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "draft",
+        "imported",
+        "partner_reviewing",
+        "submitted",
+        "under_review",
+        "needs_revision",
+        "approved",
+        "rejected",
+        "licensed",
+        "billed",
+        "active"
+      ],
+      "default": "draft"
+    },
+    "ai_fit_score": {
+      "type": "number"
+    },
+    "completeness_score": {
+      "type": "number"
+    },
+    "ai_imported": {
+      "type": "boolean",
+      "default": false
+    },
+    "field_confidence": {
+      "type": "object"
+    },
+    "scraped_raw_data": {
+      "type": "object"
+    },
+    "admin_notes": {
+      "type": "string"
+    },
+    "partner_facing_message": {
+      "type": "string",
+      "description": "Message sent to the partner in the rejection or revision email and in-portal notification. Separate from admin_notes which stays internal-only."
+    },
+    "revision_notes": {
+      "type": "string"
+    },
+    "offboarding_reason": {
+      "type": "string",
+      "description": "Partner's reason for requesting termination (termination_request submissions only)."
+    },
+    "submitted_date": {
+      "type": "string"
+    },
+    "approved_date": {
+      "type": "string"
+    },
+    "rejected_date": {
+      "type": "string"
+    },
+    "reviewed_by": {
+      "type": "string"
+    },
+    "supabase_property_id": {
+      "type": "string",
+      "description": "ID of the corresponding record in the Supabase properties table"
+    }
+  },
+  "required": [
+    "partner_name",
+    "property_name"
+  ],
+  "rls": {
+    "create": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "data.partner_email": "{{user.email}}"
+        }
+      ]
+    },
+    "read": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "data.partner_email": "{{user.email}}"
+        }
+      ]
+    },
+    "update": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "data.partner_email": "{{user.email}}"
+        }
+      ]
+    },
+    "delete": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "data.partner_email": "{{user.email}}"
+        }
+      ]
+    }
+  }
+}

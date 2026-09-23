@@ -1,0 +1,61 @@
+{
+  "name": "PropertyChange",
+  "type": "object",
+  "properties": {
+    "date": {
+      "type": "string"
+    },
+    "partner": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string"
+    },
+    "waiting_on": {
+      "type": "string"
+    },
+    "switch_or_addition": {
+      "type": "string"
+    },
+    "property_url": {
+      "type": "string"
+    },
+    "acknowledged": {
+      "type": "string"
+    },
+    "link_to_photos": {
+      "type": "string"
+    },
+    "additional_link": {
+      "type": "string"
+    },
+    "invoice_updated": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "partner"
+  ],
+  "rls": {
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "read": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

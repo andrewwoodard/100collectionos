@@ -1,0 +1,69 @@
+{
+  "name": "PartnerReview",
+  "type": "object",
+  "properties": {
+    "quote": {
+      "type": "string",
+      "description": "The review text shown in the card."
+    },
+    "attribution_name": {
+      "type": "string",
+      "description": "Name of the person quoted (e.g. Leslie Hucks)."
+    },
+    "attribution_role": {
+      "type": "string",
+      "description": "Role title (e.g. Founder)."
+    },
+    "attribution_company": {
+      "type": "string",
+      "description": "Company name (e.g. Akers Ellis Real Estate & Rentals)."
+    },
+    "attribution_photo_url": {
+      "type": "string",
+      "description": "Optional headshot URL."
+    },
+    "segment": {
+      "type": "string",
+      "enum": [
+        "property_manager",
+        "homeowner",
+        "existing_partner",
+        "all"
+      ],
+      "default": "all",
+      "description": "Which /join segment this review applies to. 'all' shows for every segment."
+    },
+    "display_order": {
+      "type": "number",
+      "default": 0,
+      "description": "Sort order; lower numbers appear first."
+    },
+    "is_featured": {
+      "type": "boolean",
+      "default": false,
+      "description": "When true, the review renders on the public /join page."
+    }
+  },
+  "required": [
+    "quote",
+    "attribution_name"
+  ],
+  "rls": {
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "read": null,
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

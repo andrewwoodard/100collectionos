@@ -1,0 +1,128 @@
+{
+  "name": "PortalAccessRequest",
+  "type": "object",
+  "properties": {
+    "email": {
+      "type": "string",
+      "format": "email",
+      "description": "Email address of the person requesting or attempting portal access."
+    },
+    "full_name": {
+      "type": "string",
+      "description": "Full name if known (from OAuth or manual entry)."
+    },
+    "email_domain": {
+      "type": "string",
+      "description": "Lowercased domain extracted from the email (e.g. crfirstclassvillas.com). The strongest signal for fuzzy partner matching."
+    },
+    "source": {
+      "type": "string",
+      "enum": [
+        "cold_signup",
+        "team_access_request",
+        "manual"
+      ],
+      "default": "cold_signup",
+      "description": "cold_signup = tried to sign in with no invite/team link. team_access_request = teammate of existing partner requesting access. manual = admin added."
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "auto_routed",
+        "pending",
+        "approved",
+        "rejected",
+        "routed_to_application",
+        "converted_to_application",
+        "spam_review"
+      ],
+      "default": "auto_routed",
+      "description": "auto_routed = cold signup was sent to /apply automatically. pending = awaiting admin action. approved/rejected/routed_to_application = action taken. converted_to_application = the person went on to submit a full PartnerApplication, so this request is converged and drops out of the open queue (audit trail retained). spam_review = borderline spam from cold signup, quarantined silently (no admin notification) for review in the spam tab."
+    },
+    "matched_partner_id": {
+      "type": "string",
+      "description": "ID of a Partner that fuzzy-matched this email's domain. Null if no match."
+    },
+    "matched_partner_name": {
+      "type": "string",
+      "description": "Denormalized name of the fuzzy-matched partner for display."
+    },
+    "matched_partner_confidence": {
+      "type": "number",
+      "description": "Match confidence 0 to 1. 0.9 = exact domain match, 0.6 = name/domain heuristic."
+    },
+    "matched_application_id": {
+      "type": "string",
+      "description": "ID of a PartnerApplication with the same email, if one exists. Indicates they applied AND tried to sign in."
+    },
+    "matched_application_date": {
+      "type": "string",
+      "description": "Submitted date of the matched PartnerApplication."
+    },
+    "action_taken": {
+      "type": "string",
+      "enum": [
+        "approve_team_member",
+        "approve_new_partner",
+        "route_to_application",
+        "reject",
+        "converted_to_application"
+      ],
+      "description": "converted_to_application = set when a matching PartnerApplication was submitted, converging this request automatically."
+    },
+    "action_taken_by": {
+      "type": "string",
+      "description": "Email of the admin who took the action."
+    },
+    "action_taken_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "scheduled_email_id": {
+      "type": "string",
+      "description": "Resend email id for an outbound email scheduled with a short delay (route_to_application / reject). Used by the undo flow to cancel the send before it leaves."
+    },
+    "scheduled_send_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the scheduled email is due to send. Undo is only effective before this time."
+    },
+    "notes": {
+      "type": "string"
+    },
+    "requested_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the access request was first captured."
+    },
+    "source_label": {
+      "type": "string",
+      "description": "Human-readable inferred signup source (e.g. 'Email \u2014 welcome_series', 'Organic search \u2014 Google', 'Direct or bookmark'). 'Unknown (pre-tracking)' for records created before attribution capture existed."
+    },
+    "attribution": {
+      "type": "object",
+      "description": "Full attribution snapshot stored at signup time: { first_touch, last_touch, session_touch }, each with referrer, utm_source/medium/campaign/content/term, src, landing_path, captured_at. Null for pre-tracking records."
+    }
+  },
+  "required": [
+    "email"
+  ],
+  "rls": {
+    "create": null,
+    "read": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

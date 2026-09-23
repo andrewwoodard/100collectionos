@@ -1,0 +1,40 @@
+{
+  "name": "Destination",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Destination / market name (e.g. Nags Head)"
+    },
+    "slug": {
+      "type": "string",
+      "description": "URL slug for the public destination page on theonehundredcollection.com (e.g. nags-head)"
+    },
+    "is_exclusive": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether this destination is flagged as exclusive. Toggled by admins from the Destinations tab."
+    }
+  },
+  "required": [
+    "name"
+  ],
+  "rls": {
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "read": null,
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

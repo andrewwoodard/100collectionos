@@ -1,0 +1,213 @@
+{
+  "name": "PartnerApplication",
+  "type": "object",
+  "properties": {
+    "full_name": {
+      "type": "string"
+    },
+    "email": {
+      "type": "string",
+      "format": "email"
+    },
+    "company_name": {
+      "type": "string"
+    },
+    "phone": {
+      "type": "string"
+    },
+    "website": {
+      "type": "string"
+    },
+    "property_count": {
+      "type": "string"
+    },
+    "property_locations": {
+      "type": "string"
+    },
+    "how_heard": {
+      "type": "string"
+    },
+    "message": {
+      "type": "string"
+    },
+    "listing_url": {
+      "type": "string",
+      "description": "Airbnb/VRBO/etc URL for property owner track"
+    },
+    "property_address": {
+      "type": "string",
+      "description": "City/State/Country for property owner track"
+    },
+    "has_direct_booking_website": {
+      "type": "boolean",
+      "description": "Whether the property owner has a direct booking website"
+    },
+    "direct_booking_website": {
+      "type": "string",
+      "description": "URL of partner's direct booking site"
+    },
+    "property_social_media": {
+      "type": "string",
+      "description": "Legacy single social media field, superseded by social_media_links"
+    },
+    "social_media_links": {
+      "type": "array",
+      "description": "List of social media platforms and URLs submitted by the applicant",
+      "items": {
+        "type": "object",
+        "properties": {
+          "platform": {
+            "type": "string",
+            "enum": [
+              "Instagram",
+              "TikTok",
+              "Facebook",
+              "LinkedIn",
+              "YouTube",
+              "X (Twitter)",
+              "Pinterest",
+              "Threads",
+              "Other"
+            ]
+          },
+          "platform_other": {
+            "type": "string",
+            "description": "Filled when platform == Other"
+          },
+          "url": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "submitted_properties": {
+      "type": "array",
+      "description": "Properties submitted by a homeowner applicant (property_owner track only). Each item has property_name, listing_url, notes, and a client-side id.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "property_name": {
+            "type": "string"
+          },
+          "listing_url": {
+            "type": "string"
+          },
+          "notes": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string",
+            "description": "Client-side UUID for React keys"
+          }
+        }
+      }
+    },
+    "applicant_type": {
+      "type": "string",
+      "enum": [
+        "property_manager",
+        "property_owner",
+        "existing_partner_access_request"
+      ],
+      "default": "property_manager",
+      "description": "Which track the applicant used"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "approved",
+        "rejected",
+        "invited",
+        "interview_invited",
+        "spam_review"
+      ],
+      "default": "pending",
+      "description": "spam_review = quarantined by the spam detector; hidden from the default admin queue and shown in the Spam tab."
+    },
+    "spam_score": {
+      "type": "number",
+      "description": "Composite spam score 0-1 computed at submission. 0.4-0.7 = quarantined to spam_review; above 0.7 the submission is silently rejected and never creates a record. Undefined on legacy records (treated as clean)."
+    },
+    "admin_notes": {
+      "type": "string",
+      "description": "Internal notes / reject reason / more info request"
+    },
+    "match_candidates": {
+      "type": "array",
+      "description": "Top partner match candidates scored by the matchExistingPartnerRequest function (existing_partner_access_request track only).",
+      "items": {
+        "type": "object",
+        "properties": {
+          "partner_id": {
+            "type": "string"
+          },
+          "partner_name": {
+            "type": "string"
+          },
+          "confidence": {
+            "type": "number"
+          },
+          "reason": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "admin_notified_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Timestamp when the admin was first notified about this application. Used for idempotency to prevent duplicate admin emails from concurrent or retry calls."
+    },
+    "source": {
+      "type": "string",
+      "description": "Origin experiment / flow marker. 'join_v2_experiment' for the unified /join prototype; null for standard /apply submissions."
+    },
+    "experiment_segment": {
+      "type": "string",
+      "enum": [
+        "property_manager",
+        "homeowner",
+        "existing_partner"
+      ],
+      "description": "Segment selected on the /join experiment page. Null for standard /apply submissions."
+    },
+    "source_label": {
+      "type": "string",
+      "description": "Human-readable inferred signup source (e.g. 'Email \u2014 welcome_series', 'Organic search \u2014 Google', 'Direct or bookmark'). 'Unknown (pre-tracking)' for records created before attribution capture existed."
+    },
+    "attribution": {
+      "type": "object",
+      "description": "Full attribution snapshot stored at application time: { first_touch, last_touch, session_touch }, each with referrer, utm_source/medium/campaign/content/term, src, landing_path, captured_at. Null for pre-tracking records."
+    }
+  },
+  "required": [
+    "full_name",
+    "email"
+  ],
+  "rls": {
+    "create": null,
+    "read": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "data.email": "{{user.email}}"
+        }
+      ]
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

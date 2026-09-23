@@ -1,0 +1,134 @@
+{
+  "name": "PartnerInvitation",
+  "type": "object",
+  "properties": {
+    "partner_id": {
+      "type": "string",
+      "description": "ID of the Partner this invitation is for"
+    },
+    "partner_name": {
+      "type": "string",
+      "description": "Denormalized partner name for display"
+    },
+    "email": {
+      "type": "string",
+      "format": "email",
+      "description": "Invitee's email address"
+    },
+    "invited_by_user_id": {
+      "type": "string",
+      "description": "User ID of whoever sent the invite (admin or primary contact)"
+    },
+    "invited_by_name": {
+      "type": "string",
+      "description": "Display name of the inviter for email composition"
+    },
+    "token": {
+      "type": "string",
+      "description": "UUID token for the accept link"
+    },
+    "expires_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the invitation expires (14 days from creation)"
+    },
+    "accepted_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the invitation was accepted"
+    },
+    "accepted_by_user_id": {
+      "type": "string",
+      "description": "User ID of the user who accepted"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "accepted",
+        "expired",
+        "revoked"
+      ],
+      "default": "pending"
+    },
+    "invitation_type": {
+      "type": "string",
+      "enum": [
+        "primary_activation",
+        "teammate"
+      ],
+      "default": "teammate",
+      "description": "primary_activation = welcome the primary contact into their portal for the first time. teammate = existing pattern for adding additional users."
+    },
+    "partner_role": {
+      "type": "string",
+      "enum": [
+        "owner",
+        "marketing",
+        "finance",
+        "operations"
+      ],
+      "default": "operations",
+      "description": "Sub-role to assign to the user when they accept the invitation. Set by the owner at invite time."
+    }
+  },
+  "required": [
+    "partner_id",
+    "email",
+    "invited_by_user_id",
+    "token",
+    "expires_at"
+  ],
+  "rls": {
+    "create": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "data.email": "{{user.email}}"
+        },
+        {
+          "data.invited_by_user_id": "{{user.id}}"
+        }
+      ]
+    },
+    "read": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "data.email": "{{user.email}}"
+        },
+        {
+          "data.invited_by_user_id": "{{user.id}}"
+        }
+      ]
+    },
+    "update": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "data.email": "{{user.email}}"
+        },
+        {
+          "data.invited_by_user_id": "{{user.id}}"
+        }
+      ]
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

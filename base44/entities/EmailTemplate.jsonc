@@ -1,0 +1,225 @@
+{
+  "name": "EmailTemplate",
+  "type": "object",
+  "properties": {
+    "slug": {
+      "type": "string",
+      "description": "Unique slug identifying the template (e.g. 'property-approved'). Used by sending functions to look up the template at runtime."
+    },
+    "name": {
+      "type": "string",
+      "description": "Display name shown in the admin sidebar"
+    },
+    "category": {
+      "type": "string",
+      "enum": [
+        "Partner-facing",
+        "Homeowner-facing",
+        "Candidate-facing",
+        "Admin \u2014 Partner actions",
+        "Admin \u2014 Financial",
+        "Admin \u2014 Digests",
+        "Invitation acceptance",
+        "Offboarding",
+        "Auto-reply"
+      ],
+      "description": "Category used for sidebar grouping"
+    },
+    "description": {
+      "type": "string",
+      "description": "One-line description of the trigger event"
+    },
+    "trigger_function": {
+      "type": "string",
+      "description": "Name of the backend function that fires this template"
+    },
+    "urgency": {
+      "type": "string",
+      "enum": [
+        "default",
+        "success",
+        "warning",
+        "alert",
+        "info"
+      ],
+      "default": "default"
+    },
+    "subject": {
+      "type": "string",
+      "description": "Email subject line. Supports {{variable}} tokens."
+    },
+    "hero_image_url": {
+      "type": "string",
+      "description": "Full-width hero image URL at the top of the email card. Null = no hero image."
+    },
+    "event_tag": {
+      "type": "string",
+      "description": "Small uppercase gold tag shown above the headline (e.g. 'WELCOME TO THE COLLECTION')"
+    },
+    "headline": {
+      "type": "string",
+      "description": "Cormorant Garamond h1 headline. Supports {{variable}} tokens."
+    },
+    "subheadline": {
+      "type": "string",
+      "description": "Lato body lead text under the headline. Supports {{variable}} tokens."
+    },
+    "context_block": {
+      "type": "string",
+      "description": "Warm 1-2 sentence narrative paragraph. Supports {{variable}} tokens."
+    },
+    "data_rows": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "label": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          }
+        }
+      },
+      "default": [],
+      "description": "Label/value pairs rendered as a 2-column table. Values support {{variable}} tokens."
+    },
+    "callout": {
+      "type": "string",
+      "description": "Highlighted note rendered in a colored callout box. Supports {{variable}} tokens."
+    },
+    "what_happens_next": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "number": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "body": {
+            "type": "string"
+          }
+        }
+      },
+      "default": [],
+      "description": "3-step 'What happens next' section. Each item has number, title, body. Bodies support {{variable}} tokens."
+    },
+    "cta_label": {
+      "type": "string",
+      "description": "Primary call-to-action button text"
+    },
+    "cta_url": {
+      "type": "string",
+      "description": "Primary CTA button link. Supports {{variable}} tokens."
+    },
+    "secondary_cta_label": {
+      "type": "string",
+      "description": "Secondary CTA button text"
+    },
+    "secondary_cta_url": {
+      "type": "string",
+      "description": "Secondary CTA button link. Supports {{variable}} tokens."
+    },
+    "social_proof": {
+      "type": "string",
+      "description": "Gold-accented social proof line below the CTA. Use **bold** markers for gold emphasis. Supports {{variable}} tokens."
+    },
+    "reply_prompt_enabled": {
+      "type": "boolean",
+      "default": true,
+      "description": "When true, renders 'Questions? Just reply to this email' above the footer."
+    },
+    "footer_note": {
+      "type": "string",
+      "description": "Small grey note under the CTA. Supports {{variable}} tokens."
+    },
+    "signoff": {
+      "type": "string",
+      "description": "Sign-off line (e.g. 'The 100 Collection team'). Supports {{variable}} tokens."
+    },
+    "sections": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "data_rows": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "label": {
+                  "type": "string"
+                },
+                "value": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      },
+      "default": [],
+      "description": "For digest emails: array of sections, each with a title and data_rows. Values support {{variable}} tokens."
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "active",
+        "archived"
+      ],
+      "default": "active"
+    },
+    "archived_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the template was archived. Null = active."
+    },
+    "last_edited_by": {
+      "type": "string",
+      "description": "Email of the admin who last edited this template"
+    },
+    "last_edited_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the template was last edited"
+    },
+    "notes": {
+      "type": "string",
+      "description": "Internal admin notes, not shown in emails"
+    }
+  },
+  "required": [
+    "slug",
+    "name",
+    "subject",
+    "headline"
+  ],
+  "rls": {
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "read": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

@@ -1,0 +1,109 @@
+{
+  "name": "OnboardingItem",
+  "type": "object",
+  "properties": {
+    "partner_id": {
+      "type": "string"
+    },
+    "partner_name": {
+      "type": "string"
+    },
+    "property_id": {
+      "type": "string"
+    },
+    "property_name": {
+      "type": "string"
+    },
+    "stage": {
+      "type": "string",
+      "enum": [
+        "approved",
+        "agreement_sent",
+        "agreement_signed",
+        "billing_setup",
+        "asset_collection",
+        "property_info_received",
+        "photography_received",
+        "listing_build",
+        "qa_review",
+        "live"
+      ]
+    },
+    "checklist_item": {
+      "type": "string"
+    },
+    "owner": {
+      "type": "string"
+    },
+    "due_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "completed": {
+      "type": "boolean",
+      "default": false
+    },
+    "completed_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "blocker_status": {
+      "type": "string",
+      "enum": [
+        "none",
+        "blocked",
+        "at_risk"
+      ],
+      "default": "none"
+    },
+    "blocker_notes": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "checklist_item"
+  ],
+  "rls": {
+    "create": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "created_by_id": "{{user.id}}"
+        }
+      ]
+    },
+    "read": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "created_by_id": "{{user.id}}"
+        }
+      ]
+    },
+    "update": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "created_by_id": "{{user.id}}"
+        }
+      ]
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

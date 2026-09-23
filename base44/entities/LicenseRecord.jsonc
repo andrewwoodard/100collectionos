@@ -1,0 +1,130 @@
+{
+  "name": "LicenseRecord",
+  "type": "object",
+  "properties": {
+    "submission_id": {
+      "type": "string"
+    },
+    "partner_id": {
+      "type": "string"
+    },
+    "partner_name": {
+      "type": "string"
+    },
+    "property_name": {
+      "type": "string"
+    },
+    "property_id": {
+      "type": "string",
+      "description": "Direct reference to the Property entity ID"
+    },
+    "license_number": {
+      "type": "string"
+    },
+    "license_status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "active",
+        "expired",
+        "cancelled"
+      ],
+      "default": "pending"
+    },
+    "license_start_date": {
+      "type": "string"
+    },
+    "license_end_date": {
+      "type": "string"
+    },
+    "base_fee": {
+      "type": "number",
+      "description": "Unadjusted annual fee at time of issuance. Captured for audit history."
+    },
+    "discount_applied_percent": {
+      "type": "number",
+      "default": 0,
+      "description": "Discount % copied from Partner.discount_percent at issue time."
+    },
+    "discount_applied_label": {
+      "type": "string",
+      "description": "Discount label copied from Partner.discount_label at issue time."
+    },
+    "annual_fee": {
+      "type": "number",
+      "description": "Final fee after discount: base_fee \u00d7 (1 - discount_applied_percent / 100)"
+    },
+    "is_deal": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether this license has a special deal / non-standard fee"
+    },
+    "deal_notes": {
+      "type": "string",
+      "description": "Notes explaining the special fee arrangement"
+    },
+    "payment_status": {
+      "type": "string",
+      "enum": [
+        "unpaid",
+        "invoiced",
+        "paid",
+        "overdue"
+      ],
+      "default": "unpaid"
+    },
+    "invoice_date": {
+      "type": "string"
+    },
+    "paid_date": {
+      "type": "string"
+    },
+    "stripe_invoice_id": {
+      "type": "string"
+    },
+    "transfer_history": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      },
+      "description": "Log of all property transfers for this license"
+    },
+    "notes": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "submission_id",
+    "partner_name",
+    "property_name"
+  ],
+  "rls": {
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "read": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "created_by_id": "{{user.id}}"
+        }
+      ]
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}
