@@ -14,7 +14,8 @@
     "auth:migrate": "npx @better-auth/cli migrate --yes",
     "import:base44": "node scripts/import-base44-to-neon.mjs",
     "import:supabase": "node scripts/import-supabase-to-neon.mjs",
-    "import:base44:from-supabase": "node scripts/backfill-base44-from-supabase.mjs"
+    "import:base44:from-supabase": "node scripts/backfill-base44-from-supabase.mjs",
+    "flatten:supabase": "node scripts/flatten-vrms-propertiesbase44.mjs"
   },
   "dependencies": {
     "@base44/sdk": "^0.8.50",

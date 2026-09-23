@@ -146,12 +146,28 @@ const client = new pg.Client({
 await client.connect();
 await client.query(`CREATE SCHEMA IF NOT EXISTS ${SCHEMA}`);
 
+async function isColumnarTable(name) {
+  const { rows } = await client.query(
+    `SELECT column_name FROM information_schema.columns
+     WHERE table_schema = $1 AND table_name = $2`,
+    [SCHEMA, name]
+  );
+  const names = rows.map((r) => r.column_name);
+  return names.includes("name") && !names.includes("data");
+}
+
 const tables = await listTables();
 console.log(`Importing ${tables.length} Supabase tables into Neon schema ${SCHEMA}`);
 
 const summary = [];
 for (const table of tables) {
   try {
+    if (await isColumnarTable(table)) {
+      console.log(`  ${table}: skipped (already flattened to columns; re-import would overwrite the structured table)`);
+      const stored = await client.query(`SELECT count(*)::int AS n FROM ${SCHEMA}.${quoteIdent(table)}`);
+      summary.push({ table, imported: 0, stored: stored.rows[0].n, status: "skipped-columnar" });
+      continue;
+    }
     await client.query(ensureTableSql(table));
     let offset = 0;
     let imported = 0;

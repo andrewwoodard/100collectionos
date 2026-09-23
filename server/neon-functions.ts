@@ -15,14 +15,113 @@ const TABLE_SEARCH_FIELDS: Record<string, string[]> = {
   partner_applications: ["full_name", "email", "company_name"],
   job_applications: ["name", "email", "phone", "job_title", "partner_name", "job_location", "first_name", "last_name"],
   properties: ["property_name", "partner_name", "market", "address"],
-  vrms: ["name", "partner_name", "market", "destination"],
+  vrms: ["name", "partner_name", "title", "slug"],
+};
+
+const VRMS_COLUMNS = new Set([
+  "name", "slug", "title", "partner_name", "email", "phone", "vrm_email", "vrm_phone",
+  "vrm_url", "website", "source", "sanity_id", "sanity_vrm_id", "sanity_created_at",
+  "sanity_updated_at", "doyen_name", "doyen_title", "doyen_short_description", "doyen_text",
+  "doyen_image_url", "logo_image_url", "main_image_url", "destination_slugs",
+  "first_destination_slug", "unit_count", "onboarded", "is_onboarded", "showproperties",
+  "last_header_ok", "last_header_has_link", "last_header_status", "last_header_error",
+  "last_header_final_url", "last_header_checked_at", "last_trademark_ok",
+  "last_trademark_status", "last_trademark_error", "last_trademark_final_url",
+  "last_trademark_checked_at", "body_json", "doyentext_json", "favorites_json",
+  "showcase_json", "servicesoffered_json", "servicesavailable_json",
+  "serviceofferedpicks_json", "created_at", "updated_at", "source_id",
+]);
+
+const PROP_COLUMNS = new Set([
+  "row_id", "source_id", "name", "url", "vrm_url", "destination", "partner_name",
+  "partner_id", "address", "bedrooms", "bathrooms", "occupancy", "house_type", "status",
+  "active", "portal_visible", "onboarding_status", "photography_status", "launch_date",
+  "removal_date", "last_scan", "latitude", "longitude", "pet_friendly", "unique_feature",
+  "why_onehundred", "excerpt", "text", "headline", "property_image", "video_url",
+  "designed_by", "designer_name", "design_style_notes", "location_city", "location_state",
+  "location_country", "property_source", "property_html", "ai_search", "ai_fit_score",
+  "best_fit_guest", "photo_count", "last_page_check_at", "last_page_check_ok",
+  "last_page_check_status", "last_page_check_error", "last_page_check_final_url",
+  "created_at", "images", "vrm_images", "categories", "prop_categories", "tags",
+  "reviews", "propdescription",
+]);
+
+const JSON_COLUMNS = new Set([
+  "body_json", "doyentext_json", "favorites_json", "showcase_json", "servicesoffered_json",
+  "servicesavailable_json", "serviceofferedpicks_json", "destination_slugs", "images",
+  "vrm_images", "categories", "prop_categories", "tags", "reviews", "propdescription",
+]);
+
+const PROP_ALIASES: Record<string, string> = {
+  property_name: "name",
+  market: "destination",
+  listing_url: "url",
+  sleeps: "occupancy",
+  property_type: "house_type",
+  internal_notes: "propdescription",
 };
 
 function unwrap(row: any) {
-  const data = row?.data && typeof row.data === "object" ? row.data : {};
-  const out = { ...data, id: data.id ?? row.id };
-  if (out.created_at && !out.created_date) out.created_date = out.created_at;
+  if (row?.data && typeof row.data === "object" && !Array.isArray(row.data)) {
+    const data = row.data;
+    const out = { ...data, id: data.id ?? row.id };
+    if (out.created_at && !out.created_date) out.created_date = out.created_at;
+    return out;
+  }
+  const { imported_at: _importedAt, ...rest } = row || {};
+  if (rest.created_at && !rest.created_date) rest.created_date = rest.created_at;
+  return rest;
+}
+
+function jsonParam(value: any) {
+  if (value == null || value === "") return null;
+  return typeof value === "string" ? value : JSON.stringify(value);
+}
+
+function pickColumns(data: Record<string, any> | null | undefined, allowed: Set<string>, aliases: Record<string, string> = {}) {
+  const out: Record<string, any> = {};
+  for (const [key, value] of Object.entries(data || {})) {
+    if (value === undefined) continue;
+    const col = aliases[key] || key;
+    if (!allowed.has(col)) continue;
+    if (JSON_COLUMNS.has(col)) {
+      if (value == null || value === "") {
+        out[col] = null;
+      } else if (typeof value === "string") {
+        const trimmed = value.trim();
+        out[col] = trimmed.startsWith("{") || trimmed.startsWith("[") ? trimmed : JSON.stringify(value);
+      } else {
+        out[col] = JSON.stringify(value);
+      }
+    } else {
+      out[col] = value;
+    }
+  }
   return out;
+}
+
+function buildInsert(tableSql: string, record: Record<string, any>) {
+  const cols = Object.keys(record);
+  const params = cols.map((col) => (JSON_COLUMNS.has(col) ? jsonParam(record[col]) : record[col]));
+  const placeholders = cols.map((col, i) => (JSON_COLUMNS.has(col) ? `$${i + 1}::jsonb` : `$${i + 1}`));
+  return {
+    sql: `INSERT INTO ${tableSql} (${cols.map(quoteIdent).join(", ")}) VALUES (${placeholders.join(", ")}) RETURNING *`,
+    params,
+  };
+}
+
+function buildUpdate(tableSql: string, record: Record<string, any>, whereSql: string, whereParams: any[]) {
+  const cols = Object.keys(record);
+  const params = [...whereParams];
+  const sets = cols.map((col) => {
+    params.push(JSON_COLUMNS.has(col) ? jsonParam(record[col]) : record[col]);
+    return `${quoteIdent(col)} = $${params.length}${JSON_COLUMNS.has(col) ? "::jsonb" : ""}`;
+  });
+  sets.push("imported_at = now()");
+  return {
+    sql: `UPDATE ${tableSql} SET ${sets.join(", ")} WHERE ${whereSql} RETURNING *`,
+    params,
+  };
 }
 
 function parseImages(raw: any) {
@@ -38,37 +137,50 @@ function parseImages(raw: any) {
 
 function fromSupabase(row: any) {
   if (!row) return null;
+  const source = row.data && !row.name ? row.data : row;
   return {
-    id: row.row_id ?? row.id,
-    created_date: row.created_at,
-    property_name: row.name,
-    market: row.destination,
-    listing_url: row.url,
-    bedrooms: row.bedrooms,
-    bathrooms: row.bathrooms,
-    sleeps: row.sleeps ?? row.occupancy,
-    property_type: row.house_type,
-    partner_name: row.partner_name,
-    internal_notes: row.propdescription,
-    address: row.address,
-    status: row.active === true || row.active === "true" ? "active" : row.status || "inactive",
-    onboarding_status: row.onboarding_status || "not_started",
-    photography_status: row.photography_status || "not_started",
-    launch_date: row.launch_date,
-    portal_visible: row.portal_visible || false,
-    partner_id: row.partner_id,
-    latitude: row.latitude,
-    longitude: row.longitude,
-    pet_friendly: row.pet_friendly,
-    unique_feature: row.unique_feature,
-    why_onehundred: row.why_onehundred,
-    excerpt: row.excerpt,
-    text: row.text,
-    property_image: row.property_image,
-    images: parseImages(row.images),
-    vrm_url: row.vrm_url,
-    last_scan: row.last_scan,
+    id: source.row_id ?? source.id ?? row.row_id ?? row.id,
+    created_date: source.created_at ?? row.created_at,
+    property_name: source.name,
+    market: source.destination,
+    listing_url: source.url,
+    bedrooms: source.bedrooms,
+    bathrooms: source.bathrooms,
+    sleeps: source.sleeps ?? source.occupancy,
+    property_type: source.house_type,
+    partner_name: source.partner_name,
+    internal_notes: source.propdescription,
+    address: source.address,
+    status: source.active === true || source.active === "true" ? "active" : source.status || "inactive",
+    onboarding_status: source.onboarding_status || "not_started",
+    photography_status: source.photography_status || "not_started",
+    launch_date: source.launch_date,
+    portal_visible: source.portal_visible || false,
+    partner_id: source.partner_id,
+    latitude: source.latitude,
+    longitude: source.longitude,
+    pet_friendly: source.pet_friendly,
+    unique_feature: source.unique_feature,
+    why_onehundred: source.why_onehundred,
+    excerpt: source.excerpt,
+    text: source.text,
+    property_image: source.property_image,
+    images: parseImages(source.images),
+    vrm_url: source.vrm_url,
+    last_scan: source.last_scan,
   };
+}
+
+function buildColumnFilters(filters: Record<string, any> | null | undefined, allowed: Set<string>, start = 1) {
+  const clauses: string[] = [];
+  const params: any[] = [];
+  let i = start;
+  for (const [key, value] of Object.entries(filters || {})) {
+    if (value === undefined || value === null || !allowed.has(key)) continue;
+    params.push(String(value));
+    clauses.push(`${quoteIdent(key)}::text = $${i++}`);
+  }
+  return { sql: clauses.join(" AND "), params, next: i };
 }
 
 function buildEqFilters(filters: Record<string, any> | null | undefined, start = 1) {
@@ -87,11 +199,92 @@ function buildEqFilters(filters: Record<string, any> | null | undefined, start =
   return { sql: clauses.join(" AND "), params, next: i };
 }
 
+async function handleColumnarTable(
+  res: any,
+  table: string,
+  allowed: Set<string>,
+  body: any,
+  aliases: Record<string, string> = {}
+) {
+  const { action, id, data, filters, search, limit } = body || {};
+  const pool = getNeonPool();
+  const tableSql = `supabase.${quoteIdent(table)}`;
+  const searchFields = TABLE_SEARCH_FIELDS[table] || [];
+  const built = buildColumnFilters(filters, allowed);
+  const clauses = built.sql ? [built.sql] : [];
+  const params = [...built.params];
+  let i = built.next;
+
+  if (search && searchFields.length) {
+    params.push(`%${search}%`);
+    clauses.push(`(${searchFields.map((field) => `${quoteIdent(field)} ILIKE $${i}`).join(" OR ")})`);
+    i += 1;
+  }
+  const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
+
+  if (action === "list") {
+    const lim = Math.min(Number(limit || 500), 5000);
+    params.push(lim);
+    const { rows } = await pool.query(
+      `SELECT * FROM ${tableSql} ${where} ORDER BY created_at DESC NULLS LAST LIMIT $${i}`,
+      params
+    );
+    return json(res, 200, { items: rows.map(unwrap) });
+  }
+
+  if (action === "get") {
+    const { rows } = await pool.query(
+      `SELECT * FROM ${tableSql} WHERE id = $1 OR source_id::text = $1 LIMIT 1`,
+      [String(id)]
+    );
+    if (!rows[0]) return json(res, 404, { error: "Not found" });
+    return json(res, 200, { item: unwrap(rows[0]) });
+  }
+
+  if (action === "create") {
+    const record = pickColumns(data, allowed, aliases);
+    if (!record.created_at) record.created_at = new Date().toISOString();
+    const rowId = String(data?.id || newId());
+    const insert = buildInsert(tableSql, { id: rowId, ...record });
+    const { rows } = await pool.query(insert.sql, insert.params);
+    return json(res, 200, { item: unwrap(rows[0]) });
+  }
+
+  if (action === "update") {
+    const record = pickColumns(data, allowed, aliases);
+    if (!Object.keys(record).length) return json(res, 400, { error: "No updatable fields" });
+    const update = buildUpdate(tableSql, record, "id = $1 OR source_id::text = $1", [String(id)]);
+    const { rows } = await pool.query(update.sql, update.params);
+    if (!rows[0]) return json(res, 404, { error: "Not found" });
+    return json(res, 200, { item: unwrap(rows[0]) });
+  }
+
+  if (action === "delete") {
+    await pool.query(`DELETE FROM ${tableSql} WHERE id = $1 OR source_id::text = $1`, [String(id)]);
+    return json(res, 200, { success: true });
+  }
+
+  if (action === "bulk_create") {
+    const items = [];
+    for (const item of data || []) {
+      const record = pickColumns(item, allowed, aliases);
+      const rowId = String(item?.id || newId());
+      const insert = buildInsert(tableSql, { id: rowId, ...record });
+      const { rows } = await pool.query(insert.sql, insert.params);
+      items.push(unwrap(rows[0]));
+    }
+    return json(res, 200, { items, count: items.length });
+  }
+
+  return json(res, 400, { error: "Unknown action" });
+}
+
 async function handleSupabaseData(res: any, body: any) {
   const { table, action, id, data, filters, search, limit } = body || {};
   if (!table || !TABLE_SEARCH_FIELDS[table]) {
     return json(res, 400, { error: `Invalid table: ${table}` });
   }
+  if (table === "vrms") return handleColumnarTable(res, "vrms", VRMS_COLUMNS, body);
   const pool = getNeonPool();
   const t = quoteIdent(table);
   const built = buildEqFilters(filters);
@@ -177,11 +370,19 @@ async function handleSupabaseData(res: any, body: any) {
   return json(res, 400, { error: "Unknown action" });
 }
 
+function toPropertyRecord(data: any) {
+  const record = pickColumns(data, PROP_COLUMNS, PROP_ALIASES);
+  if (data?.listing_url && !record.vrm_url) record.vrm_url = data.listing_url;
+  if (data?.status !== undefined && record.active === undefined) {
+    record.active = data.status === "active";
+  }
+  return record;
+}
+
 async function handleSupabaseProperties(res: any, body: any) {
   const pool = getNeonPool();
   const { action, id, data, filters, search, url } = body || {};
   const lim = Math.min(Number(body.limit || 500), 10000);
-
   const rowSql = `SELECT * FROM supabase.propertiesbase44`;
 
   if (action === "list") {
@@ -190,41 +391,40 @@ async function handleSupabaseProperties(res: any, body: any) {
     let i = 1;
     if (filters?.partner_id) {
       params.push(String(filters.partner_id));
-      clauses.push(`data->>'partner_id' = $${i++}`);
+      clauses.push(`partner_id = $${i++}`);
     }
     if (filters?.partner_name) {
       params.push(String(filters.partner_name));
-      clauses.push(`data->>'partner_name' = $${i++}`);
+      clauses.push(`partner_name = $${i++}`);
     }
     if (filters?.status) {
       params.push(String(filters.status));
-      clauses.push(`data->>'status' = $${i++}`);
+      clauses.push(`status = $${i++}`);
     }
     if (filters?.active !== undefined) {
-      params.push(String(filters.active));
-      clauses.push(`(data->>'active' = $${i} OR data->'active' = $${i}::jsonb)`);
-      i += 1;
+      params.push(filters.active === true || filters.active === "true");
+      clauses.push(`active = $${i++}`);
     }
     if (search) {
       params.push(`%${search}%`);
-      clauses.push(`(data->>'name' ILIKE $${i} OR data->>'destination' ILIKE $${i} OR data->>'partner_name' ILIKE $${i} OR data->>'address' ILIKE $${i})`);
+      clauses.push(`(name ILIKE $${i} OR destination ILIKE $${i} OR partner_name ILIKE $${i} OR address ILIKE $${i})`);
       i += 1;
     }
     const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
     params.push(lim);
     const { rows } = await pool.query(
-      `${rowSql} ${where} ORDER BY data->>'created_at' DESC NULLS LAST LIMIT $${i}`,
+      `${rowSql} ${where} ORDER BY created_at DESC NULLS LAST LIMIT $${i}`,
       params
     );
-    return json(res, 200, { properties: rows.map((r) => fromSupabase(r.data)) });
+    return json(res, 200, { properties: rows.map((r) => fromSupabase(r)) });
   }
 
   if (action === "get") {
     const { rows } = await pool.query(
-      `${rowSql} WHERE id = $1 OR data->>'row_id' = $1 OR data->>'id' = $1 LIMIT 1`,
+      `${rowSql} WHERE id = $1 OR row_id::text = $1 OR source_id = $1 LIMIT 1`,
       [String(id)]
     );
-    return json(res, 200, { property: rows[0] ? fromSupabase(rows[0].data) : null });
+    return json(res, 200, { property: rows[0] ? fromSupabase(rows[0]) : null });
   }
 
   if (action === "get_by_url") {
@@ -233,52 +433,55 @@ async function handleSupabaseProperties(res: any, body: any) {
     const normalized = String(lookupUrl).replace(/\/+$/, "").split("?")[0].split("#")[0];
     const { rows } = await pool.query(
       `${rowSql}
-       WHERE data->>'vrm_url' IN ($1, $2) OR data->>'url' IN ($1, $2)
-          OR data->>'vrm_url' ILIKE $3 OR data->>'url' ILIKE $3
+       WHERE vrm_url IN ($1, $2) OR url IN ($1, $2)
+          OR vrm_url ILIKE $3 OR url ILIKE $3
        LIMIT 20`,
       [String(lookupUrl), normalized, `${normalized}%`]
     );
-    const pick = rows
-      .map((r) => r.data)
-      .find((r) => parseImages(r.images).length > 0) || rows[0]?.data;
+    const pick = rows.find((r) => parseImages(r.images).length > 0) || rows[0];
     return json(res, 200, { property: pick ? fromSupabase(pick) : null });
   }
 
   if (action === "create") {
-    const record = { ...(data || {}), row_id: data?.row_id || Date.now(), created_at: new Date().toISOString() };
-    const { rows } = await pool.query(
-      `INSERT INTO supabase.propertiesbase44 (id, data) VALUES ($1, $2::jsonb) RETURNING *`,
-      [String(record.row_id), JSON.stringify(record)]
-    );
-    return json(res, 200, { property: fromSupabase(rows[0].data) });
+    const record = toPropertyRecord({
+      ...data,
+      row_id: data?.row_id || Date.now(),
+      created_at: data?.created_at || new Date().toISOString(),
+    });
+    if (!record.name) record.name = data?.property_name || data?.name || "Untitled property";
+    const insert = buildInsert("supabase.propertiesbase44", {
+      id: String(record.row_id || newId()),
+      ...record,
+    });
+    const { rows } = await pool.query(insert.sql, insert.params);
+    return json(res, 200, { property: fromSupabase(rows[0]) });
   }
 
   if (action === "update") {
-    const patch = data || {};
-    const { rows } = await pool.query(
-      `UPDATE supabase.propertiesbase44
-       SET data = COALESCE(data, '{}'::jsonb) || $2::jsonb, imported_at = now()
-       WHERE id = $1 OR data->>'row_id' = $1 OR data->>'url' = $3 OR data->>'vrm_url' = $3
-       RETURNING *`,
-      [String(id || ""), JSON.stringify(patch), String(url || "")]
+    const record = toPropertyRecord(data || {});
+    if (!Object.keys(record).length) return json(res, 400, { error: "No updatable fields" });
+    const update = buildUpdate(
+      "supabase.propertiesbase44",
+      record,
+      "id = $1 OR row_id::text = $1 OR url = $2 OR vrm_url = $2",
+      [String(id || ""), String(url || "")]
     );
+    const { rows } = await pool.query(update.sql, update.params);
     if (!rows[0]) return json(res, 404, { error: "Property not found" });
-    return json(res, 200, { property: fromSupabase(rows[0].data) });
+    return json(res, 200, { property: fromSupabase(rows[0]) });
   }
 
   if (action === "delete") {
     await pool.query(
-      `DELETE FROM supabase.propertiesbase44 WHERE id = $1 OR data->>'row_id' = $1`,
+      `DELETE FROM supabase.propertiesbase44 WHERE id = $1 OR row_id::text = $1`,
       [String(id)]
     );
     return json(res, 200, { success: true });
   }
 
   if (action === "stats") {
-    const { rows } = await pool.query(`${rowSql}`);
-    return json(res, 200, {
-      properties: rows.map((r) => ({ created_at: r.data?.created_at, active: r.data?.active })),
-    });
+    const { rows } = await pool.query(`SELECT created_at, active FROM supabase.propertiesbase44`);
+    return json(res, 200, { properties: rows });
   }
 
   if (action === "list_by_urls") {
@@ -286,10 +489,10 @@ async function handleSupabaseProperties(res: any, body: any) {
     const urls = rawUrls.map((u: any) => String(u || "").trim()).filter(Boolean);
     if (!urls.length) return json(res, 200, { properties: [] });
     const { rows } = await pool.query(
-      `${rowSql} WHERE data->>'vrm_url' = ANY($1::text[]) OR data->>'url' = ANY($1::text[])`,
+      `${rowSql} WHERE vrm_url = ANY($1::text[]) OR url = ANY($1::text[])`,
       [urls]
     );
-    return json(res, 200, { properties: rows.map((r) => fromSupabase(r.data)) });
+    return json(res, 200, { properties: rows.map((r) => fromSupabase(r)) });
   }
 
   return json(res, 400, { error: "Unknown action" });
