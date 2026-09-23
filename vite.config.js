@@ -26,6 +26,7 @@ function betterAuthDevPlugin() {
       const { handleNeonFunction } = await import("./server/neon-functions.ts");
       const { handleAdminUsers } = await import("./server/admin-users.ts");
       const { handleBlobUpload, handleImageIngest } = await import("./server/blob-http.ts");
+      const { handlePortalAccess } = await import("./server/portal-access.ts");
       const handler = toNodeHandler(auth);
       server.middlewares.use(async (req, res, next) => {
         const url = req.originalUrl || req.url || "";
@@ -42,6 +43,9 @@ function betterAuthDevPlugin() {
         }
         if (pathname === "/api/images/ingest") {
           return handleImageIngest(req, res);
+        }
+        if (pathname === "/api/portal/access") {
+          return handlePortalAccess(req, res);
         }
 
         const parsed = new URL(url, "http://localhost");

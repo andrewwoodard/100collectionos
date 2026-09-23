@@ -8,8 +8,18 @@ export default function RequirePortalAccess({ children }) {
   const { user, isLoadingAuth } = useAuth();
 
   const { data: linkedPartners, isLoading: isLoadingPartners, refetch } = useQuery({
-    queryKey: ["portal-access-check", user?.id],
-    queryFn: () => base44.entities.Partner.filter({ portal_user_ids: { $in: [user.id] } }),
+    queryKey: ["portal-access-check", user?.id, user?.portalId, user?.hasPartnerAccess],
+    queryFn: async () => {
+      if (user?.hasPartnerAccess) return [{ id: user.portalId || "linked" }];
+      try {
+        const res = await fetch("/api/portal/access", { credentials: "include" });
+        const data = await res.json().catch(() => ({}));
+        if (data.access && data.hasPartnerAccess) return [{ id: data.portalId || "linked" }];
+      } catch (_) {}
+      if (!user?.id && !user?.portalId) return [];
+      const ids = [user.portalId, user.id].filter(Boolean);
+      return base44.entities.Partner.filter({ portal_user_ids: { $in: ids } });
+    },
     enabled: !!user?.id && user?.role !== "admin",
   });
 

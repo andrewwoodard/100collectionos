@@ -1,6 +1,8 @@
 import { betterAuth } from "better-auth";
+import { customSession } from "better-auth/plugins/custom-session";
 import { Pool } from "pg";
 import { deliverPasswordResetEmail } from "./reset-email.js";
+import { applyPortalProfile, resolvePortalProfile } from "./portal-profile.js";
 
 const databaseUrl = process.env.DATABASE_URL;
 
@@ -62,4 +64,18 @@ export const auth = betterAuth({
       },
     },
   },
+  plugins: [
+    customSession(async ({ user, session }) => {
+      try {
+        const profile = await resolvePortalProfile(user.email || "");
+        return {
+          user: applyPortalProfile(user, profile),
+          session,
+        };
+      } catch (error) {
+        console.warn("[auth] portal profile lookup failed", (error as Error).message);
+        return { user, session };
+      }
+    }),
+  ],
 });
