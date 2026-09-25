@@ -13,10 +13,19 @@ if (!databaseUrl) {
 const googleClientId = process.env.GOOGLE_CLIENT_ID;
 const googleClientSecret = process.env.GOOGLE_CLIENT_SECRET;
 
+const authPool = new Pool({
+  connectionString: databaseUrl,
+  idleTimeoutMillis: 30_000,
+  connectionTimeoutMillis: 15_000,
+});
+authPool.on("error", (error) => {
+  console.warn("[auth-db] idle client error", error.message);
+});
+
 export const auth = betterAuth({
   secret: process.env.BETTER_AUTH_SECRET,
   baseURL: process.env.BETTER_AUTH_URL,
-  database: new Pool({ connectionString: databaseUrl }),
+  database: authPool,
   trustedOrigins: [
     "http://localhost:5173",
     "http://127.0.0.1:5173",

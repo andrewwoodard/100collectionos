@@ -10,6 +10,11 @@ export function getNeonPool() {
     connectionString,
     ssl: { rejectUnauthorized: false },
     max: 8,
+    idleTimeoutMillis: 30_000,
+    connectionTimeoutMillis: 15_000,
+  });
+  pool.on("error", (error) => {
+    console.warn("[neon] idle client error", error.message);
   });
   return pool;
 }
