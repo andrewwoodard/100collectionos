@@ -634,7 +634,7 @@ export default function PartnerDetail() {
                   className="h-7 text-xs gap-1.5"
                 >
                   <Send className="w-3 h-3" />
-                  Send Subscription Invoice
+                  Send Property Billing
                 </Button>
               </div>
             )}
@@ -646,7 +646,7 @@ export default function PartnerDetail() {
                 className="h-7 text-xs gap-1.5 border-blue-200 text-blue-700 hover:bg-blue-50"
               >
                 <Send className="w-3 h-3" />
-                Send License Subscription (1–100)
+                Send License Billing (1–100)
               </Button>
             </div>
           </div>
@@ -697,8 +697,11 @@ export default function PartnerDetail() {
           onClose={() => setLicenseSubOpen(false)}
           partner={partnerEntity || base44Partner || partner}
           stripeData={stripeData}
-          onSuccess={() => {
-            toast({ title: "License subscription sent", description: partner?.stripe_billing_email });
+          onSuccess={(res) => {
+            toast({
+              title: res?.billing_mode === "invoice" ? "License invoice sent" : "License subscription sent",
+              description: partner?.stripe_billing_email,
+            });
             queryClient.invalidateQueries({ queryKey: ["stripe-partner", stripeBillingEmail] });
           }}
         />
@@ -714,6 +717,8 @@ export default function PartnerDetail() {
           onSuccess={(res) => {
             if (res?.scheduled) {
               toast({ title: "Subscription scheduled", description: `First invoice emails on ${new Date(res.scheduled_for).toLocaleDateString()} to ${partner?.stripe_billing_email || ""}` });
+            } else if (res?.billing_mode === "invoice") {
+              toast({ title: "Invoice sent", description: partner?.stripe_billing_email });
             } else {
               toast({ title: "Subscription invoice sent", description: partner?.stripe_billing_email });
             }

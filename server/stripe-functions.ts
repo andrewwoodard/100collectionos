@@ -9,7 +9,16 @@ export const STRIPE_FUNCTIONS = new Set([
   "voidStripeInvoice",
   "getPromoCodeDisplay",
   "createStripeCustomer",
+  "createSubscriptionInvoice",
 ]);
+
+function parseScheduleDate(value: unknown) {
+  if (!value) return null;
+  const isDateOnly = /^\d{4}-\d{2}-\d{2}$/.test(String(value));
+  const d = new Date(isDateOnly ? `${value}T12:00:00Z` : String(value));
+  if (Number.isNaN(d.getTime())) return null;
+  return d;
+}
 
 function tsToDate(ts: number | null | undefined) {
   return ts ? new Date(ts * 1000).toISOString().split("T")[0] : null;
@@ -374,8 +383,119 @@ async function handleStripeInvoices(res: any, body: any) {
   return json(res, 200, { invoices });
 }
 
+async function handleCreateSubscriptionInvoice(res: any, body: any) {
+  const stripe = getStripe();
+  const customerId = String(body?.customer_id || "").trim();
+  const propertyCount = Number(body?.property_count);
+  const billingMode = body?.billing_mode === "invoice" ? "invoice" : "subscription";
+  const interval = body?.billing_interval === "month" ? "month" : "year";
+  const basePrice = Number(body?.license_unit_price) > 0 ? Number(body.license_unit_price) : 1200;
+
+  if (!customerId) return json(res, 400, { error: "customer_id is required" });
+  if (!Number.isFinite(propertyCount) || propertyCount < 1) {
+    return json(res, 400, { error: "property_count must be at least 1" });
+  }
+
+  const unitAmount =
+    interval === "year" ? Math.round(basePrice * 100) : Math.round((basePrice / 12) * 100);
+  const description =
+    interval === "year"
+      ? `Property License × ${propertyCount} (annual)`
+      : `Property License × ${propertyCount} (monthly)`;
+
+  // One-time invoice: charge once for the selected period amount, then stop.
+  if (billingMode === "invoice") {
+    const draft = await stripe.invoices.create({
+      customer: customerId,
+      collection_method: "send_invoice",
+      days_until_due: 7,
+      metadata: { source: "100c-os-admin", billing_mode: "invoice" },
+      auto_advance: false,
+    });
+
+    await stripe.invoiceItems.create({
+      customer: customerId,
+      invoice: draft.id,
+      currency: "usd",
+      amount: unitAmount * propertyCount,
+      description,
+      metadata: { source: "100c-os-admin", billing_mode: "invoice" },
+    });
+
+    let invoiceId = draft.id;
+    try {
+      const sent = await stripe.invoices.sendInvoice(draft.id);
+      invoiceId = sent.id;
+    } catch {
+      // Invoice may already be finalized; still return the draft id.
+    }
+
+    return json(res, 200, {
+      ok: true,
+      billing_mode: "invoice",
+      subscription_id: null,
+      invoice_id: invoiceId,
+      scheduled: false,
+      scheduled_for: null,
+    });
+  }
+
+  // Recurring subscription invoice (existing behavior).
+  const scheduledAt = parseScheduleDate(body?.send_date);
+  const isScheduled = !!(scheduledAt && scheduledAt.getTime() > Date.now());
+
+  const price = await stripe.prices.create({
+    currency: "usd",
+    unit_amount: unitAmount,
+    recurring: { interval },
+    product_data: { name: "Property License" },
+    metadata: { source: "100c-os-admin" },
+  });
+
+  const subParams: Record<string, unknown> = {
+    customer: customerId,
+    items: [{ price: price.id, quantity: propertyCount }],
+    collection_method: "send_invoice",
+    days_until_due: 7,
+    metadata: { source: "100c-os-admin", billing_mode: "subscription" },
+  };
+  if (isScheduled) {
+    subParams.billing_cycle_anchor = Math.floor(scheduledAt!.getTime() / 1000);
+    subParams.proration_behavior = "none";
+  }
+
+  const subscription = await stripe.subscriptions.create(subParams as any);
+
+  let invoiceId: string | null = null;
+  if (!isScheduled && subscription.latest_invoice) {
+    const latest =
+      typeof subscription.latest_invoice === "string"
+        ? subscription.latest_invoice
+        : subscription.latest_invoice.id;
+    try {
+      const sent = await stripe.invoices.sendInvoice(latest);
+      invoiceId = sent.id;
+    } catch {
+      invoiceId = latest;
+    }
+  }
+
+  return json(res, 200, {
+    ok: true,
+    billing_mode: "subscription",
+    subscription_id: subscription.id,
+    invoice_id: invoiceId,
+    scheduled: isScheduled,
+    scheduled_for: isScheduled ? scheduledAt!.toISOString() : null,
+  });
+}
+
 export async function handleStripeFunction(req: any, res: any, functionName: string, body: any) {
-  if (functionName === "voidStripeInvoice" || functionName === "createStripeCustomer") {
+  if (
+    functionName === "voidStripeInvoice" ||
+    functionName === "createStripeCustomer" ||
+    functionName === "createSubscriptionInvoice"
+  ) {
     const gate = await requireAdmin(req);
     if ("error" in gate && gate.error) return json(res, gate.error, { error: gate.message });
   }
@@ -383,6 +503,7 @@ export async function handleStripeFunction(req: any, res: any, functionName: str
   if (functionName === "stripePartnerData") return handleStripePartnerData(res, body);
   if (functionName === "stripeAllInvoices") return handleStripeAllInvoices(res);
   if (functionName === "stripeInvoices") return handleStripeInvoices(res, body);
+  if (functionName === "createSubscriptionInvoice") return handleCreateSubscriptionInvoice(res, body);
   if (functionName === "getPromoCodeDisplay") {
     const stripe = getStripe();
     const promo_id = String(body?.promo_id || "");
@@ -411,8 +532,7 @@ export async function handleStripeFunction(req: any, res: any, functionName: str
   }
   if (functionName === "voidStripeInvoice") {
     const stripe = getStripe();
-    const invoice_id = String(body?.invoice_id || "");
-    if (!invoice_id) return json(res, 400, { error: "Missing invoice_id" });
+    const invoice_id = String(body?.invoice_id || "");    if (!invoice_id) return json(res, 400, { error: "Missing invoice_id" });
     const invoice = await stripe.invoices.retrieve(invoice_id);
     if (invoice.status !== "open") {
       return json(res, 400, { error: `Only open invoices can be voided. This invoice is "${invoice.status}".` });

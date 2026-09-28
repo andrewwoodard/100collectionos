@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Loader2, Send } from "lucide-react";
@@ -6,30 +6,50 @@ import { base44 } from "@/api/base44Client";
 
 const fmt = (n) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number(n) || 0);
 
+function invokeErrorMessage(error) {
+  return (
+    error?.response?.data?.error ||
+    error?.data?.error ||
+    error?.message ||
+    "Failed to send"
+  );
+}
+
 export default function SendLicenseSubscriptionModal({ open, onClose, partner, stripeData, onSuccess }) {
   const licensePrice = Number(partner?.license_unit_price) > 0 ? Number(partner.license_unit_price) : 1200;
   const [licenseCount, setLicenseCount] = useState(1);
   const [interval, setInterval] = useState("year");
+  const [billingMode, setBillingMode] = useState("subscription");
   const [sending, setSending] = useState(false);
+  const [error, setError] = useState("");
 
   const count = Math.max(1, Math.min(100, Number(licenseCount) || 1));
   const canMonthly = count >= 5;
   const totalAnnual = licensePrice * count;
   const totalMonthly = totalAnnual / 12;
+  const chargeAmount = interval === "year" ? totalAnnual : totalMonthly;
 
   const handleSend = async () => {
+    if (!stripeData?.customer_id) {
+      setError("This partner does not have a Stripe customer yet.");
+      return;
+    }
     setSending(true);
+    setError("");
     try {
-      await base44.functions.invoke("createSubscriptionInvoice", {
-        customer_id: stripeData?.customer_id,
+      const res = await base44.functions.invoke("createSubscriptionInvoice", {
+        customer_id: stripeData.customer_id,
         license_unit_price: licensePrice,
         property_count: count,
         billing_interval: interval,
+        billing_mode: billingMode,
       });
-      onSuccess?.();
+      const payload = res?.data || res;
+      if (payload?.error) throw new Error(payload.error);
+      onSuccess?.(payload);
       onClose();
     } catch (e) {
-      alert(e?.message || "Failed to send invoice");
+      setError(invokeErrorMessage(e));
     } finally {
       setSending(false);
     }
@@ -39,11 +59,33 @@ export default function SendLicenseSubscriptionModal({ open, onClose, partner, s
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>Send License Subscription</DialogTitle>
-          <DialogDescription>Send a Stripe subscription invoice for 1–100 licenses to {partner?.stripe_billing_email || "the partner"}.</DialogDescription>
+          <DialogTitle>Send License Billing</DialogTitle>
+          <DialogDescription>
+            Bill {partner?.stripe_billing_email || "the partner"} for 1–100 licenses as a recurring subscription or a one-time invoice.
+          </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-3 py-2">
+          <div>
+            <p className="text-xs font-semibold text-gray-700 mb-2">Billing type</p>
+            <div className="space-y-2">
+              <label className={`flex items-start gap-2 p-3 border rounded-lg cursor-pointer transition-colors ${billingMode === "subscription" ? "border-blue-400 bg-blue-50" : "border-gray-200 hover:border-gray-300"}`}>
+                <input type="radio" checked={billingMode === "subscription"} onChange={() => setBillingMode("subscription")} className="accent-blue-600 mt-0.5" />
+                <div>
+                  <p className="text-sm font-medium text-gray-900">Recurring subscription</p>
+                  <p className="text-xs text-gray-500">Creates a Stripe subscription and emails invoices each billing period.</p>
+                </div>
+              </label>
+              <label className={`flex items-start gap-2 p-3 border rounded-lg cursor-pointer transition-colors ${billingMode === "invoice" ? "border-blue-400 bg-blue-50" : "border-gray-200 hover:border-gray-300"}`}>
+                <input type="radio" checked={billingMode === "invoice"} onChange={() => setBillingMode("invoice")} className="accent-blue-600 mt-0.5" />
+                <div>
+                  <p className="text-sm font-medium text-gray-900">Singular invoice</p>
+                  <p className="text-xs text-gray-500">One-time invoice for the selected period amount. No recurring charges.</p>
+                </div>
+              </label>
+            </div>
+          </div>
+
           <div>
             <label className="text-xs font-semibold text-gray-700 mb-1.5 block">Number of Licenses</label>
             <div className="flex items-center gap-2">
@@ -73,18 +115,21 @@ export default function SendLicenseSubscriptionModal({ open, onClose, partner, s
           <div className="bg-gray-50 rounded-lg p-3 space-y-1.5 text-sm">
             <div className="flex justify-between"><span className="text-gray-500">License price</span><span className="font-medium">{fmt(licensePrice)}/license/yr</span></div>
             <div className="flex justify-between"><span className="text-gray-500">Licenses</span><span className="font-medium">{count}</span></div>
-            <div className="border-t border-gray-200 pt-1.5 flex justify-between"><span className="text-gray-700 font-semibold">Annual total</span><span className="font-bold text-gray-900">{fmt(totalAnnual)}</span></div>
+            <div className="border-t border-gray-200 pt-1.5 flex justify-between">
+              <span className="text-gray-700 font-semibold">{billingMode === "invoice" ? "Invoice total" : "Annual total"}</span>
+              <span className="font-bold text-gray-900">{fmt(billingMode === "invoice" ? chargeAmount : totalAnnual)}</span>
+            </div>
           </div>
 
           <div>
-            <p className="text-xs font-semibold text-gray-700 mb-2">Payment Frequency</p>
+            <p className="text-xs font-semibold text-gray-700 mb-2">{billingMode === "invoice" ? "Invoice period" : "Payment Frequency"}</p>
             <div className="space-y-2">
               <label className={`flex items-center justify-between p-3 border rounded-lg cursor-pointer transition-colors ${interval === "year" ? "border-blue-400 bg-blue-50" : "border-gray-200 hover:border-gray-300"}`}>
                 <div className="flex items-center gap-2">
                   <input type="radio" checked={interval === "year"} onChange={() => setInterval("year")} className="accent-blue-600" />
                   <div>
                     <p className="text-sm font-medium text-gray-900">Annual (Bulk Sum)</p>
-                    <p className="text-xs text-gray-500">{fmt(totalAnnual)} per year</p>
+                    <p className="text-xs text-gray-500">{fmt(totalAnnual)}{billingMode === "subscription" ? " per year" : " once"}</p>
                   </div>
                 </div>
               </label>
@@ -93,20 +138,24 @@ export default function SendLicenseSubscriptionModal({ open, onClose, partner, s
                   <input type="radio" checked={interval === "month"} disabled={!canMonthly} onChange={() => canMonthly && setInterval("month")} className="accent-blue-600" />
                   <div>
                     <p className="text-sm font-medium text-gray-900">Monthly</p>
-                    <p className="text-xs text-gray-500">{fmt(totalMonthly)}/mo for 12 months</p>
+                    <p className="text-xs text-gray-500">{fmt(totalMonthly)}{billingMode === "subscription" ? "/mo for 12 months" : " once"}</p>
                   </div>
                 </div>
                 {!canMonthly && <span className="text-[10px] text-gray-400 italic">Requires 5+ licenses</span>}
               </label>
             </div>
           </div>
+
+          {error && (
+            <div className="p-3 rounded-lg bg-red-50 text-red-700 text-sm border border-red-100">{error}</div>
+          )}
         </div>
 
         <DialogFooter>
           <Button variant="outline" onClick={onClose} disabled={sending}>Cancel</Button>
           <Button onClick={handleSend} disabled={sending || count < 1} className="gap-1.5">
             {sending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
-            Send Invoice
+            {billingMode === "invoice" ? "Send Invoice" : "Send Subscription"}
           </Button>
         </DialogFooter>
       </DialogContent>
