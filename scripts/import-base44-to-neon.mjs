@@ -57,10 +57,15 @@ const APP_BASE = (process.env.VITE_BASE44_APP_BASE_URL || "https://100c-os.base4
 const TOKEN = process.env.BASE44_SERVICE_TOKEN || process.env.BASE44_ACCESS_TOKEN || "";
 const PAGE_SIZE = Number(process.env.BASE44_PAGE_SIZE || 100);
 
-const entities = readdirSync(join(root, "base44/entities"))
+const allEntities = readdirSync(join(root, "base44/entities"))
   .filter((f) => f.endsWith(".jsonc"))
   .map((f) => f.replace(/\.jsonc$/, ""))
   .sort();
+const only = (process.env.BASE44_ENTITIES || "")
+  .split(",")
+  .map((name) => name.trim())
+  .filter(Boolean);
+const entities = allEntities.filter((name) => !only.length || only.includes(name));
 
 async function fetchJson(path) {
   const url = `${APP_BASE}/api${path}`;
@@ -81,6 +86,27 @@ async function fetchPage(entityName, skip) {
   const path = `/apps/${APP_ID}/entities/${entityName}?limit=${PAGE_SIZE}&skip=${skip}`;
   const data = await fetchJson(path);
   return Array.isArray(data) ? data : [];
+}
+
+async function fetchCount(entityName) {
+  try {
+    const data = await fetchJson(`/apps/${APP_ID}/entities/${entityName}/count`);
+    const n = Number(data?.count);
+    return Number.isFinite(n) ? n : null;
+  } catch {
+    return null;
+  }
+}
+
+async function fetchV2Page(entityName, cursor) {
+  const params = new URLSearchParams({ limit: String(PAGE_SIZE) });
+  if (cursor) params.set("cursor", String(cursor));
+  const data = await fetchJson(`/apps/${APP_ID}/entities/${entityName}/v2/list?${params}`);
+  if (Array.isArray(data)) return { items: data, next: null };
+  return {
+    items: Array.isArray(data?.items) ? data.items : [],
+    next: data?.has_more ? data.next_cursor || null : null,
+  };
 }
 
 function ensureTableSql(table) {
@@ -135,6 +161,7 @@ async function upsertRows(client, table, rows) {
 async function importEntity(client, entityName) {
   const tableName = `"${toSnake(entityName)}"`;
   await client.query(ensureTableSql(tableName));
+  const expected = await fetchCount(entityName);
 
   let skip = 0;
   let imported = 0;
@@ -149,12 +176,49 @@ async function importEntity(client, entityName) {
     });
     imported += await upsertRows(client, tableName, items);
     pages += 1;
-    process.stdout.write(`\r  ${entityName}: ${imported} rows (${pages} pages)`);
-    if (items.length < PAGE_SIZE) break;
+    process.stdout.write(
+      `\r  ${entityName}: ${imported}${expected != null ? `/${expected}` : ""} rows (${pages} pages)`
+    );
+    if (items.length === 0 || (items.length < PAGE_SIZE && (expected == null || seen.size >= expected))) break;
     skip += PAGE_SIZE;
+    if (pages > 500) break;
   }
+
+  if (expected != null && seen.size < expected) {
+    let cursor = 0;
+    for (;;) {
+      let page;
+      try {
+        page = await fetchV2Page(entityName, cursor);
+      } catch (err) {
+        if (err.status === 400) break;
+        throw err;
+      }
+      const items = page.items.filter((row) => {
+        if (!row?.id) return false;
+        if (seen.has(row.id)) return false;
+        seen.add(row.id);
+        return true;
+      });
+      imported += await upsertRows(client, tableName, items);
+      pages += 1;
+      process.stdout.write(`\r  ${entityName}: ${imported}/${expected} rows (${pages} pages, v2)`);
+      if (!page.next || !page.items.length) break;
+      cursor = page.next;
+    }
+  }
+
   process.stdout.write("\n");
-  return imported;
+
+  if ((expected === 0 && seen.size === 0) || (seen.size > 0 && (expected == null || seen.size >= expected))) {
+    const pruned = await client.query(
+      `DELETE FROM base44.${tableName} WHERE id <> ALL($1::text[])`,
+      [[...seen]]
+    );
+    if (pruned.rowCount) process.stdout.write(`  ${entityName}: pruned ${pruned.rowCount} stale rows\n`);
+  }
+
+  return { imported, expected, storedIds: seen.size };
 }
 
 const dbUrl = process.env.DATABASE_URL_UNPOOLED || process.env.DATABASE_URL;
@@ -177,8 +241,18 @@ console.log(`Auth: ${TOKEN ? "token present" : "anonymous (public entities only)
 const summary = [];
 for (const name of entities) {
   try {
-    const count = await importEntity(client, name);
-    summary.push({ entity: name, table: toSnake(name), rows: count, status: "ok" });
+    const result = await importEntity(client, name);
+    const status =
+      result.expected != null && result.imported < result.expected
+        ? `partial ${result.imported}/${result.expected}`
+        : "ok";
+    summary.push({
+      entity: name,
+      table: toSnake(name),
+      rows: result.imported,
+      expected: result.expected,
+      status,
+    });
   } catch (err) {
     summary.push({
       entity: name,
@@ -203,6 +277,7 @@ console.log("\nNeon base44 tables:");
 for (const row of summary) {
   const n = exactCounts[row.table];
   const stored = n === undefined ? "" : ` stored=${n}`;
-  console.log(`  ${row.table.padEnd(28)} ${String(row.rows).padStart(6)} imported  ${row.status}${stored}`);
+  const expected = row.expected == null ? "" : ` remote=${row.expected}`;
+  console.log(`  ${row.table.padEnd(28)} ${String(row.rows).padStart(6)} imported  ${row.status}${expected}${stored}`);
 }
 console.log(TOKEN ? "\nDone." : "\nDone. Private tables are empty until BASE44_ACCESS_TOKEN or BASE44_SERVICE_TOKEN is set.");
