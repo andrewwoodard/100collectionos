@@ -20,7 +20,9 @@ export function useCurrentUser() {
     queryKey: ["impersonated-user", impersonatedUserId],
     queryFn: async () => {
       const res = await base44.functions.invoke('getUserById', { userId: impersonatedUserId });
-      return res?.data?.user || null;
+      const payload = res?.data || res;
+      if (payload?.error) throw new Error(payload.error);
+      return payload?.user || null;
     },
     enabled: shouldFetchImpersonated,
     staleTime: 30 * 1000,

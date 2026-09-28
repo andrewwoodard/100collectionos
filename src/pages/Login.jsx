@@ -44,8 +44,12 @@ export default function Login() {
     }
     setLoading(true);
     try {
-      const { error: signInError } = await authClient.signIn.email({ email, password });
+      const { data, error: signInError } = await authClient.signIn.email({ email, password });
       if (signInError) throw signInError;
+      if (data?.user?.mustChangePassword) {
+        window.location.href = "/change-password?returnTo=" + encodeURIComponent(returnTo);
+        return;
+      }
       window.location.href = returnTo;
     } catch (err) {
       setError(err.message || "Invalid email or password");

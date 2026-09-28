@@ -12,5 +12,6 @@ export function mapAuthUser(user) {
     partner_role: user.partner_role || "owner",
     portalId: user.portalId || null,
     hasPartnerAccess: !!user.hasPartnerAccess,
+    mustChangePassword: !!user.mustChangePassword,
   };
 }

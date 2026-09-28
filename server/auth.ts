@@ -1,7 +1,13 @@
 import { betterAuth } from "better-auth";
+import { createAuthMiddleware, APIError } from "better-auth/api";
 import { customSession } from "better-auth/plugins/custom-session";
 import { magicLink } from "better-auth/plugins";
 import { Pool } from "pg";
+import {
+  clearMustChangePassword,
+  ensurePasswordMigrationSchema,
+  verifyBase44Password,
+} from "./base44-password.js";
 import { deliverMagicLinkEmail, deliverPasswordResetEmail } from "./reset-email.js";
 import { applyPortalProfile, resolvePortalProfile } from "./portal-profile.js";
 
@@ -30,6 +36,9 @@ const authPool = new Pool({
 });
 authPool.on("error", (error) => {
   console.warn("[auth-db] idle client error", error.message);
+});
+void ensurePasswordMigrationSchema((sql) => authPool.query(sql)).catch((error) => {
+  console.warn("[auth] mustChangePassword column", error.message);
 });
 
 export const auth = betterAuth({
@@ -60,10 +69,73 @@ export const auth = betterAuth({
   advanced: {
     trustedProxyHeaders: Boolean(process.env.VERCEL),
   },
+  hooks: {
+    before: createAuthMiddleware(async (ctx) => {
+      const path = ctx.path || "";
+      if (path.includes("/change-password")) {
+        const body = ctx.body as { currentPassword?: string; newPassword?: string };
+        if (body.currentPassword && body.newPassword && body.currentPassword === body.newPassword) {
+          throw APIError.from("BAD_REQUEST", {
+            code: "PASSWORD_UNCHANGED",
+            message: "Choose a different password than the one you just used.",
+          });
+        }
+        return;
+      }
+      if (!path.includes("/sign-in/email")) return;
+      const email = String((ctx.body as { email?: string })?.email || "")
+        .trim()
+        .toLowerCase();
+      const password = String((ctx.body as { password?: string })?.password || "");
+      if (!email || !password) return;
+
+      const userRecord = await ctx.context.internalAdapter.findUserByEmail(email, {
+        includeAccounts: true,
+      });
+      if (!userRecord?.user) return;
+
+      const credential = (userRecord.accounts || []).find(
+        (account) => account.providerId === "credential" && account.accountId === userRecord.user.id
+      );
+      if (credential?.password) return;
+
+      try {
+        const matched = await verifyBase44Password(email, password);
+        if (!matched) return;
+
+        const hash = await ctx.context.password.hash(password);
+        if (credential) {
+          await ctx.context.internalAdapter.updateAccount(credential.id, { password: hash });
+        } else {
+          await ctx.context.internalAdapter.linkAccount({
+            userId: userRecord.user.id,
+            providerId: "credential",
+            accountId: userRecord.user.id,
+            password: hash,
+          });
+        }
+        await ctx.context.internalAdapter.updateUser(userRecord.user.id, {
+          mustChangePassword: true,
+        });
+        console.info("[auth] accepted an existing Base44 password; password change required");
+      } catch (error) {
+        console.warn("[auth] Base44 password migration failed", (error as Error).message);
+      }
+    }),
+    after: createAuthMiddleware(async (ctx) => {
+      if (!ctx.path?.includes("/change-password") && !ctx.path?.includes("/reset-password")) return;
+      const session = ctx.context.session as { user?: { id?: string }; session?: { userId?: string } } | undefined;
+      const userId = session?.user?.id || session?.session?.userId;
+      if (userId) await clearMustChangePassword(userId);
+    }),
+  },
   emailAndPassword: {
     enabled: true,
     sendResetPassword: async ({ user, url }) => {
       await deliverPasswordResetEmail({ user, url });
+    },
+    onPasswordReset: async ({ user }) => {
+      if (user?.id) await clearMustChangePassword(user.id);
     },
   },
   socialProviders: {
@@ -96,6 +168,11 @@ export const auth = betterAuth({
       partner_role: {
         type: "string",
         defaultValue: "owner",
+        input: false,
+      },
+      mustChangePassword: {
+        type: "boolean",
+        defaultValue: false,
         input: false,
       },
     },

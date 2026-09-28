@@ -19,7 +19,9 @@ export default function ImpersonationBanner() {
     queryFn: async () => {
       if (!impersonatedUserId) return null;
       const res = await base44.functions.invoke('getUserById', { userId: impersonatedUserId });
-      return res?.data?.user || null;
+      const payload = res?.data || res;
+      if (payload?.error) throw new Error(payload.error);
+      return payload?.user || null;
     },
     enabled: shouldFetch,
     staleTime: 30 * 1000,

@@ -64,7 +64,7 @@ export function ImpersonationProvider({ children }) {
       toast({ title: "Only admins can impersonate users.", variant: "destructive" });
       return;
     }
-    if (targetUserId === realUser.id) {
+    if (targetUserId === realUser.id || targetUserId === realUser.portalId) {
       toast({ title: "You can't impersonate yourself.", variant: "destructive" });
       return;
     }
@@ -73,9 +73,11 @@ export function ImpersonationProvider({ children }) {
     let targetUser = null;
     try {
       const res = await base44.functions.invoke('getUserById', { userId: targetUserId });
-      targetUser = res?.data?.user;
+      const payload = res?.data || res;
+      if (payload?.error) throw new Error(payload.error);
+      targetUser = payload?.user;
     } catch (e) {
-      toast({ title: "Could not find that user.", variant: "destructive" });
+      toast({ title: e.message || "Could not find that user.", variant: "destructive" });
       return;
     }
 
@@ -84,22 +86,27 @@ export function ImpersonationProvider({ children }) {
       return;
     }
 
-    // Allow impersonation if the target is a partner-role user, OR an admin who is
-    // linked to a Partner via portal_user_ids (e.g. an internal test account like
-    // Paige that walked through the homeowner flow as an admin).
-    const isPartnerRole = targetUser.role === "partner";
-    let isAdminWithPartnerLink = false;
-    if (targetUser.role === "admin") {
+    if (
+      String(targetUser.email || "").trim().toLowerCase() ===
+      String(realUser.email || "").trim().toLowerCase()
+    ) {
+      toast({ title: "You can't impersonate yourself.", variant: "destructive" });
+      return;
+    }
+
+    // Partner-role users, or anyone linked on a Partner (including admin test accounts).
+    let hasPartnerLink = targetUser.role === "partner";
+    if (!hasPartnerLink) {
       try {
         const linked = await base44.entities.Partner.filter({
           portal_user_ids: { $in: [targetUser.id] },
         });
-        isAdminWithPartnerLink = (linked || []).length > 0;
+        hasPartnerLink = (linked || []).length > 0;
       } catch (e) {
         console.error("Partner link check failed:", e.message);
       }
     }
-    if (!isPartnerRole && !isAdminWithPartnerLink) {
+    if (!hasPartnerLink) {
       toast({ title: "You can only impersonate users linked to a partner portal.", variant: "destructive" });
       return;
     }
@@ -139,7 +146,8 @@ export function ImpersonationProvider({ children }) {
     let targetUser = { id: impersonatedUserId, email: "unknown" };
     try {
       const res = await base44.functions.invoke('getUserById', { userId: impersonatedUserId });
-      if (res?.data?.user) targetUser = res.data.user;
+      const payload = res?.data || res;
+      if (payload?.user) targetUser = payload.user;
     } catch (e) { /* use fallback */ }
 
     sessionStorage.removeItem(STORAGE_KEY);

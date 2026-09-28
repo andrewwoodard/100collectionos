@@ -2,7 +2,7 @@ import { Toaster } from "@/components/ui/toaster"
 import { QueryClientProvider } from '@tanstack/react-query'
 import { queryClientInstance } from '@/lib/query-client'
 import { pagesConfig } from './pages.config'
-import { BrowserRouter as Router, Route, Routes, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Route, Routes, Navigate, useLocation } from 'react-router-dom';
 import PageNotFound from './lib/PageNotFound';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import { ImpersonationProvider } from '@/lib/ImpersonationContext';
@@ -54,6 +54,7 @@ import Login from '@/pages/Login';
 import Register from '@/pages/Register';
 import ForgotPassword from '@/pages/ForgotPassword';
 import ResetPassword from '@/pages/ResetPassword';
+import ChangePassword from '@/pages/ChangePassword';
 import useAttributionCapture from '@/hooks/useAttributionCapture';
 import ScrollToTop from '@/components/ScrollToTop';
 
@@ -68,6 +69,7 @@ const LayoutWrapper = ({ children, currentPageName }) => Layout ?
 
 const AuthenticatedApp = () => {
   const { user, isLoadingAuth, isLoadingPublicSettings } = useAuth();
+  const location = useLocation();
 
   // Never render user-dependent content while auth is still resolving.
   // user === undefined = haven't checked yet; null = checked, not authenticated; object = authenticated.
@@ -79,6 +81,14 @@ const AuthenticatedApp = () => {
     );
   }
 
+  if (user?.mustChangePassword && location.pathname !== "/change-password") {
+    const next = location.pathname + location.search;
+    const returnTo = next.startsWith("/") && !next.startsWith("//") && !next.includes("\\")
+      ? next
+      : "/";
+    return <Navigate to={"/change-password?returnTo=" + encodeURIComponent(returnTo)} replace />;
+  }
+
   return (
     <BiometricGate>
       <Routes>
@@ -88,6 +98,7 @@ const AuthenticatedApp = () => {
         <Route path="/signup" element={<Register />} />
         <Route path="/forgot-password" element={<ForgotPassword />} />
         <Route path="/reset-password" element={<ResetPassword />} />
+        <Route path="/change-password" element={<ChangePassword />} />
 
         {/* Public landing / marketing / apply pages — no auth required (Google OAuth consent requires public homepage) */}
         <Route path="/" element={

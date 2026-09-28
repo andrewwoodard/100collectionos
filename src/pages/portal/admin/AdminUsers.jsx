@@ -274,6 +274,9 @@ export default function AdminUsers({ embedded = false }) {
                         {!user.canLogin && (
                           <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200">No login</span>
                         )}
+                        {user.mustChangePassword && (
+                          <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200">Reset next login</span>
+                        )}
                         {user.disabled && (
                           <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-red-50 text-red-700 border border-red-200">Disabled</span>
                         )}

@@ -50,7 +50,7 @@ function parseIds(raw: unknown) {
 async function listUsers() {
   const pool = getNeonPool();
   const [authUsers, accounts, sessions, portalUsers, partners] = await Promise.all([
-    pool.query(`SELECT id, name, email, role, partner_role, "emailVerified", "createdAt", "updatedAt", image FROM "user"`),
+    pool.query(`SELECT id, name, email, role, partner_role, "emailVerified", "createdAt", "updatedAt", image, "mustChangePassword" FROM "user"`),
     pool.query(`SELECT "userId", "providerId", password FROM account`),
     pool.query(`SELECT DISTINCT ON ("userId") "userId", "updatedAt" AS last_seen FROM session ORDER BY "userId", "updatedAt" DESC`),
     pool.query(`SELECT id, created_date, updated_date, data FROM base44."user"`),
@@ -101,6 +101,7 @@ async function listUsers() {
       lastSignIn: lastSeen.get(row.id) || null,
       createdAt: row.createdAt,
       disabled: false,
+      mustChangePassword: !!row.mustChangePassword,
       partner: partnerByEmail.get(email) || null,
     });
   }
@@ -135,6 +136,7 @@ async function listUsers() {
       lastSignIn: null,
       createdAt: row.created_date || data.created_date,
       disabled: !!data.disabled,
+      mustChangePassword: false,
       partner,
     });
   }
@@ -233,12 +235,16 @@ async function setCredentialPassword(userId: string, password: string) {
       `UPDATE account SET password = $1, "updatedAt" = now() WHERE id = $2`,
       [hashed, rows[0].id]
     );
-    return;
+  } else {
+    await pool.query(
+      `INSERT INTO account (id, "accountId", "providerId", "userId", password, "createdAt", "updatedAt")
+       VALUES ($1, $2, 'credential', $2, $3, now(), now())`,
+      [newAuthId(), userId, hashed]
+    );
   }
   await pool.query(
-    `INSERT INTO account (id, "accountId", "providerId", "userId", password, "createdAt", "updatedAt")
-     VALUES ($1, $2, 'credential', $2, $3, now(), now())`,
-    [newAuthId(), userId, hashed]
+    `UPDATE "user" SET "mustChangePassword" = false, "updatedAt" = now() WHERE id = $1`,
+    [userId]
   );
 }
 

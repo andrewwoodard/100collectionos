@@ -48,7 +48,7 @@ export async function resolvePortalProfile(email: string): Promise<PortalProfile
   };
 }
 
-export function applyPortalProfile<T extends { role?: string | null; partner_role?: string | null; name?: string | null }>(
+export function applyPortalProfile<T extends { role?: string | null; partner_role?: string | null; name?: string | null; mustChangePassword?: boolean | null }>(
   user: T,
   profile: PortalProfile
 ) {
@@ -59,5 +59,6 @@ export function applyPortalProfile<T extends { role?: string | null; partner_rol
     portalId: profile.portalId,
     full_name: profile.name || user.name || "",
     hasPartnerAccess: profile.partnerCount > 0,
+    mustChangePassword: !!user.mustChangePassword,
   };
 }

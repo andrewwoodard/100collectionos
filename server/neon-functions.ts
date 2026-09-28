@@ -1,5 +1,6 @@
 import { getNeonPool, json, newId, quoteIdent, readBody } from "./neon-db.js";
 import { ingestRemoteImages } from "./blob.js";
+import { requireAdmin } from "./require-session.js";
 import { handleStripeFunction, STRIPE_FUNCTIONS } from "./stripe-functions.js";
 
 const TABLE_SEARCH_FIELDS: Record<string, string[]> = {
@@ -660,11 +661,46 @@ async function handleManagePartnerTeam(res: any, body: any) {
   return json(res, 400, { error: "Unknown action" });
 }
 
+async function handleGetUserById(req: any, res: any, body: any) {
+  const gate = await requireAdmin(req);
+  if ("error" in gate && gate.error) return json(res, gate.error, { error: gate.message });
+
+  const userId = String(body?.userId || body?.user_id || "").trim();
+  if (!userId) return json(res, 400, { error: "userId required" });
+
+  const pool = getNeonPool();
+  let { rows } = await pool.query(`SELECT id, data FROM base44."user" WHERE id = $1 LIMIT 1`, [userId]);
+  if (!rows[0]) {
+    const auth = await pool.query(`SELECT email FROM "user" WHERE id = $1 LIMIT 1`, [userId]);
+    const email = String(auth.rows[0]?.email || "").trim().toLowerCase();
+    if (email) {
+      const byEmail = await pool.query(
+        `SELECT id, data FROM base44."user" WHERE lower(data->>'email') = $1 LIMIT 1`,
+        [email]
+      );
+      rows = byEmail.rows;
+    }
+  }
+  if (!rows[0]) return json(res, 404, { error: "User not found" });
+
+  const data = rows[0].data || {};
+  return json(res, 200, {
+    user: {
+      id: rows[0].id,
+      email: data.email || "",
+      full_name: data.full_name || data.name || "",
+      role: data.role || "user",
+      partner_role: data.partner_role || "owner",
+    },
+  });
+}
+
 export const LOCAL_FUNCTIONS = new Set([
   "supabaseData",
   "supabaseProperties",
   "getPartnerTeam",
   "managePartnerTeam",
+  "getUserById",
   ...STRIPE_FUNCTIONS,
 ]);
 
@@ -681,6 +717,7 @@ export async function handleNeonFunction(req: any, res: any, functionName: strin
     else if (functionName === "supabaseProperties") await handleSupabaseProperties(res, body);
     else if (functionName === "getPartnerTeam") await handleGetPartnerTeam(res, body);
     else if (functionName === "managePartnerTeam") await handleManagePartnerTeam(res, body);
+    else if (functionName === "getUserById") await handleGetUserById(req, res, body);
     return true;
   } catch (error: any) {
     console.error("[neon-functions]", functionName, error);
