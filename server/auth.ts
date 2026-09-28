@@ -1,7 +1,8 @@
 import { betterAuth } from "better-auth";
 import { customSession } from "better-auth/plugins/custom-session";
+import { magicLink } from "better-auth/plugins";
 import { Pool } from "pg";
-import { deliverPasswordResetEmail } from "./reset-email.js";
+import { deliverMagicLinkEmail, deliverPasswordResetEmail } from "./reset-email.js";
 import { applyPortalProfile, resolvePortalProfile } from "./portal-profile.js";
 
 const databaseUrl = process.env.DATABASE_URL;
@@ -12,6 +13,15 @@ if (!databaseUrl) {
 
 const googleClientId = process.env.GOOGLE_CLIENT_ID;
 const googleClientSecret = process.env.GOOGLE_CLIENT_SECRET;
+
+const PORTAL_ORIGIN = "https://portal.theonehundredcollection.com";
+const VERCEL_ORIGIN = "https://100collectionos.vercel.app";
+
+function authFallbackURL() {
+  if (process.env.BETTER_AUTH_URL) return process.env.BETTER_AUTH_URL.replace(/\/$/, "");
+  if (process.env.VERCEL) return PORTAL_ORIGIN;
+  return "http://localhost:5173";
+}
 
 const authPool = new Pool({
   connectionString: databaseUrl,
@@ -24,15 +34,32 @@ authPool.on("error", (error) => {
 
 export const auth = betterAuth({
   secret: process.env.BETTER_AUTH_SECRET,
-  baseURL: process.env.BETTER_AUTH_URL,
+  // Resolve the OAuth redirect URI and cookies from the request host so
+  // portal.theonehundredcollection.com does not start Google login with a
+  // 100collectionos.vercel.app callback (that drops the state cookie).
+  baseURL: {
+    allowedHosts: [
+      "portal.theonehundredcollection.com",
+      "100collectionos.vercel.app",
+      "*.vercel.app",
+      "localhost:*",
+      "127.0.0.1:*",
+    ],
+    protocol: "auto",
+    fallback: authFallbackURL(),
+  },
   database: authPool,
   trustedOrigins: [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
     "http://localhost:3000",
     "http://127.0.0.1:3000",
-    "https://100collectionos.vercel.app",
+    PORTAL_ORIGIN,
+    VERCEL_ORIGIN,
   ],
+  advanced: {
+    trustedProxyHeaders: Boolean(process.env.VERCEL),
+  },
   emailAndPassword: {
     enabled: true,
     sendResetPassword: async ({ user, url }) => {
@@ -74,6 +101,15 @@ export const auth = betterAuth({
     },
   },
   plugins: [
+    magicLink({
+      expiresIn: 60 * 15,
+      sendMagicLink: async ({ email, url }) => {
+        const result = await deliverMagicLinkEmail({ email, url });
+        if (!result.ok) {
+          throw new Error("error" in result && result.error ? result.error : "Failed to send sign-in link");
+        }
+      },
+    }),
     customSession(async ({ user, session }) => {
       try {
         const profile = await resolvePortalProfile(user.email || "");

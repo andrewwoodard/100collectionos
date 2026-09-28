@@ -15,6 +15,7 @@
     "import:base44": "node scripts/import-base44-to-neon.mjs",
     "import:supabase": "node scripts/import-supabase-to-neon.mjs",
     "import:base44:from-supabase": "node scripts/backfill-base44-from-supabase.mjs",
+    "import:betterauth-users": "node scripts/import-base44-users-to-betterauth.mjs",
     "flatten:supabase": "node scripts/flatten-vrms-propertiesbase44.mjs"
   },
   "dependencies": {

@@ -97,7 +97,7 @@ async function listUsers() {
       emailVerified: !!row.emailVerified,
       hasPassword: acct.hasPassword,
       providers: acct.providers,
-      canLogin: acct.providers.length > 0,
+      canLogin: true,
       lastSignIn: lastSeen.get(row.id) || null,
       createdAt: row.createdAt,
       disabled: false,
@@ -243,9 +243,19 @@ async function setCredentialPassword(userId: string, password: string) {
 }
 
 function originFromRequest(req: any) {
-  const host = req.headers?.host;
+  const forwardedHost = String(req.headers?.["x-forwarded-host"] || "")
+    .split(",")[0]
+    .trim();
+  const host = forwardedHost || String(req.headers?.host || "").split(",")[0].trim();
+  if (host && !host.startsWith("localhost") && !host.startsWith("127.0.0.1")) {
+    return `https://${host}`;
+  }
+  if (host) {
+    const proto = String(req.headers?.["x-forwarded-proto"] || "http").split(",")[0].trim();
+    return `${proto}://${host}`;
+  }
   if (process.env.BETTER_AUTH_URL) return process.env.BETTER_AUTH_URL.replace(/\/$/, "");
-  return host ? `http://${host}` : "http://localhost:5173";
+  return "http://localhost:5173";
 }
 
 async function sendReset(req: any, email: string) {

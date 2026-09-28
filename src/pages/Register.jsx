@@ -3,17 +3,18 @@ import { Link } from "react-router-dom";
 import { authClient } from "@/lib/auth-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { UserPlus, Mail, Lock, Loader2 } from "lucide-react";
-import AuthLayout from "@/components/AuthLayout";
+import { Mail, Lock, Loader2 } from "lucide-react";
+import AuthLayout, {
+  AUTH_INPUT,
+  AUTH_LABEL,
+  AUTH_LINK,
+  AUTH_OUTLINE,
+  AUTH_PRIMARY,
+  AuthDivider,
+} from "@/components/AuthLayout";
 import GoogleIcon from "@/components/GoogleIcon";
 import { signupDestination, signupSegment } from "@/lib/authReturnTo";
 
-const BRAND_LOGO_URL =
-  "https://media.base44.com/images/public/69aee092656fb9813439389b/d949d2a19_100_Collex_Logo_Gold_Type.jpg";
-
-// Appends ?signup=1 to the post-signup destination so the target /apply page
-// knows to scroll the user down to the form.
 function withSignupParam(path) {
   try {
     const url = new URL(path, window.location.origin);
@@ -30,15 +31,13 @@ export default function Register() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [magicLoading, setMagicLoading] = useState(false);
+  const [magicSent, setMagicSent] = useState(false);
 
-  // Post-signup destination: ?redirect=vrm|homeowner maps to the matching
-  // apply form; otherwise the standard ?returnTo= resume (or "/").
   const dest = signupDestination();
-  // Tag so the apply page creates a tagged PartnerApplication stub after signup.
   const segment = signupSegment();
-  // When arriving from a ?redirect=vrm|homeowner signup, flag the destination so
-  // the /apply page scrolls the user to the form.
   const destWithSignup = segment ? withSignupParam(dest) : dest;
+  const busy = loading || magicLoading;
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -72,109 +71,145 @@ export default function Register() {
     });
   };
 
+  const handleMagicLink = async () => {
+    setError("");
+    if (!email) {
+      setError("Enter your email to receive a sign-in link.");
+      return;
+    }
+    setMagicLoading(true);
+    try {
+      if (segment) sessionStorage.setItem("signupSegment", segment);
+      const { error: magicError } = await authClient.signIn.magicLink({
+        email,
+        name: email.split("@")[0],
+        callbackURL: destWithSignup,
+        errorCallbackURL: "/register",
+      });
+      if (magicError) throw magicError;
+      setMagicSent(true);
+    } catch (err) {
+      setError(err.message || "Could not send a sign-in link");
+    } finally {
+      setMagicLoading(false);
+    }
+  };
+
   return (
     <AuthLayout
-      icon={UserPlus}
-      logoUrl={BRAND_LOGO_URL}
-      title="Create your account"
-      subtitle="Sign up to get started"
+      title="Join the Collection"
+      subtitle="Create your partner account to share homes worthy of the journey."
       footer={
         <>
           Already have an account?{" "}
           <Link
             to={"/login" + (destWithSignup !== "/" ? "?returnTo=" + encodeURIComponent(destWithSignup) : "")}
-            className="text-primary font-medium hover:underline"
+            className={AUTH_LINK}
           >
-            Log in
+            Sign in
           </Link>
         </>
       }
     >
-      <Button
-        variant="outline"
-        className="w-full h-12 text-sm font-medium mb-6"
-        onClick={handleGoogle}
-      >
+      <Button variant="outline" className={`${AUTH_OUTLINE} mb-1`} onClick={handleGoogle} disabled={busy}>
         <GoogleIcon className="w-5 h-5 mr-2" />
         Continue with Google
       </Button>
 
-      <div className="relative mb-6">
-        <div className="absolute inset-0 flex items-center">
-          <div className="w-full border-t border-border" />
-        </div>
-        <div className="relative flex justify-center text-xs uppercase">
-          <span className="bg-card px-3 text-muted-foreground">or</span>
-        </div>
-      </div>
+      <AuthDivider />
 
       {error && (
-        <div className="mb-4 p-3 rounded-lg bg-destructive/10 text-destructive text-sm">
+        <div className="mb-4 p-3 rounded-lg bg-[#F8EDE6] text-[#8B3A2A] text-sm border border-[#E8DDD0]">
           {error}
         </div>
       )}
 
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <div className="space-y-2">
-          <Label htmlFor="email">Email</Label>
-          <div className="relative">
-            <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" aria-hidden="true" />
-            <Input
-              id="email"
-              type="email"
-              autoComplete="email"
-              autoFocus
-              placeholder="you@example.com"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="pl-10 h-12"
-              required
-            />
+      {magicSent ? (
+        <p className="text-sm text-[#0D1B2A] text-center font-light leading-relaxed">
+          Check your email for a sign-in link. It expires in 15 minutes.
+        </p>
+      ) : (
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label htmlFor="email" className={AUTH_LABEL}>
+              Email
+            </label>
+            <div className="relative">
+              <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#B0A090]" aria-hidden="true" />
+              <Input
+                id="email"
+                type="email"
+                autoComplete="email"
+                autoFocus
+                placeholder="you@example.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className={AUTH_INPUT}
+                required
+              />
+            </div>
           </div>
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="password">Password</Label>
-          <div className="relative">
-            <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" aria-hidden="true" />
-            <Input
-              id="password"
-              type="password"
-              autoComplete="new-password"
-              placeholder="••••••••"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="pl-10 h-12"
-              required
-            />
+          <Button type="button" variant="outline" className={AUTH_OUTLINE} onClick={handleMagicLink} disabled={busy}>
+            {magicLoading ? (
+              <>
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                Sending link...
+              </>
+            ) : (
+              "Email me a sign-in link"
+            )}
+          </Button>
+
+          <AuthDivider label="or use a password" />
+
+          <div>
+            <label htmlFor="password" className={AUTH_LABEL}>
+              Password
+            </label>
+            <div className="relative">
+              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#B0A090]" aria-hidden="true" />
+              <Input
+                id="password"
+                type="password"
+                autoComplete="new-password"
+                placeholder="••••••••"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className={AUTH_INPUT}
+                required
+              />
+            </div>
           </div>
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="confirm">Confirm Password</Label>
-          <div className="relative">
-            <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" aria-hidden="true" />
-            <Input
-              id="confirm"
-              type="password"
-              autoComplete="new-password"
-              placeholder="••••••••"
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-              className="pl-10 h-12"
-              required
-            />
+          <div>
+            <label htmlFor="confirm" className={AUTH_LABEL}>
+              Confirm password
+            </label>
+            <div className="relative">
+              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#B0A090]" aria-hidden="true" />
+              <Input
+                id="confirm"
+                type="password"
+                autoComplete="new-password"
+                placeholder="••••••••"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                className={AUTH_INPUT}
+                required
+              />
+            </div>
           </div>
-        </div>
-        <Button type="submit" className="w-full h-12 font-medium" disabled={loading}>
-          {loading ? (
-            <>
-              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-              Creating account...
-            </>
-          ) : (
-            "Create account"
-          )}
-        </Button>
-      </form>
+          <Button type="submit" className={AUTH_PRIMARY} disabled={busy}>
+            {loading ? (
+              <>
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                Creating account...
+              </>
+            ) : (
+              "Create account"
+            )}
+          </Button>
+        </form>
+      )}
     </AuthLayout>
   );
 }
