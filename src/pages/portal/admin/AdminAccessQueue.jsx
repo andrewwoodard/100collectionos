@@ -83,7 +83,7 @@ export default function AdminAccessQueue({ embedded, applications = [] }) {
   const openRequests = requests.filter(r => ["auto_routed", "pending"].includes(r.status));
   const coldSignups = openRequests.filter(r => r.source === "cold_signup");
   const teamRequests = openRequests.filter(r => r.source === "team_access_request");
-  const newApplicants = applications.filter(a => a.status === "pending");
+  const newApplicants = applications.filter(a => a.status === "pending" && !a.archived);
   const convertedRequests = requests.filter(r => r.status === "converted_to_application");
 
   // Recovery banner: actions another admin took in the last 30 minutes that
@@ -281,9 +281,26 @@ export default function AdminAccessQueue({ embedded, applications = [] }) {
         <span className="text-xs text-slate-500">{a.company_name || a.property_locations || "—"}</span>
       </td>
       <td className="px-3 py-3 text-right">
-        <Button size="sm" variant="outline" onClick={() => window.location.href = `/admin/applications`}>
-          Review <ArrowRight className="w-3 h-3 ml-1" />
-        </Button>
+        <div className="flex items-center justify-end gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={async () => {
+              await base44.entities.PartnerApplication.update(a.id, {
+                archived: true,
+                archived_at: new Date().toISOString(),
+                archived_by: user?.email || null,
+              });
+              queryClient.invalidateQueries({ queryKey: ["partner-applications"] });
+              toast({ title: `Archived ${a.full_name || a.email}` });
+            }}
+          >
+            Archive
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => window.location.href = `/admin/hub?tab=applications`}>
+            Review <ArrowRight className="w-3 h-3 ml-1" />
+          </Button>
+        </div>
       </td>
     </tr>
   );

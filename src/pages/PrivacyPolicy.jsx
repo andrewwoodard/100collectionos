@@ -30,7 +30,7 @@ export default function PrivacyPolicy() {
             <h2 className="text-xl font-semibold text-gray-900 mb-3">Overview</h2>
             <p>
               The 100 Collection ("we", "us", "our") operates the partner portal at
-              portal.theonehundredcollection.com, a platform that enables vacation rental
+              portal.the100collection.com, a platform that enables vacation rental
               property managers and homeowners to list, manage, and market their properties
               through our curated collection. This policy explains what data we collect, why
               we collect it, and how we use it.

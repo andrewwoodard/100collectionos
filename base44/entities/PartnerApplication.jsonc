@@ -133,6 +133,20 @@
       "type": "string",
       "description": "Internal notes / reject reason / more info request"
     },
+    "archived": {
+      "type": "boolean",
+      "default": false,
+      "description": "When true, hidden from the default Applications and Access Queue lists. Admins can still view via the Archived filter."
+    },
+    "archived_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When an admin archived this application"
+    },
+    "archived_by": {
+      "type": "string",
+      "description": "Email of the admin who archived this application"
+    },
     "match_candidates": {
       "type": "array",
       "description": "Top partner match candidates scored by the matchExistingPartnerRequest function (existing_partner_access_request track only).",

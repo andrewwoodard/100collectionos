@@ -22,7 +22,7 @@ async function getResendConfig(): Promise<Config> {
   const envKey = process.env.RESEND_API_KEY || "";
   const envFrom = process.env.RESEND_FROM || "";
   let apiKey = envKey;
-  let from = envFrom || "The 100 Collection <hello@portal.theonehundredcollection.com>";
+  let from = envFrom || "The 100 Collection <hello@portal.the100collection.com>";
   try {
     const pool = getNeonPool();
     const { rows } = await pool.query(

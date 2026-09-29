@@ -7,7 +7,7 @@ import { sendTemplatedEmail } from '../../shared/sendTemplatedEmail.ts';
 // Both are non-blocking: failures are logged but don't affect the acceptance flow.
 // Slugs: invite-accepted-welcome-primary, invite-accepted-welcome-teammate, invite-accepted-fyi-inviter.
 
-const PORTAL_URL = 'https://portal.theonehundredcollection.com';
+const PORTAL_URL = 'https://portal.the100collection.com';
 
 const ROLE_LABELS = {
   owner: 'Owner',

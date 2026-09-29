@@ -80,9 +80,11 @@ export default function AdminHub() {
     users.map((u) => String(u.email || "").trim().toLowerCase()).filter(Boolean)
   );
   const badges = {
-    applications: applications.filter(a => a.status === "pending").length,
+    applications: applications.filter(a => a.status === "pending" && !a.archived).length,
     queue: submissions.filter(s => s.status === "submitted").length,
-    access_queue: openAccessRequests.length,
+    access_queue:
+      openAccessRequests.length +
+      applications.filter((a) => a.status === "pending" && !a.archived).length,
     profiles: profiles.filter(p => p.profile_status === "submitted").length,
     edits: editSubmissions.length,
     offboarding: terminationRequests.length,

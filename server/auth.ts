@@ -20,7 +20,8 @@ if (!databaseUrl) {
 const googleClientId = process.env.GOOGLE_CLIENT_ID;
 const googleClientSecret = process.env.GOOGLE_CLIENT_SECRET;
 
-const PORTAL_ORIGIN = "https://portal.theonehundredcollection.com";
+const PORTAL_ORIGIN = "https://portal.the100collection.com";
+const PORTAL_ORIGIN_LEGACY = "https://portal.theonehundredcollection.com";
 const VERCEL_ORIGIN = "https://100collectionos.vercel.app";
 
 function authFallbackURL() {
@@ -44,10 +45,11 @@ void ensurePasswordMigrationSchema((sql) => authPool.query(sql)).catch((error) =
 export const auth = betterAuth({
   secret: process.env.BETTER_AUTH_SECRET,
   // Resolve the OAuth redirect URI and cookies from the request host so
-  // portal.theonehundredcollection.com does not start Google login with a
+  // portal.the100collection.com does not start Google login with a
   // 100collectionos.vercel.app callback (that drops the state cookie).
   baseURL: {
     allowedHosts: [
+      "portal.the100collection.com",
       "portal.theonehundredcollection.com",
       "100collectionos.vercel.app",
       "*.vercel.app",
@@ -64,6 +66,7 @@ export const auth = betterAuth({
     "http://localhost:3000",
     "http://127.0.0.1:3000",
     PORTAL_ORIGIN,
+    PORTAL_ORIGIN_LEGACY,
     VERCEL_ORIGIN,
   ],
   advanced: {
