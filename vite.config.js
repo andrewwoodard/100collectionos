@@ -27,6 +27,7 @@ function betterAuthDevPlugin() {
       const { handleAdminUsers } = await import("./server/admin-users.ts");
       const { handleBlobUpload, handleImageIngest } = await import("./server/blob-http.ts");
       const { handlePortalAccess } = await import("./server/portal-access.ts");
+      const { handleMainSiteApplicationWebhook } = await import("./server/main-site-application.ts");
       const handler = toNodeHandler(auth);
       server.middlewares.use(async (req, res, next) => {
         const url = req.originalUrl || req.url || "";
@@ -46,6 +47,9 @@ function betterAuthDevPlugin() {
         }
         if (pathname === "/api/portal/access") {
           return handlePortalAccess(req, res);
+        }
+        if (pathname === "/api/webhooks/main-site-application") {
+          return handleMainSiteApplicationWebhook(req, res);
         }
 
         const parsed = new URL(url, "http://localhost");
