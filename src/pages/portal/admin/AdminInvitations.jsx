@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { useToast } from "@/components/ui/use-toast";
@@ -10,6 +10,10 @@ const ROLE_STYLES = {
   finance: "bg-emerald-50 text-emerald-700 border-emerald-200",
   operations: "bg-slate-100 text-slate-700 border-slate-200",
 };
+
+function asEmail(value) {
+  return String(value || "").trim().toLowerCase();
+}
 
 export default function AdminInvitations({ embedded = false }) {
   const qc = useQueryClient();
@@ -27,21 +31,42 @@ export default function AdminInvitations({ embedded = false }) {
     queryFn: () => base44.entities.Partner.list("-created_date", 500),
   });
 
+  const { data: users = [] } = useQuery({
+    queryKey: ["admin-users-light"],
+    queryFn: () => base44.entities.User.list("-created_date", 500),
+  });
+
+  const userEmails = useMemo(() => {
+    const set = new Set();
+    for (const user of users) {
+      const email = asEmail(user.email);
+      if (email) set.add(email);
+    }
+    return set;
+  }, [users]);
+
   const partnerMap = partners.reduce((acc, p) => {
     acc[p.id] = p;
     return acc;
   }, {});
 
-  const pending = invitations.filter(i => i.status === "pending");
-  const accepted = invitations.filter(i => i.status === "accepted");
+  // Hide invitees who already have a User account — they already have access
+  // and don't need to linger in the pending invitation queue.
+  const pending = invitations.filter(
+    (i) => i.status === "pending" && !userEmails.has(asEmail(i.email))
+  );
+  const accepted = invitations.filter((i) => i.status === "accepted");
 
-  // Approved partners with no portal access and no pending invitation — need an invite sent
-  const pendingPartnerIds = new Set(pending.map(i => i.partner_id));
-  const needsInvite = partners.filter(p =>
-    p.primary_contact_email &&
-    !p.portal_user_id &&
-    !pendingPartnerIds.has(p.id) &&
-    ["approved", "onboarding", "live"].includes(p.status)
+  // Approved partners with no portal access and no pending invitation — need an invite sent.
+  // Skip contacts who already have a User account (they already have access).
+  const pendingPartnerIds = new Set(pending.map((i) => i.partner_id));
+  const needsInvite = partners.filter(
+    (p) =>
+      p.primary_contact_email &&
+      !userEmails.has(asEmail(p.primary_contact_email)) &&
+      !p.portal_user_id &&
+      !pendingPartnerIds.has(p.id) &&
+      ["approved", "onboarding", "live"].includes(p.status)
   );
 
   const handleSendInvite = async (partner) => {

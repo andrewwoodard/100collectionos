@@ -57,6 +57,10 @@ export default function AdminHub() {
     queryKey: ["admin-invitations"],
     queryFn: () => base44.entities.PartnerInvitation.list("-created_date", 200),
   });
+  const { data: users = [] } = useQuery({
+    queryKey: ["admin-users-light"],
+    queryFn: () => base44.entities.User.list("-created_date", 500),
+  });
   const { data: accessRequests = [] } = useQuery({
     queryKey: ["portal-access-requests"],
     queryFn: () => base44.entities.PortalAccessRequest.list("-created_date", 200),
@@ -72,6 +76,9 @@ export default function AdminHub() {
   const openAccessRequests = accessRequests.filter(r =>
     ["auto_routed", "pending"].includes(r.status)
   );
+  const userEmails = new Set(
+    users.map((u) => String(u.email || "").trim().toLowerCase()).filter(Boolean)
+  );
   const badges = {
     applications: applications.filter(a => a.status === "pending").length,
     queue: submissions.filter(s => s.status === "submitted").length,
@@ -79,7 +86,9 @@ export default function AdminHub() {
     profiles: profiles.filter(p => p.profile_status === "submitted").length,
     edits: editSubmissions.length,
     offboarding: terminationRequests.length,
-    invitations: invitations.filter(i => i.status === "pending").length,
+    invitations: invitations.filter(
+      (i) => i.status === "pending" && !userEmails.has(String(i.email || "").trim().toLowerCase())
+    ).length,
   };
 
   const handleTab = (id) => {
