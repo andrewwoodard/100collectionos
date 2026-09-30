@@ -348,25 +348,34 @@ export default function Partners() {
         assigned_internal_owner: formData.assigned_internal_owner,
         start_date: formData.start_date || null,
         renewal_date: formData.renewal_date || null,
+        go_live_date: formData.go_live_date || null,
         notes: formData.notes,
+        tags: formData.tags || [],
+        onboarding_stage: formData.onboarding_stage || null,
+        billing_status: formData.billing_status || null,
+        automated_billing: !!formData.automated_billing,
         member_since: member_since || null,
         parent_partner_id: parent_partner_id || null,
       });
-      // Sync the new Base44 partner into Supabase. syncPartnerToSupabase only
-      // writes columns that actually exist on the legacy partners table (it
-      // checks for base44_partner_id and dedups by name/email), so it won't 500
-      // the way a raw insert with base44_partner_id would.
-      const res = await base44.functions.invoke("syncPartnerToSupabase", {
-        partnerId: b44Partner.id,
-        partnerEmail: formData.primary_contact_email || "",
-      });
-      if (res.data?.error) {
-        toast({ title: "Saved to Base44, but Supabase sync failed", description: res.data.error, variant: "destructive" });
-      } else {
-        toast({ title: `Created ${formData.partner_name}` });
+      if (!b44Partner?.id) {
+        throw new Error("Partner was not created");
       }
       queryClient.invalidateQueries({ queryKey: ["base44-partners"] });
-      queryClient.invalidateQueries({ queryKey: ["partners-supabase"] });
+      try {
+        const res = await base44.functions.invoke("syncPartnerToSupabase", {
+          partnerId: b44Partner.id,
+          partnerEmail: formData.primary_contact_email || "",
+        });
+        if (res.data?.error) throw new Error(res.data.error);
+        queryClient.invalidateQueries({ queryKey: ["partners-supabase"] });
+        toast({ title: `Created ${formData.partner_name}` });
+      } catch (error) {
+        toast({
+          title: `Created ${formData.partner_name}`,
+          description: error?.message || "Saved, but the partner list sync failed.",
+          variant: "destructive",
+        });
+      }
     }
     setEditingPartner(null);
   };
@@ -832,6 +841,7 @@ export default function Partners() {
       <PartnerFormModal
         open={modalOpen}
         onOpenChange={setModalOpen}
+        defaultPartnerType={segment === "property_manager" || segment === "owner" ? segment : undefined}
         partner={editingPartner ? { ...editingPartner, parent_partner_id: partners.find(p => p.id === (editingPartner.base44_partner_id || editingPartner.id))?.parent_partner_id } : null}
         onSave={handleSave}
       />

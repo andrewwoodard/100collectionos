@@ -695,9 +695,75 @@ async function handleGetUserById(req: any, res: any, body: any) {
   });
 }
 
+async function handleSyncPartnerToSupabase(res: any, body: any) {
+  const partnerId = body?.partnerId || body?.event?.entity_id || body?.data?.id;
+  const partnerEmail = body?.partnerEmail || body?.data?.primary_contact_email || "";
+  if (!partnerId) return json(res, 400, { error: "partnerId required" });
+
+  const row = await getPartnerRow(String(partnerId));
+  const stored = row ? partnerRecord(row) : null;
+  const partner = body?.data?.partner_name ? { ...stored, ...body.data, id: stored?.id || partnerId } : stored;
+  if (!partner?.partner_name) return json(res, 404, { error: "Partner not found" });
+
+  const email = String(partner.primary_contact_email || partnerEmail || "").trim();
+  const payload = {
+    partner_name: partner.partner_name,
+    company_name: partner.company_name || partner.partner_name,
+    primary_contact_name: partner.primary_contact_name || "",
+    primary_contact_email: email,
+    primary_contact_phone: partner.primary_contact_phone || "",
+    market: partner.market || "",
+    region: partner.region || "",
+    status: partner.status || "lead",
+    partner_type: partner.partner_type || "property_manager",
+    contract_status: partner.contract_status || "none",
+    notes: partner.notes || "",
+    assigned_internal_owner: partner.assigned_internal_owner || "",
+    start_date: partner.start_date || null,
+    renewal_date: partner.renewal_date || null,
+    go_live_date: partner.go_live_date || null,
+    member_since: partner.member_since || null,
+    parent_partner_id: partner.parent_partner_id || null,
+    onboarding_stage: partner.onboarding_stage || null,
+    billing_status: partner.billing_status || null,
+    automated_billing: !!partner.automated_billing,
+    tags: Array.isArray(partner.tags) ? partner.tags : [],
+    base44_partner_id: String(partner.id || partnerId),
+  };
+
+  const pool = getNeonPool();
+  const { rows: existing } = await pool.query(
+    `SELECT id, data FROM supabase.partners
+     WHERE data->>'base44_partner_id' = $1
+        OR ($2 <> '' AND lower(coalesce(data->>'primary_contact_email', '')) = lower($2))
+        OR ($3 <> '' AND data->>'partner_name' = $3)
+     ORDER BY CASE WHEN data->>'base44_partner_id' = $1 THEN 0 ELSE 1 END
+     LIMIT 1`,
+    [String(partner.id || partnerId), email, String(partner.partner_name || "")]
+  );
+
+  if (existing[0]) {
+    const merged = { ...(existing[0].data || {}), ...payload, id: existing[0].data?.id || existing[0].id };
+    await pool.query(
+      `UPDATE supabase.partners SET data = $2::jsonb, imported_at = now() WHERE id = $1`,
+      [existing[0].id, JSON.stringify(merged)]
+    );
+    return json(res, 200, { action: "updated", supabase_id: existing[0].id });
+  }
+
+  const id = newId();
+  const record = { ...payload, id, created_at: new Date().toISOString() };
+  await pool.query(
+    `INSERT INTO supabase.partners (id, data) VALUES ($1, $2::jsonb)`,
+    [id, JSON.stringify(record)]
+  );
+  return json(res, 200, { action: "created", supabase_id: id });
+}
+
 export const LOCAL_FUNCTIONS = new Set([
   "supabaseData",
   "supabaseProperties",
+  "syncPartnerToSupabase",
   "getPartnerTeam",
   "managePartnerTeam",
   "getUserById",
@@ -715,6 +781,7 @@ export async function handleNeonFunction(req: any, res: any, functionName: strin
     }
     if (functionName === "supabaseData") await handleSupabaseData(res, body);
     else if (functionName === "supabaseProperties") await handleSupabaseProperties(res, body);
+    else if (functionName === "syncPartnerToSupabase") await handleSyncPartnerToSupabase(res, body);
     else if (functionName === "getPartnerTeam") await handleGetPartnerTeam(res, body);
     else if (functionName === "managePartnerTeam") await handleManagePartnerTeam(res, body);
     else if (functionName === "getUserById") await handleGetUserById(req, res, body);

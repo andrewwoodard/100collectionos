@@ -27,9 +27,10 @@ const defaultData = {
   onboarding_stage: "approved", billing_status: "not_setup", automated_billing: false, tags: [],
 };
 
-export default function PartnerFormModal({ open, onOpenChange, partner, onSave }) {
+export default function PartnerFormModal({ open, onOpenChange, partner, onSave, defaultPartnerType }) {
   const [form, setForm] = useState(defaultData);
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
 
   // Fetch all partners to compute eligible parents for the parent dropdown
   const { data: allPartners = [] } = useQuery({
@@ -67,15 +68,25 @@ export default function PartnerFormModal({ open, onOpenChange, partner, onSave }
     if (partner) {
       setForm({ ...defaultData, ...partner, tags: Array.isArray(partner.tags) ? partner.tags : [] });
     } else {
-      setForm(defaultData);
+      setForm({
+        ...defaultData,
+        partner_type: defaultPartnerType || defaultData.partner_type,
+      });
     }
-  }, [partner, open]);
+    setError("");
+  }, [partner, open, defaultPartnerType]);
 
   const handleSave = async () => {
     setSaving(true);
-    await onSave(form);
-    setSaving(false);
-    onOpenChange(false);
+    setError("");
+    try {
+      await onSave(form);
+      onOpenChange(false);
+    } catch (e) {
+      setError(e?.message || "Failed to save partner");
+    } finally {
+      setSaving(false);
+    }
   };
 
   const update = (field, val) => setForm(f => ({ ...f, [field]: val }));
@@ -239,6 +250,9 @@ export default function PartnerFormModal({ open, onOpenChange, partner, onSave }
             <Textarea value={form.notes} onChange={e => update("notes", e.target.value)} rows={3} />
           </div>
         </div>
+        {error && (
+          <p className="text-sm text-red-600">{error}</p>
+        )}
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
           <Button onClick={handleSave} disabled={!form.partner_name || saving} className="bg-[#0F172A] hover:bg-[#1E293B] text-white">
