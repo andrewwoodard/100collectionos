@@ -1,7 +1,9 @@
 import { getNeonPool, json, newId, quoteIdent, readBody } from "./neon-db.js";
 import { ingestRemoteImages } from "./blob.js";
-import { requireAdmin } from "./require-session.js";
+import { requireAdmin, requireSession } from "./require-session.js";
+import { sendPortalEmail } from "./reset-email.js";
 import { handleStripeFunction, STRIPE_FUNCTIONS } from "./stripe-functions.js";
+import { randomUUID } from "node:crypto";
 
 const TABLE_SEARCH_FIELDS: Record<string, string[]> = {
   partners: ["partner_name", "company_name", "market", "primary_contact_name", "primary_contact_email", "stripe_billing_email"],
@@ -760,10 +762,450 @@ async function handleSyncPartnerToSupabase(res: any, body: any) {
   return json(res, 200, { action: "created", supabase_id: id });
 }
 
+const PORTAL_ORIGIN = (process.env.BETTER_AUTH_URL || "https://portal.the100collection.com").replace(/\/$/, "");
+
+function activationEmailHtml({
+  firstName,
+  partnerName,
+  acceptUrl,
+}: {
+  firstName: string;
+  partnerName: string;
+  acceptUrl: string;
+}) {
+  return `<!DOCTYPE html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
+<body style="margin:0;padding:0;background:#FAFBFC;font-family:Helvetica,Arial,sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#FAFBFC;padding:32px 0;">
+<tr><td align="center">
+<table width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:16px;overflow:hidden;">
+<tr><td style="background:#0D1B2A;padding:32px 40px;text-align:center;">
+<div style="color:#C9A96E;font-size:11px;font-weight:600;letter-spacing:2px;text-transform:uppercase;">The 100 Collection</div>
+</td></tr>
+<tr><td style="padding:40px;color:#0D1B2A;font-size:15px;line-height:1.6;">
+<p style="margin:0 0 16px;">Hi ${firstName},</p>
+<p style="margin:0 0 16px;">Your partner portal for <strong>${partnerName}</strong> is ready. Use the button below to activate your account. This link expires in 14 days.</p>
+<p style="margin:24px 0;text-align:center;">
+<a href="${acceptUrl}" style="display:inline-block;background:#0D1B2A;color:#ffffff;text-decoration:none;font-size:14px;font-weight:600;padding:12px 24px;border-radius:10px;">Activate portal</a>
+</p>
+<p style="margin:0;color:#64748B;font-size:13px;">If the button does not work, open this link:<br>${acceptUrl}</p>
+</td></tr>
+</table>
+</td></tr>
+</table>
+</body></html>`;
+}
+
+async function listPendingActivations(partnerId: string) {
+  const pool = getNeonPool();
+  const { rows } = await pool.query(
+    `SELECT id, data FROM base44.partner_invitation
+     WHERE data->>'partner_id' = $1
+       AND coalesce(data->>'invitation_type', '') = 'primary_activation'
+       AND coalesce(data->>'status', '') = 'pending'
+     ORDER BY created_date DESC NULLS LAST`,
+    [partnerId]
+  );
+  return rows.map((row) => ({ id: row.id, ...(row.data || {}) }));
+}
+
+async function patchInvitation(id: string, patch: Record<string, any>) {
+  const pool = getNeonPool();
+  await pool.query(
+    `UPDATE base44.partner_invitation
+     SET data = COALESCE(data, '{}'::jsonb) || $2::jsonb, updated_date = now()
+     WHERE id = $1`,
+    [id, JSON.stringify({ ...patch, updated_date: new Date().toISOString() })]
+  );
+}
+
+async function createInvitation(data: Record<string, any>) {
+  const pool = getNeonPool();
+  const id = newId();
+  const now = new Date().toISOString();
+  const record = { ...data, id, created_date: now, updated_date: now };
+  await pool.query(
+    `INSERT INTO base44.partner_invitation
+      (id, created_date, updated_date, created_by, created_by_id, is_sample, data)
+     VALUES ($1, now(), now(), $2, $2, false, $3::jsonb)`,
+    [id, data.invited_by_user_id || "portal", JSON.stringify(record)]
+  );
+  return record;
+}
+
+async function handleSendActivationEmail(req: any, res: any, body: any) {
+  const gate = await requireAdmin(req);
+  if ("error" in gate && gate.error) return json(res, gate.error, { error: gate.message });
+
+  const partnerId = String(body?.partner_id || "").trim();
+  if (!partnerId) return json(res, 400, { error: "partner_id required" });
+
+  const row = await getPartnerRow(partnerId);
+  if (!row) return json(res, 404, { error: "Partner not found" });
+  const partner = partnerRecord(row);
+  const email = String(partner.primary_contact_email || "").trim();
+  if (!email) return json(res, 400, { error: "No primary contact email set on this partner" });
+  if (partner.status === "inactive" || partner.status === "paused") {
+    return json(res, 400, { error: `Cannot send activation email to a ${partner.status} partner` });
+  }
+  if (partner.portal_user_id) {
+    return json(res, 400, { error: "This partner has already activated their portal" });
+  }
+
+  const admin = gate.session.user as { id?: string; email?: string; name?: string; full_name?: string };
+  const firstName = String(partner.primary_contact_name || "").split(" ")[0]?.trim() || "there";
+  const partnerName = partner.partner_name || "your partner";
+  const previewOnly = !!body?.preview_only;
+
+  if (previewOnly) {
+    const html = activationEmailHtml({
+      firstName,
+      partnerName,
+      acceptUrl: `${PORTAL_ORIGIN}/portal/accept-invite`,
+    });
+    return json(res, 200, {
+      ok: true,
+      preview_html: html,
+      first_name: firstName,
+      partner_name: partnerName,
+      email,
+    });
+  }
+
+  const existing = await listPendingActivations(partner.id);
+  let token = "";
+  let invitationId = "";
+  if (body?.resend) {
+    for (const inv of existing) await patchInvitation(inv.id, { status: "revoked" });
+  } else {
+    const valid = existing.find((inv) => inv.expires_at && new Date(inv.expires_at) > new Date() && inv.token);
+    if (valid) {
+      token = String(valid.token);
+      invitationId = valid.id;
+    } else {
+      for (const inv of existing) await patchInvitation(inv.id, { status: "expired" });
+    }
+  }
+
+  if (!token) {
+    token = randomUUID();
+    const created = await createInvitation({
+      partner_id: partner.id,
+      partner_name: partnerName,
+      email,
+      invited_by_user_id: admin.id || null,
+      invited_by_name: admin.full_name || admin.name || admin.email || "Admin",
+      token,
+      expires_at: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(),
+      status: "pending",
+      invitation_type: "primary_activation",
+      partner_role: "owner",
+    });
+    invitationId = created.id;
+  }
+
+  const acceptUrl = `${PORTAL_ORIGIN}/portal/accept-invite?token=${encodeURIComponent(token)}`;
+  const html = activationEmailHtml({ firstName, partnerName, acceptUrl });
+  const sent = await sendPortalEmail({
+    to: email,
+    subject: `Activate your ${partnerName} portal`,
+    html,
+    text: `Hi ${firstName}, activate your portal for ${partnerName}: ${acceptUrl}`,
+  });
+
+  return json(res, 200, {
+    ok: true,
+    invitation_id: invitationId,
+    resend_status: sent.skipped ? "skipped" : sent.ok ? "sent" : "failed",
+    resend_error: "error" in sent ? sent.error || null : null,
+    email,
+    partner_name: partnerName,
+  });
+}
+
+async function handleAcceptPartnerInvitation(req: any, res: any, body: any) {
+  const action = String(body?.action || "");
+  const token = String(body?.token || "").trim();
+  if (!action || !token) return json(res, 400, { error: "action and token required" });
+
+  const pool = getNeonPool();
+  const { rows } = await pool.query(
+    `SELECT id, data FROM base44.partner_invitation WHERE data->>'token' = $1 LIMIT 1`,
+    [token]
+  );
+  if (!rows[0]) return json(res, 404, { error: "not_found" });
+  const inv = { id: rows[0].id, ...(rows[0].data || {}) };
+  const partnerRow = await getPartnerRow(String(inv.partner_id || ""));
+  if (!partnerRow) return json(res, 404, { error: "Partner not found" });
+  const partner = partnerRecord(partnerRow);
+
+  if (action === "lookup") {
+    let status = inv.status || "pending";
+    if (status === "pending" && inv.expires_at && new Date(inv.expires_at) < new Date()) status = "expired";
+    return json(res, 200, {
+      ok: true,
+      status,
+      email: inv.email,
+      partner_name: partner.partner_name || "",
+      invited_by_name: inv.invited_by_name || "",
+      expires_at: inv.expires_at,
+      invitation_type: inv.invitation_type || "teammate",
+    });
+  }
+
+  if (action !== "accept") return json(res, 400, { error: "Unknown action" });
+
+  const gate = await requireSession(req);
+  if ("error" in gate && gate.error) return json(res, 401, { error: "auth_required" });
+  const sessionUser = gate.session.user as { id?: string; email?: string; name?: string; role?: string };
+  const email = String(sessionUser.email || "").trim().toLowerCase();
+  const isAdmin = sessionUser.role === "admin";
+  if (!isAdmin && email !== String(inv.email || "").trim().toLowerCase()) {
+    return json(res, 400, { error: "email_mismatch", expected: inv.email });
+  }
+  if (inv.status === "accepted") return json(res, 400, { error: "already_accepted" });
+  if (inv.status === "revoked") return json(res, 400, { error: "revoked" });
+  if (inv.expires_at && new Date(inv.expires_at) < new Date()) return json(res, 400, { error: "expired" });
+
+  const { rows: portalUsers } = await pool.query(
+    `SELECT id, data FROM base44."user" WHERE lower(data->>'email') = $1 LIMIT 1`,
+    [email]
+  );
+  let portalUserId = portalUsers[0]?.id ? String(portalUsers[0].id) : "";
+  if (!portalUserId) {
+    portalUserId = newId();
+    const now = new Date().toISOString();
+    await pool.query(
+      `INSERT INTO base44."user" (id, created_date, updated_date, data)
+       VALUES ($1, now(), now(), $2::jsonb)`,
+      [portalUserId, JSON.stringify({
+        id: portalUserId,
+        email,
+        full_name: sessionUser.name || email.split("@")[0],
+        role: isAdmin ? "admin" : "partner",
+        partner_role: inv.partner_role || "owner",
+        created_date: now,
+        updated_date: now,
+      })]
+    );
+  } else if (!isAdmin) {
+    await pool.query(
+      `UPDATE base44."user"
+       SET data = COALESCE(data, '{}'::jsonb) || $2::jsonb, updated_date = now()
+       WHERE id = $1`,
+      [portalUserId, JSON.stringify({
+        role: "partner",
+        partner_role: inv.partner_role || "owner",
+      })]
+    );
+  }
+
+  const ids = Array.isArray(partner.portal_user_ids) ? [...partner.portal_user_ids] : [];
+  if (partner.portal_user_id && !ids.includes(partner.portal_user_id)) ids.push(partner.portal_user_id);
+  if (!ids.includes(portalUserId)) ids.push(portalUserId);
+  const isPrimary = (inv.invitation_type || "teammate") === "primary_activation";
+  await pool.query(
+    `UPDATE base44.partner
+     SET data = COALESCE(data, '{}'::jsonb) || $2::jsonb, updated_date = now()
+     WHERE id = $1`,
+    [partner.id, JSON.stringify({
+      portal_user_ids: ids,
+      ...(isPrimary ? { portal_user_id: portalUserId } : {}),
+    })]
+  );
+  await patchInvitation(inv.id, {
+    status: "accepted",
+    accepted_at: new Date().toISOString(),
+    accepted_by_user_id: portalUserId,
+  });
+
+  return json(res, 200, { ok: true, redirect: "/portal/dashboard" });
+}
+
+function teamInviteEmailHtml({
+  inviterName,
+  partnerName,
+  acceptUrl,
+}: {
+  inviterName: string;
+  partnerName: string;
+  acceptUrl: string;
+}) {
+  return `<!DOCTYPE html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
+<body style="margin:0;padding:0;background:#FAFBFC;font-family:Helvetica,Arial,sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#FAFBFC;padding:32px 0;">
+<tr><td align="center">
+<table width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:16px;overflow:hidden;">
+<tr><td style="background:#0D1B2A;padding:32px 40px;text-align:center;">
+<div style="color:#C9A96E;font-size:11px;font-weight:600;letter-spacing:2px;text-transform:uppercase;">The 100 Collection</div>
+</td></tr>
+<tr><td style="padding:40px;color:#0D1B2A;font-size:15px;line-height:1.6;">
+<h2 style="margin:0 0 16px;font-size:24px;font-weight:500;">You're invited</h2>
+<p style="margin:0 0 16px;"><strong>${inviterName}</strong> invited you to join <strong>${partnerName}</strong>'s team on the partner portal.</p>
+<p style="margin:0 0 24px;color:#64748B;font-size:13px;">This invitation expires in 14 days.</p>
+<p style="margin:0 0 24px;text-align:center;">
+<a href="${acceptUrl}" style="display:inline-block;background:#0D1B2A;color:#ffffff;text-decoration:none;font-size:14px;font-weight:600;padding:12px 24px;border-radius:10px;">Accept invitation</a>
+</p>
+<p style="margin:0;color:#64748B;font-size:13px;">${acceptUrl}</p>
+</td></tr>
+</table>
+</td></tr>
+</table>
+</body></html>`;
+}
+
+async function callerIsAdmin(req: any) {
+  const gate = await requireAdmin(req);
+  return !("error" in gate && gate.error);
+}
+
+async function handleCreatePartnerInvitation(req: any, res: any, body: any) {
+  const gate = await requireSession(req);
+  if ("error" in gate && gate.error) return json(res, 401, { error: "Unauthorized" });
+  const user = gate.session.user as {
+    id?: string;
+    email?: string;
+    name?: string;
+    full_name?: string;
+    role?: string;
+    partner_role?: string;
+    portalId?: string;
+  };
+
+  const partnerId = String(body?.partner_id || "").trim();
+  const email = String(body?.email || "").trim().toLowerCase();
+  const partnerRole = String(body?.partner_role || "operations");
+  if (!partnerId || !email.includes("@")) {
+    return json(res, 400, { error: "partner_id and email are required" });
+  }
+
+  const row = await getPartnerRow(partnerId);
+  if (!row) return json(res, 404, { error: "Partner not found" });
+  const partner = partnerRecord(row);
+  const memberIds = teamUserIds(partner);
+  const isAdmin = await callerIsAdmin(req);
+  const callerIds = [user.id, user.portalId].filter(Boolean) as string[];
+  if (!isAdmin && !callerIds.some((id) => memberIds.includes(id))) {
+    return json(res, 403, { error: "You do not have access to this partner organization" });
+  }
+  if (!isAdmin && (user.partner_role || "owner") !== "owner") {
+    return json(res, 403, { error: "Only the account owner can invite teammates" });
+  }
+
+  const pool = getNeonPool();
+  if (memberIds.length) {
+    const { rows: members } = await pool.query(
+      `SELECT id FROM base44."user"
+       WHERE lower(data->>'email') = $1 AND id = ANY($2::text[])
+       LIMIT 1`,
+      [email, memberIds]
+    );
+    if (members[0]) return json(res, 409, { error: "This email is already a team member" });
+  }
+
+  const { rows: pending } = await pool.query(
+    `SELECT id FROM base44.partner_invitation
+     WHERE data->>'partner_id' = $1
+       AND lower(data->>'email') = $2
+       AND coalesce(data->>'status', '') = 'pending'`,
+    [partner.id, email]
+  );
+  for (const inv of pending) await patchInvitation(inv.id, { status: "revoked" });
+
+  const token = randomUUID();
+  const inviterName = user.full_name || user.name || user.email || "A teammate";
+  const partnerName = partner.partner_name || "your partner";
+  const created = await createInvitation({
+    partner_id: partner.id,
+    partner_name: partnerName,
+    email,
+    invited_by_user_id: user.portalId || user.id || null,
+    invited_by_name: inviterName,
+    token,
+    expires_at: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(),
+    status: "pending",
+    invitation_type: "teammate",
+    partner_role: partnerRole,
+  });
+
+  const acceptUrl = `${PORTAL_ORIGIN}/portal/accept-invite?token=${encodeURIComponent(token)}`;
+  const sent = await sendPortalEmail({
+    to: email,
+    subject: `You're invited to ${partnerName}'s partner portal`,
+    html: teamInviteEmailHtml({ inviterName, partnerName, acceptUrl }),
+    text: `${inviterName} invited you to join ${partnerName}'s team. Accept here: ${acceptUrl}`,
+  });
+
+  return json(res, 200, {
+    ok: true,
+    invitation_id: created.id,
+    resend_status: sent.skipped ? "skipped" : sent.ok ? "sent" : "failed",
+    resend_error: "error" in sent ? sent.error || null : null,
+  });
+}
+
+async function handleManagePartnerInvitation(req: any, res: any, body: any) {
+  const gate = await requireSession(req);
+  if ("error" in gate && gate.error) return json(res, 401, { error: "Unauthorized" });
+  const user = gate.session.user as { id?: string; portalId?: string; email?: string; name?: string; full_name?: string };
+  const invitationId = String(body?.invitation_id || "").trim();
+  if (!invitationId) return json(res, 400, { error: "invitation_id required" });
+
+  const pool = getNeonPool();
+  const { rows } = await pool.query(
+    `SELECT id, data FROM base44.partner_invitation WHERE id = $1 OR data->>'id' = $1 LIMIT 1`,
+    [invitationId]
+  );
+  if (!rows[0]) return json(res, 404, { error: "Invitation not found" });
+  const invitation = { id: rows[0].id, ...(rows[0].data || {}) };
+  const partnerRow = await getPartnerRow(String(invitation.partner_id || ""));
+  if (!partnerRow) return json(res, 404, { error: "Partner not found" });
+  const partner = partnerRecord(partnerRow);
+  const isAdmin = await callerIsAdmin(req);
+  const callerIds = [user.id, user.portalId].filter(Boolean);
+  if (!isAdmin && !callerIds.includes(partner.portal_user_id)) {
+    return json(res, 403, { error: "Only the primary contact or an admin can manage invitations" });
+  }
+
+  if (body?.action === "revoke") {
+    await patchInvitation(invitation.id, { status: "revoked" });
+    return json(res, 200, { ok: true, status: "revoked" });
+  }
+
+  if (body?.action !== "resend") return json(res, 400, { error: "Unknown action" });
+  if (invitation.status === "accepted") {
+    return json(res, 400, { error: "Cannot resend an accepted invitation" });
+  }
+
+  const expiresAt = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString();
+  await patchInvitation(invitation.id, { status: "pending", expires_at: expiresAt });
+  const partnerName = partner.partner_name || "your partner";
+  const inviterName = invitation.invited_by_name || user.full_name || user.name || user.email || "A teammate";
+  const acceptUrl = `${PORTAL_ORIGIN}/portal/accept-invite?token=${encodeURIComponent(invitation.token || "")}`;
+  const sent = await sendPortalEmail({
+    to: invitation.email,
+    subject: `You're invited to ${partnerName}'s partner portal`,
+    html: teamInviteEmailHtml({ inviterName, partnerName, acceptUrl }),
+    text: `${inviterName} invited you to join ${partnerName}'s team. Accept here: ${acceptUrl}`,
+  });
+  return json(res, 200, {
+    ok: true,
+    status: "pending",
+    expires_at: expiresAt,
+    resend_status: sent.skipped ? "skipped" : sent.ok ? "sent" : "failed",
+    resend_error: "error" in sent ? sent.error || null : null,
+  });
+}
+
 export const LOCAL_FUNCTIONS = new Set([
   "supabaseData",
   "supabaseProperties",
   "syncPartnerToSupabase",
+  "sendActivationEmail",
+  "createPartnerInvitation",
+  "managePartnerInvitation",
+  "acceptPartnerInvitation",
   "getPartnerTeam",
   "managePartnerTeam",
   "getUserById",
@@ -782,6 +1224,10 @@ export async function handleNeonFunction(req: any, res: any, functionName: strin
     if (functionName === "supabaseData") await handleSupabaseData(res, body);
     else if (functionName === "supabaseProperties") await handleSupabaseProperties(res, body);
     else if (functionName === "syncPartnerToSupabase") await handleSyncPartnerToSupabase(res, body);
+    else if (functionName === "sendActivationEmail") await handleSendActivationEmail(req, res, body);
+    else if (functionName === "createPartnerInvitation") await handleCreatePartnerInvitation(req, res, body);
+    else if (functionName === "managePartnerInvitation") await handleManagePartnerInvitation(req, res, body);
+    else if (functionName === "acceptPartnerInvitation") await handleAcceptPartnerInvitation(req, res, body);
     else if (functionName === "getPartnerTeam") await handleGetPartnerTeam(res, body);
     else if (functionName === "managePartnerTeam") await handleManagePartnerTeam(res, body);
     else if (functionName === "getUserById") await handleGetUserById(req, res, body);

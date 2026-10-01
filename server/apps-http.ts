@@ -61,8 +61,11 @@ export async function handleAppsRequest(req: any, res: any) {
     }
 
     if (kind === "functions" && name && LOCAL_FUNCTIONS.has(name)) {
-      const gate = await requireSession(req);
-      if ("error" in gate && gate.error) return json(res, gate.error, { error: gate.message });
+      const publicFunction = name === "acceptPartnerInvitation";
+      if (!publicFunction) {
+        const gate = await requireSession(req);
+        if ("error" in gate && gate.error) return json(res, gate.error, { error: gate.message });
+      }
       const handled = await handleNeonFunction(req, res, name);
       if (handled) return;
     }

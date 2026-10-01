@@ -80,7 +80,7 @@ export function takeResetResult(email: string) {
   return entry || null;
 }
 
-async function sendResendEmail({
+export async function sendPortalEmail({
   to,
   subject,
   html,
@@ -155,7 +155,7 @@ export async function deliverPasswordResetEmail({
   };
   if (!email) return { ok: false, skipped: "missing email", url };
 
-  const result = await sendResendEmail({
+  const result = await sendPortalEmail({
     to: email,
     subject: "Reset your 100 Collection password",
     html: resetEmailHtml(user.name || "", url),
@@ -178,7 +178,7 @@ export async function deliverPasswordResetEmail({
 export async function deliverMagicLinkEmail({ email, url }: { email: string; url: string }) {
   const to = String(email || "").trim();
   if (!to) return { ok: false as const, error: "missing email" };
-  const result = await sendResendEmail({
+  const result = await sendPortalEmail({
     to,
     subject: "Your 100 Collection sign-in link",
     html: magicLinkEmailHtml(url),
