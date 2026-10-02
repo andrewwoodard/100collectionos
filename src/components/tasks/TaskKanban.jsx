@@ -1,6 +1,7 @@
 import React from "react";
 import StatusBadge from "../shared/StatusBadge";
 import { format } from "date-fns";
+import { Archive, ArchiveRestore, Check } from "lucide-react";
 
 const columns = [
   { key: "not_started", label: "Not Started", color: "border-gray-300" },
@@ -9,7 +10,7 @@ const columns = [
   { key: "complete", label: "Complete", color: "border-emerald-400" },
 ];
 
-export default function TaskKanban({ tasks, onUpdateTask }) {
+export default function TaskKanban({ tasks, onComplete, onArchive }) {
   return (
     <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
       {columns.map(col => {
@@ -31,6 +32,17 @@ export default function TaskKanban({ tasks, onUpdateTask }) {
                     )}
                   </div>
                   {task.assigned_to && <p className="text-xs text-gray-400 mt-1">{task.assigned_to}</p>}
+                  <div className="flex items-center gap-2 mt-2">
+                    {task.status !== "complete" && (
+                      <button type="button" className="text-[11px] font-medium text-emerald-700 inline-flex items-center gap-1" onClick={() => onComplete?.(task)}>
+                        <Check className="w-3 h-3" /> Complete
+                      </button>
+                    )}
+                    <button type="button" className="text-[11px] font-medium text-orange-700 inline-flex items-center gap-1" onClick={() => onArchive?.(task, !task.archived)}>
+                      {task.archived ? <ArchiveRestore className="w-3 h-3" /> : <Archive className="w-3 h-3" />}
+                      {task.archived ? "Restore" : "Archive"}
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>

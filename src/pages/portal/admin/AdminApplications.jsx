@@ -12,6 +12,16 @@ import BatchApproveDialog from "@/components/admin/BatchApproveDialog";
 import BulkDeleteSpamModal from "@/components/admin/BulkDeleteSpamModal";
 import PropertySubmissionsList from "@/components/admin/PropertySubmissionsList";
 
+function externalUrl(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  const embedded = raw.match(/https?:\/\/.+/i);
+  if (embedded && embedded.index > 0) return embedded[0].replace(/^http:\/\//i, "https://");
+  if (/^https:\/\//i.test(raw)) return raw;
+  if (/^http:\/\//i.test(raw)) return raw.replace(/^http:\/\//i, "https://");
+  return `https://${raw.replace(/^\/+/, "")}`;
+}
+
 const STATUS_STYLES = {
   pending:           { cls: "bg-amber-50 text-amber-700 border-amber-200",       label: "Pending" },
   approved:          { cls: "bg-emerald-50 text-emerald-700 border-emerald-200", label: "Approved" },
@@ -536,7 +546,7 @@ function ApplicationDetail({ app, onBack, onAction, onRestore, onDelete, onToggl
             <div key={f.label}>
               <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mb-1">{f.label}</div>
               {f.link ? (
-                <a href={f.value} target="_blank" rel="noopener noreferrer" className="text-sm text-[#C9A96E] hover:underline break-all">{f.value}</a>
+                <a href={externalUrl(f.value)} target="_blank" rel="noopener noreferrer" className="text-sm text-[#C9A96E] hover:underline break-all">{externalUrl(f.value)}</a>
               ) : (
                 <div className="text-sm text-[#0D1B2A]">{f.value}</div>
               )}
@@ -612,8 +622,8 @@ function ApplicationDetail({ app, onBack, onAction, onRestore, onDelete, onToggl
                 <div key={prop.id || i} className="border border-slate-100 rounded-xl p-3">
                   <div className="text-sm font-medium text-[#0D1B2A]">{prop.property_name || `Untitled Property ${i + 1}`}</div>
                   {prop.listing_url && (
-                    <a href={prop.listing_url} target="_blank" rel="noopener noreferrer" className="text-xs text-[#C9A96E] hover:underline break-all block mt-0.5">
-                      {prop.listing_url}
+                    <a href={externalUrl(prop.listing_url)} target="_blank" rel="noopener noreferrer" className="text-xs text-[#C9A96E] hover:underline break-all block mt-0.5">
+                      {externalUrl(prop.listing_url)}
                     </a>
                   )}
                   {prop.notes && <p className="text-xs text-slate-500 mt-1.5">{prop.notes}</p>}

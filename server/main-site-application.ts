@@ -6,6 +6,16 @@ function asString(value: unknown) {
   return String(value).trim();
 }
 
+function externalUrl(value: unknown) {
+  const raw = asString(value);
+  if (!raw) return "";
+  const embedded = raw.match(/https?:\/\/.+/i);
+  if (embedded && embedded.index > 0) return embedded[0].replace(/^http:\/\//i, "https://");
+  if (/^https:\/\//i.test(raw)) return raw;
+  if (/^http:\/\//i.test(raw)) return raw.replace(/^http:\/\//i, "https://");
+  return `https://${raw.replace(/^\/+/, "")}`;
+}
+
 function asEmail(value: unknown) {
   return asString(value).toLowerCase();
 }
@@ -104,7 +114,7 @@ function mapProperties(payload: any) {
       return {
         id: newId(),
         property_name: name,
-        listing_url: listing,
+        listing_url: externalUrl(listing),
         notes: asString(row?.details || row?.notes || row?.description),
       };
     })
@@ -196,15 +206,15 @@ export function mapMainSiteApplication(rawBody: any) {
     email,
     phone: phone || null,
     company_name: company || null,
-    website: website || null,
+    website: website ? externalUrl(website) : null,
     property_count: propertyCount || null,
     property_locations: market || null,
     property_address: market || null,
     how_heard: howHeard || null,
     message: message || null,
-    listing_url: submitted_properties[0]?.listing_url || asString(payload.listing_url || payload.listingUrl) || null,
+    listing_url: externalUrl(submitted_properties[0]?.listing_url || asString(payload.listing_url || payload.listingUrl)) || null,
     has_direct_booking_website: hasDirect == null || hasDirect === "" ? null : asBool(hasDirect),
-    direct_booking_website: asString(payload.direct_booking_website || payload.directBookingWebsite) || null,
+    direct_booking_website: externalUrl(payload.direct_booking_website || payload.directBookingWebsite) || null,
     social_media_links: [],
     submitted_properties,
     applicant_type: track,

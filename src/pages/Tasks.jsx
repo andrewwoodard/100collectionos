@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { sb } from "@/lib/supabase";
 import { base44 } from "@/api/base44Client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, Search, List, LayoutGrid } from "lucide-react";
+import { Plus, Search, List, LayoutGrid, Archive, ArchiveRestore, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -12,6 +12,7 @@ import TaskFormModal from "../components/tasks/TaskFormModal";
 import TaskKanban from "../components/tasks/TaskKanban";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { format } from "date-fns";
+import { useToast } from "@/components/ui/use-toast";
 
 export default function Tasks() {
   const [search, setSearch] = useState("");
@@ -19,7 +20,9 @@ export default function Tasks() {
   const [priorityFilter, setPriorityFilter] = useState("all");
   const [view, setView] = useState("list");
   const [modalOpen, setModalOpen] = useState(false);
+  const [showArchived, setShowArchived] = useState(false);
   const queryClient = useQueryClient();
+  const { toast } = useToast();
 
   const { data: tasks = [] } = useQuery({
     queryKey: ["tasks"],
@@ -46,21 +49,57 @@ export default function Tasks() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["tasks"] }),
   });
 
+  const setTaskState = async (task, data, successTitle) => {
+    try {
+      await updateMutation.mutateAsync({ id: task.id, data });
+      toast({ title: successTitle });
+    } catch (error) {
+      toast({ title: "Couldn't update task", description: error.message, variant: "destructive" });
+    }
+  };
+
+  const markComplete = (task) => {
+    setTaskState(task, { status: "complete", completed_at: new Date().toISOString() }, `Completed ${task.title}.`);
+  };
+
+  const archiveTask = (task, archive) => {
+    const message = archive
+      ? `Archive "${task.title}"? It will be hidden until you show archived tasks.`
+      : `Restore "${task.title}" to the task list?`;
+    if (!confirm(message)) return;
+    setTaskState(
+      task,
+      { archived: archive, archived_at: archive ? new Date().toISOString() : null },
+      `${archive ? "Archived" : "Restored"} ${task.title}.`
+    );
+  };
+
   const filtered = tasks.filter(t => {
     const matchSearch = !search || t.title?.toLowerCase().includes(search.toLowerCase());
     const matchStatus = statusFilter === "all" || t.status === statusFilter;
     const matchPriority = priorityFilter === "all" || t.priority === priorityFilter;
-    return matchSearch && matchStatus && matchPriority;
+    const matchArchive = showArchived ? !!t.archived : !t.archived;
+    return matchSearch && matchStatus && matchPriority && matchArchive;
   });
+  const openCount = tasks.filter(t => !t.archived && t.status !== "complete").length;
 
   return (
     <div className="space-y-5 animate-fade-up">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h2 className="text-xl font-bold text-gray-900">Tasks</h2>
-          <p className="text-sm text-gray-500">{tasks.filter(t => t.status !== "complete").length} open tasks</p>
+          <p className="text-sm text-gray-500">{openCount} open tasks</p>
         </div>
         <div className="flex gap-2">
+          <Button
+            variant={showArchived ? "default" : "outline"}
+            size="sm"
+            onClick={() => setShowArchived((value) => !value)}
+            className={showArchived ? "bg-[#0F172A] text-white" : ""}
+          >
+            <Archive className="w-4 h-4 mr-1.5" />
+            {showArchived ? "Showing archived" : "Archived"}
+          </Button>
           <div className="flex bg-white border border-gray-200 rounded-lg overflow-hidden">
             <button onClick={() => setView("list")} className={`px-3 py-1.5 text-xs ${view === "list" ? "bg-gray-100 font-medium" : "text-gray-500"}`}>
               <List className="w-4 h-4" />
@@ -103,7 +142,11 @@ export default function Tasks() {
       </div>
 
       {view === "kanban" ? (
-        <TaskKanban tasks={filtered} onUpdateTask={(id, data) => updateMutation.mutate({ id, data })} />
+        <TaskKanban
+          tasks={filtered}
+          onComplete={markComplete}
+          onArchive={archiveTask}
+        />
       ) : filtered.length === 0 ? (
         <EmptyState icon={List} title="No tasks found" actionLabel="Add Task" onAction={() => setModalOpen(true)} />
       ) : (
@@ -117,13 +160,14 @@ export default function Tasks() {
                 <TableHead className="text-xs font-semibold text-gray-500">Priority</TableHead>
                 <TableHead className="text-xs font-semibold text-gray-500">Status</TableHead>
                 <TableHead className="text-xs font-semibold text-gray-500">Due</TableHead>
+                <TableHead className="text-xs font-semibold text-gray-500 w-[180px]">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {filtered.map(t => (
                 <TableRow key={t.id} className="hover:bg-gray-50/50">
                   <TableCell>
-                    <p className="text-sm font-medium text-gray-900">{t.title}</p>
+                    <p className={`text-sm font-medium text-gray-900 ${t.status === "complete" ? "line-through text-gray-400" : ""}`}>{t.title}</p>
                     {t.property_name && <p className="text-xs text-gray-400">{t.property_name}</p>}
                   </TableCell>
                   <TableCell className="text-sm text-gray-600">{t.partner_name || "—"}</TableCell>
@@ -131,6 +175,19 @@ export default function Tasks() {
                   <TableCell><StatusBadge status={t.priority} /></TableCell>
                   <TableCell><StatusBadge status={t.status} /></TableCell>
                   <TableCell className="text-xs text-gray-400">{t.due_date ? format(new Date(t.due_date), "MMM d") : "—"}</TableCell>
+                  <TableCell>
+                    <div className="flex items-center gap-1">
+                      {t.status !== "complete" && (
+                        <Button variant="ghost" size="sm" className="h-7 px-2 text-emerald-700" onClick={() => markComplete(t)}>
+                          <Check className="w-3.5 h-3.5 mr-1" /> Complete
+                        </Button>
+                      )}
+                      <Button variant="ghost" size="sm" className="h-7 px-2 text-orange-700" onClick={() => archiveTask(t, !t.archived)}>
+                        {t.archived ? <ArchiveRestore className="w-3.5 h-3.5 mr-1" /> : <Archive className="w-3.5 h-3.5 mr-1" />}
+                        {t.archived ? "Restore" : "Archive"}
+                      </Button>
+                    </div>
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>
