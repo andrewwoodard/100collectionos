@@ -5,7 +5,7 @@ import { fetchAllProperties } from "@/lib/fetchAllProperties";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { createPageUrl } from "@/utils";
-import { Plus, MoreHorizontal, Filter, ChevronUp, ChevronDown, RefreshCw, Package, Building2, GitBranch, Send, Check, Clock } from "lucide-react";
+import { Plus, MoreHorizontal, Filter, ChevronUp, ChevronDown, RefreshCw, Package, Building2, GitBranch, Send, Check, Clock, Archive, ArchiveRestore, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow
@@ -75,6 +75,7 @@ export default function Partners() {
   const toggleSort = (col) => setSort(prev => ({ col, dir: prev.col === col && prev.dir === "asc" ? "desc" : "asc" }));
   const [modalOpen, setModalOpen] = useState(false);
   const [editingPartner, setEditingPartner] = useState(null);
+  const [showArchived, setShowArchived] = useState(false);
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -169,6 +170,8 @@ export default function Partners() {
         portal_user_id: b44?.portal_user_id || null,
         primary_contact_email: p.primary_contact_email || b44?.primary_contact_email || "",
         is_up_to_date: b44?.is_up_to_date ?? p.is_up_to_date ?? false,
+        archived: !!(b44?.archived || p.archived),
+        status: b44?.status || p.status,
         _childCount: childCountByParentId[p.base44_partner_id || p.id] || 0,
       };
     });
@@ -277,10 +280,37 @@ export default function Partners() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["partners-supabase"] }),
   });
 
-  const deleteMutation = useMutation({
-    mutationFn: (id) => sb.delete("partners", id),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["partners-supabase"] }),
-  });
+  const partnerCopyIds = (partner) => {
+    const ids = new Set([partner.id, partner.base44_partner_id].filter(Boolean));
+    for (const row of sbPartners) {
+      if (row.id === partner.id || row.base44_partner_id === partner.id || row.base44_partner_id === partner.base44_partner_id) {
+        ids.add(row.id);
+      }
+    }
+    return [...ids];
+  };
+
+  const updatePartnerCopies = async (partner, patch) => {
+    const b44Id = partner.base44_partner_id || partner.id;
+    let saved = false;
+    try {
+      await base44.entities.Partner.update(b44Id, patch);
+      saved = true;
+    } catch (_) {}
+    for (const id of partnerCopyIds(partner)) {
+      try {
+        await sb.update("partners", id, patch);
+        saved = true;
+      } catch (_) {}
+    }
+    if (!saved) throw new Error("Partner record was not found");
+  };
+
+  const refreshPartnerLists = () => {
+    queryClient.invalidateQueries({ queryKey: ["partners-supabase"] });
+    queryClient.invalidateQueries({ queryKey: ["base44-partners"] });
+    queryClient.invalidateQueries({ queryKey: ["partnerOnboarding"] });
+  };
 
   const handleToggleUpToDate = async (partner, checked) => {
     const b44Id = partner.base44_partner_id || partner.id;
@@ -304,19 +334,41 @@ export default function Partners() {
     }
   };
 
-  const markInactive = async (partner) => {
-    const childCount = partner._childCount || 0;
-    const warning = childCount > 0
-      ? `\n\n⚠️ This partner has ${childCount} sub-brand${childCount !== 1 ? "s" : ""}. They will remain active. Consider archiving them too if this partner is closing operations entirely.`
-      : "";
-    if (!confirm(`Mark "${partner.partner_name}" and all their properties as inactive?${warning}`)) return;
-    await sb.update("partners", partner.id, { status: "inactive" });
-    const propsRes = await sb.list("properties", { partner_id: partner.id });
-    const props = propsRes.properties || [];
-    await Promise.all(props.map(p => base44.functions.invoke("supabaseProperties", { action: "update", id: p.id, data: { status: "inactive" } })));
-    queryClient.invalidateQueries({ queryKey: ["partners-supabase"] });
-    queryClient.invalidateQueries({ queryKey: ["base44-partners"] });
-    queryClient.invalidateQueries({ queryKey: ["properties"] });
+  const archivePartner = async (partner, archive) => {
+    const label = archive ? "Archive" : "Restore";
+    const message = archive
+      ? `Archive "${partner.partner_name}"? They will be hidden from this list until you show archived partners.`
+      : `Restore "${partner.partner_name}" to the partner list?`;
+    if (!confirm(message)) return;
+    try {
+      await updatePartnerCopies(partner, {
+        archived: archive,
+        archived_at: archive ? new Date().toISOString() : null,
+      });
+      refreshPartnerLists();
+      toast({ title: `${label}d ${partner.partner_name}.` });
+    } catch (e) {
+      toast({ title: `Failed to ${label.toLowerCase()}`, description: e.message, variant: "destructive" });
+    }
+  };
+
+  const deletePartner = async (partner) => {
+    if (!confirm(`Delete "${partner.partner_name}" from the partner directory? This cannot be undone.`)) return;
+    try {
+      const b44Id = partner.base44_partner_id || partner.id;
+      try { await base44.entities.Partner.delete(b44Id); } catch (_) {}
+      for (const id of partnerCopyIds(partner)) {
+        try { await sb.delete("partners", id); } catch (_) {}
+      }
+      const onboarding = await base44.entities.PartnerOnboarding.filter({ partner_id: b44Id });
+      for (const row of onboarding || []) {
+        try { await base44.entities.PartnerOnboarding.delete(row.id); } catch (_) {}
+      }
+      refreshPartnerLists();
+      toast({ title: `Deleted ${partner.partner_name}.` });
+    } catch (e) {
+      toast({ title: "Failed to delete", description: e.message, variant: "destructive" });
+    }
   };
 
   const handleSave = async (formData) => {
@@ -430,12 +482,13 @@ export default function Partners() {
     const matchesType = filters.partnerType === "all" || p.partner_type === filters.partnerType;
     const matchesRegion = filters.region === "all" || p.region === filters.region;
     const matchesContract = filters.contractStatus === "all" || p.contract_status === filters.contractStatus;
+    const matchesArchive = showArchived ? !!p.archived : !p.archived;
     // Segment tab filter (top-level, drives the URL ?type= param)
     const matchesSegment =
       segment === "all" ? true :
       segment === "subbrand" ? !!p.parent_partner_id :
       p.partner_type === segment;
-    return matchesSearch && matchesStatus && matchesType && matchesRegion && matchesContract && matchesSegment;
+    return matchesSearch && matchesStatus && matchesType && matchesRegion && matchesContract && matchesSegment && matchesArchive;
   }).sort((a, b) => {
     const { col, dir } = sort;
     let aVal, bVal;
@@ -496,16 +549,25 @@ export default function Partners() {
     return result;
   }, [filtered, showSubBrands, parentNameById]);
 
-  const topLevelCount = useMemo(() => partners.filter(p => !p.parent_partner_id).length, [partners]);
-  const subBrandCount = useMemo(() => partners.filter(p => p.parent_partner_id).length, [partners]);
+  const topLevelCount = useMemo(
+    () => partners.filter(p => !p.parent_partner_id && (!!p.archived === showArchived)).length,
+    [partners, showArchived]
+  );
+  const subBrandCount = useMemo(
+    () => partners.filter(p => p.parent_partner_id && (!!p.archived === showArchived)).length,
+    [partners, showArchived]
+  );
 
-  // Segment counts for the tab bar (reflect totals across all partners, not just filtered)
-  const segmentCounts = useMemo(() => ({
-    all: partners.length,
-    property_manager: partners.filter(p => p.partner_type === "property_manager").length,
-    owner: partners.filter(p => p.partner_type === "owner").length,
-    subbrand: subBrandCount,
-  }), [partners, subBrandCount]);
+  // Segment counts match the list: archived partners are counted only while Archived is on.
+  const segmentCounts = useMemo(() => {
+    const counted = partners.filter(p => !!p.archived === showArchived);
+    return {
+      all: counted.length,
+      property_manager: counted.filter(p => p.partner_type === "property_manager").length,
+      owner: counted.filter(p => p.partner_type === "owner").length,
+      subbrand: subBrandCount,
+    };
+  }, [partners, showArchived, subBrandCount]);
 
 
 
@@ -540,6 +602,15 @@ export default function Partners() {
               <DropdownMenuItem onClick={() => queryClient.invalidateQueries({ queryKey: ["partners"] })}>Sync from Site</DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
+          <Button
+            variant={showArchived ? "default" : "outline"}
+            size="sm"
+            onClick={() => setShowArchived((v) => !v)}
+            className={showArchived ? "bg-[#0F172A] text-white" : ""}
+          >
+            <Archive className="w-4 h-4 mr-1.5" />
+            {showArchived ? "Showing archived" : "Archived"}
+          </Button>
           <Button onClick={() => { setEditingPartner(null); setModalOpen(true); }} className="bg-[#0F172A] hover:bg-[#1E293B] text-white">
             <Plus className="w-4 h-4 mr-1.5" /> Add Partner
           </Button>
@@ -823,19 +894,26 @@ export default function Partners() {
                             <Send className="w-3.5 h-3.5 mr-1.5" /> Send portal invite
                           </DropdownMenuItem>
                         )}
-                        {p.status !== "inactive" && (
+                        {p.archived ? (
+                          <DropdownMenuItem
+                            onClick={(e) => { e.stopPropagation(); archivePartner(p, false); }}
+                          >
+                            <ArchiveRestore className="w-3.5 h-3.5 mr-1.5" /> Restore
+                          </DropdownMenuItem>
+                        ) : (
                           <DropdownMenuItem
                             className="text-orange-600"
-                            onClick={(e) => { e.stopPropagation(); markInactive(p); }}
-                          >Mark as Inactive</DropdownMenuItem>
+                            onClick={(e) => { e.stopPropagation(); archivePartner(p, true); }}
+                          >
+                            <Archive className="w-3.5 h-3.5 mr-1.5" /> Archive
+                          </DropdownMenuItem>
                         )}
                         <DropdownMenuItem
                           className="text-red-600"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            if (confirm("Delete this partner?")) deleteMutation.mutate(p.id);
-                          }}
-                        >Delete</DropdownMenuItem>
+                          onClick={(e) => { e.stopPropagation(); deletePartner(p); }}
+                        >
+                          <Trash2 className="w-3.5 h-3.5 mr-1.5" /> Delete
+                        </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </TableCell>
