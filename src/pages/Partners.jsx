@@ -360,7 +360,15 @@ export default function Partners() {
       if (!b44Partner?.id) {
         throw new Error("Partner was not created");
       }
+      const existingOnboarding = await base44.entities.PartnerOnboarding.filter({ partner_id: b44Partner.id });
+      if (!existingOnboarding?.length && formData.partner_name) {
+        await base44.entities.PartnerOnboarding.create({
+          partner_id: b44Partner.id,
+          partner_name: formData.partner_name,
+        });
+      }
       queryClient.invalidateQueries({ queryKey: ["base44-partners"] });
+      queryClient.invalidateQueries({ queryKey: ["partnerOnboarding"] });
       try {
         const res = await base44.functions.invoke("syncPartnerToSupabase", {
           partnerId: b44Partner.id,

@@ -228,14 +228,17 @@ export default function FunnelOnboardingTable({ highlightPartnerId, autoOpenModa
 
   // Creates a real Partner, then ensures a matching PartnerOnboarding row exists.
   const handleCreatePartner = async (form) => {
-    const newPartner = await base44.entities.Partner.create(form);
+    const partnerName = String(form.partner_name || "").trim();
+    if (!partnerName || partnerName === "New Partner") {
+      throw new Error("Enter the partner name before adding them to the funnel.");
+    }
+    const newPartner = await base44.entities.Partner.create({ ...form, partner_name: partnerName });
 
-    // Safety net: if the auto-hook didn't fire, explicitly create the onboarding row.
     const existing = onboarding.filter(r => r.partner_id === newPartner.id);
     if (existing.length === 0) {
       await base44.entities.PartnerOnboarding.create({
         partner_id: newPartner.id,
-        partner_name: newPartner.partner_name,
+        partner_name: partnerName,
       });
     }
 
@@ -306,12 +309,17 @@ export default function FunnelOnboardingTable({ highlightPartnerId, autoOpenModa
               const doneCount = CANONICAL_SUBTASKS.filter(t => isDone(row[t.dbField])).length;
               const partner = row.partner_id ? partnerMap[row.partner_id] : null;
               const funnelStage = partner?.funnel_stage || null;
+              const storedName = String(row.partner_name || "").trim();
+              const partnerName = String(partner?.partner_name || "").trim();
+              const displayName = (!storedName || storedName === "New Partner") && partnerName
+                ? partnerName
+                : storedName;
 
               return (
                 <tr key={row.id} id={row.partner_id ? `funnel-row-${row.partner_id}` : undefined} className={cn("border-b border-gray-50 hover:bg-gray-50/60 group", ri % 2 !== 0 && "bg-gray-50/30", row.partner_id === highlightPartnerId && "ring-2 ring-amber-300 ring-inset")}>
                   {/* Partner name */}
                   <td className="sticky left-0 bg-white z-10 px-4 py-2 border-r border-gray-100">
-                    <TextCell value={row.partner_name}
+                    <TextCell value={displayName === "New Partner" ? "" : displayName}
                       onChange={v => updateMutation.mutate({ id: row.id, data: { partner_name: v } })}
                       placeholder="Partner name" />
                   </td>
