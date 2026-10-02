@@ -90,10 +90,11 @@ export default function AdminEmailPreviews() {
   };
 
   // Fetch preview from getEmailPreview (non-edit mode)
-  const { data: previewRes, isLoading: previewLoading } = useQuery({
+  const { data: previewRes, isLoading: previewLoading, isError: previewFailed, error: previewError } = useQuery({
     queryKey: ["email-preview", selectedSlug],
     queryFn: () => base44.functions.invoke("getEmailPreview", { variationSlug: selectedSlug }),
     enabled: !!selectedSlug && !editMode,
+    retry: false,
   });
   const preview = previewRes?.data;
 
@@ -575,6 +576,11 @@ export default function AdminEmailPreviews() {
             {previewLoading ? (
               <div className="flex items-center justify-center w-full">
                 <Loader2 className="w-6 h-6 text-gray-300 animate-spin" />
+              </div>
+            ) : previewFailed ? (
+              <div className="flex flex-col items-center justify-center text-gray-400 mt-20">
+                <FileText className="w-10 h-10 mb-2 text-gray-300" />
+                <p className="text-sm">{previewError?.response?.data?.error || previewError?.message || "Preview failed to load"}</p>
               </div>
             ) : preview?.not_found ? (
               <div className="flex flex-col items-center justify-center text-gray-400 mt-20">
