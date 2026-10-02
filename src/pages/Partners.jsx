@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from "react";
 import { sb } from "@/lib/supabase";
 import { base44 } from "@/api/base44Client";
+import { managePartnerDirectory } from "@/lib/partnerDirectory";
 import { fetchAllProperties } from "@/lib/fetchAllProperties";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
@@ -91,7 +92,7 @@ export default function Partners() {
   const { data: base44Partners = [] } = useQuery({
     queryKey: ["base44-partners"],
     queryFn: () => base44.entities.Partner.list('-created_date', 500),
-    staleTime: 5 * 60 * 1000,
+    staleTime: 0,
   });
 
   const { data: activationInvites = [] } = useQuery({
@@ -280,30 +281,19 @@ export default function Partners() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["partners-supabase"] }),
   });
 
-  const partnerCopyIds = (partner) => {
+  const hidePartnerLocally = (partner, mode) => {
     const ids = new Set([partner.id, partner.base44_partner_id].filter(Boolean));
-    for (const row of sbPartners) {
-      if (row.id === partner.id || row.base44_partner_id === partner.id || row.base44_partner_id === partner.base44_partner_id) {
-        ids.add(row.id);
+    const apply = (list) => {
+      if (!Array.isArray(list)) return list;
+      if (mode === "delete") {
+        return list.filter((row) => !ids.has(row.id) && !ids.has(row.base44_partner_id));
       }
-    }
-    return [...ids];
-  };
-
-  const updatePartnerCopies = async (partner, patch) => {
-    const b44Id = partner.base44_partner_id || partner.id;
-    let saved = false;
-    try {
-      await base44.entities.Partner.update(b44Id, patch);
-      saved = true;
-    } catch (_) {}
-    for (const id of partnerCopyIds(partner)) {
-      try {
-        await sb.update("partners", id, patch);
-        saved = true;
-      } catch (_) {}
-    }
-    if (!saved) throw new Error("Partner record was not found");
+      return list.map((row) =>
+        ids.has(row.id) || ids.has(row.base44_partner_id) ? { ...row, archived: mode === "archive" } : row
+      );
+    };
+    queryClient.setQueryData(["partners-supabase"], apply);
+    queryClient.setQueryData(["base44-partners"], apply);
   };
 
   const refreshPartnerLists = () => {
@@ -341,10 +331,8 @@ export default function Partners() {
       : `Restore "${partner.partner_name}" to the partner list?`;
     if (!confirm(message)) return;
     try {
-      await updatePartnerCopies(partner, {
-        archived: archive,
-        archived_at: archive ? new Date().toISOString() : null,
-      });
+      await managePartnerDirectory(partner, archive ? "archive" : "restore");
+      hidePartnerLocally(partner, archive ? "archive" : "restore");
       refreshPartnerLists();
       toast({ title: `${label}d ${partner.partner_name}.` });
     } catch (e) {
@@ -355,15 +343,8 @@ export default function Partners() {
   const deletePartner = async (partner) => {
     if (!confirm(`Delete "${partner.partner_name}" from the partner directory? This cannot be undone.`)) return;
     try {
-      const b44Id = partner.base44_partner_id || partner.id;
-      try { await base44.entities.Partner.delete(b44Id); } catch (_) {}
-      for (const id of partnerCopyIds(partner)) {
-        try { await sb.delete("partners", id); } catch (_) {}
-      }
-      const onboarding = await base44.entities.PartnerOnboarding.filter({ partner_id: b44Id });
-      for (const row of onboarding || []) {
-        try { await base44.entities.PartnerOnboarding.delete(row.id); } catch (_) {}
-      }
+      await managePartnerDirectory(partner, "delete");
+      hidePartnerLocally(partner, "delete");
       refreshPartnerLists();
       toast({ title: `Deleted ${partner.partner_name}.` });
     } catch (e) {
@@ -873,7 +854,7 @@ export default function Partners() {
                   <TableCell className="text-xs text-gray-400">
                     {p.created_date ? format(new Date(p.created_date), "MMM d, yyyy") : "—"}
                   </TableCell>
-                  <TableCell>
+                  <TableCell onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()}>
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild onClick={e => e.stopPropagation()}>
                         <Button variant="ghost" size="icon" className="h-8 w-8">

@@ -663,6 +663,74 @@ async function handleManagePartnerTeam(res: any, body: any) {
   return json(res, 400, { error: "Unknown action" });
 }
 
+async function handleManagePartnerDirectory(req: any, res: any, body: any) {
+  const gate = await requireAdmin(req);
+  if ("error" in gate && gate.error) return json(res, gate.error, { error: gate.message, message: gate.message });
+
+  const action = String(body?.action || "");
+  if (!["archive", "restore", "delete"].includes(action)) {
+    return json(res, 400, { error: "Invalid action", message: "Invalid action" });
+  }
+  const seeds = [...new Set([body?.partner_id, body?.base44_partner_id, body?.id].filter(Boolean).map(String))];
+  if (!seeds.length) return json(res, 400, { error: "Partner id required", message: "Partner id required" });
+
+  const pool = getNeonPool();
+  const { rows: sbRows } = await pool.query(
+    `SELECT id, data FROM supabase.partners
+     WHERE id = ANY($1::text[])
+        OR data->>'id' = ANY($1::text[])
+        OR data->>'base44_partner_id' = ANY($1::text[])`,
+    [seeds]
+  );
+  const ids = new Set(seeds);
+  for (const row of sbRows) {
+    ids.add(String(row.id));
+    if (row.data?.id) ids.add(String(row.data.id));
+    if (row.data?.base44_partner_id) ids.add(String(row.data.base44_partner_id));
+  }
+  const idList = [...ids];
+
+  if (action === "delete") {
+    const removedBase44 = await pool.query(`DELETE FROM base44.partner WHERE id = ANY($1::text[])`, [idList]);
+    const removedSupabase = await pool.query(
+      `DELETE FROM supabase.partners
+       WHERE id = ANY($1::text[])
+          OR data->>'id' = ANY($1::text[])
+          OR data->>'base44_partner_id' = ANY($1::text[])`,
+      [idList]
+    );
+    await pool.query(
+      `DELETE FROM base44.partner_onboarding WHERE data->>'partner_id' = ANY($1::text[])`,
+      [idList]
+    );
+    const removed = (removedBase44.rowCount || 0) + (removedSupabase.rowCount || 0);
+    if (!removed) return json(res, 404, { error: "Partner record was not found", message: "Partner record was not found" });
+    return json(res, 200, { ok: true, removed });
+  }
+
+  const patch = {
+    archived: action === "archive",
+    archived_at: action === "archive" ? new Date().toISOString() : null,
+  };
+  const updatedBase44 = await pool.query(
+    `UPDATE base44.partner
+     SET data = COALESCE(data, '{}'::jsonb) || $2::jsonb, updated_date = now()
+     WHERE id = ANY($1::text[])`,
+    [idList, JSON.stringify(patch)]
+  );
+  const updatedSupabase = await pool.query(
+    `UPDATE supabase.partners
+     SET data = COALESCE(data, '{}'::jsonb) || $2::jsonb, imported_at = now()
+     WHERE id = ANY($1::text[])
+        OR data->>'id' = ANY($1::text[])
+        OR data->>'base44_partner_id' = ANY($1::text[])`,
+    [idList, JSON.stringify(patch)]
+  );
+  const updated = (updatedBase44.rowCount || 0) + (updatedSupabase.rowCount || 0);
+  if (!updated) return json(res, 404, { error: "Partner record was not found", message: "Partner record was not found" });
+  return json(res, 200, { ok: true, updated });
+}
+
 async function handleGetUserById(req: any, res: any, body: any) {
   const gate = await requireAdmin(req);
   if ("error" in gate && gate.error) return json(res, gate.error, { error: gate.message });
@@ -1198,6 +1266,135 @@ async function handleManagePartnerInvitation(req: any, res: any, body: any) {
   });
 }
 
+function activityCategory(type: string, title: string, entityType: string) {
+  const blob = `${type} ${title} ${entityType}`.toLowerCase();
+  if (blob.includes("application") || blob.includes("signup") || blob.includes("signed up")) return "applications";
+  if (type === "job_posting" || blob.includes("job") || blob.includes("career")) return "careers";
+  if (type === "billed" || blob.includes("invoice") || blob.includes("billing") || blob.includes("payment")) return "billing";
+  if (
+    ["submitted", "approved", "rejected", "needs_revision", "under_review", "licensed"].includes(type) ||
+    blob.includes("property")
+  ) return "properties";
+  return "updates";
+}
+
+function safeHref(href: string, isAdmin: boolean) {
+  if (!href || !href.startsWith("/")) return null;
+  if (!isAdmin && /^\/admin/i.test(href)) return null;
+  return href;
+}
+
+function rolesAllow(raw: any, partnerRole: string) {
+  const roles = Array.isArray(raw) ? raw.map((role) => String(role).toLowerCase()) : [];
+  if (!roles.length) return true;
+  return roles.includes(partnerRole);
+}
+
+async function handleGetActivityFeed(req: any, res: any) {
+  const gate = await requireSession(req);
+  if ("error" in gate && gate.error) return json(res, gate.error, { error: gate.message, message: gate.message });
+
+  const user = gate.session.user as { email?: string; role?: string; partner_role?: string };
+  const email = String(user.email || "").trim().toLowerCase();
+  if (!email) return json(res, 401, { error: "Sign in required", message: "Sign in required" });
+
+  const adminGate = await requireAdmin(req);
+  const isAdmin = !("error" in adminGate && adminGate.error);
+  const partnerRole = String(user.partner_role || "").toLowerCase();
+  const pool = getNeonPool();
+
+  const { rows: notifications } = await pool.query(
+    `SELECT id, created_date, data
+     FROM base44.portal_notification
+     WHERE (
+        ($1::boolean AND coalesce(data->>'recipient_role','') = 'admin'
+          AND lower(coalesce(data->>'recipient_email','')) IN ('admin', $2))
+        OR (
+          lower(coalesce(data->>'recipient_email','')) = $2
+          AND coalesce(data->>'recipient_role','') <> 'admin'
+        )
+      )
+     ORDER BY created_date DESC NULLS LAST
+     LIMIT 160`,
+    [isAdmin, email]
+  );
+
+  const items: any[] = [];
+  const seen = new Set<string>();
+  const pushItem = (item: any) => {
+    const key = item.dedup || `${item.title}|${item.message}|${String(item.at).slice(0, 16)}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    delete item.dedup;
+    items.push(item);
+  };
+
+  for (const row of notifications) {
+    const data = row.data || {};
+    const title = String(data.title || "").trim();
+    const message = String(data.message || "").trim();
+    if (!title) continue;
+    if (/^(daily briefing|weekly digest)/i.test(title)) continue;
+    if (!isAdmin && !rolesAllow(data.target_partner_roles, partnerRole)) continue;
+    const type = String(data.type || "general");
+    pushItem({
+      id: `notice-${row.id}`,
+      at: row.created_date,
+      title,
+      message,
+      type,
+      category: activityCategory(type, title, ""),
+      property_name: data.property_name || null,
+      unread: data.is_read === false || data.is_read === "false",
+      href: safeHref(String(data.link || ""), isAdmin),
+      dedup: data.dedup_key || "",
+    });
+  }
+
+  if (isAdmin) {
+    const { rows: audits } = await pool.query(
+      `SELECT id, created_date, data
+       FROM base44.audit_entry
+       WHERE coalesce(data->>'action','') <> 'digest_sent'
+         AND coalesce(data->>'entity_type','') <> 'AdminDigest'
+       ORDER BY created_date DESC NULLS LAST
+       LIMIT 80`
+    );
+    for (const row of audits) {
+      const data = row.data || {};
+      const action = String(data.action || "Update");
+      const target = data.target_name || data.property_name || "";
+      const label = ({
+        property_brought_online: "Property brought online",
+        property_taken_offline: "Property taken offline",
+      } as Record<string, string>)[action] || action.replace(/_/g, " ");
+      const title = target ? `${label} — ${target}` : label;
+      const partnerName = data.partner_name ? String(data.partner_name) : "";
+      const message = [partnerName, data.details].filter(Boolean).join(" · ");
+      const entityType = String(data.entity_type || "");
+      pushItem({
+        id: `audit-${row.id}`,
+        at: row.created_date,
+        title,
+        message,
+        type: "audit",
+        category: activityCategory(action, title, entityType),
+        property_name: data.property_name || data.target_name || null,
+        unread: false,
+        href: null,
+        dedup: "",
+      });
+    }
+  }
+
+  items.sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime());
+  return json(res, 200, {
+    ok: true,
+    scope: isAdmin ? "admin" : "partner",
+    items: items.slice(0, 80),
+  });
+}
+
 export const LOCAL_FUNCTIONS = new Set([
   "supabaseData",
   "supabaseProperties",
@@ -1209,6 +1406,8 @@ export const LOCAL_FUNCTIONS = new Set([
   "getPartnerTeam",
   "managePartnerTeam",
   "getUserById",
+  "managePartnerDirectory",
+  "getActivityFeed",
   ...STRIPE_FUNCTIONS,
 ]);
 
@@ -1231,6 +1430,8 @@ export async function handleNeonFunction(req: any, res: any, functionName: strin
     else if (functionName === "getPartnerTeam") await handleGetPartnerTeam(res, body);
     else if (functionName === "managePartnerTeam") await handleManagePartnerTeam(res, body);
     else if (functionName === "getUserById") await handleGetUserById(req, res, body);
+    else if (functionName === "managePartnerDirectory") await handleManagePartnerDirectory(req, res, body);
+    else if (functionName === "getActivityFeed") await handleGetActivityFeed(req, res);
     return true;
   } catch (error: any) {
     console.error("[neon-functions]", functionName, error);

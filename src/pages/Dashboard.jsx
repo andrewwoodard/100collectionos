@@ -13,6 +13,7 @@ import StatCard from "../components/shared/StatCard";
 import StatusBadge from "../components/shared/StatusBadge";
 import LoadingGrid from "../components/shared/LoadingGrid";
 import { format } from "date-fns";
+import { fetchActivityFeed } from "@/lib/activityFeed";
 
 export default function Dashboard() {
   const { data: partners = [], isLoading: pLoading } = useQuery({
@@ -38,10 +39,11 @@ export default function Dashboard() {
     queryKey: ["tasks"],
     queryFn: async () => { const r = await sb.list("tasks", null, null, 50); return r.items || []; },
   });
-  const { data: activities = [] } = useQuery({
-    queryKey: ["activities"],
-    queryFn: async () => { const r = await sb.list("activity_logs", null, null, 10); return r.items || []; },
+  const { data: activityFeed } = useQuery({
+    queryKey: ["activity-feed"],
+    queryFn: fetchActivityFeed,
   });
+  const activities = activityFeed?.items || [];
   const { data: onboardingItems = [] } = useQuery({
     queryKey: ["onboarding"],
     queryFn: async () => { const r = await sb.list("onboarding_items", null, null, 100); return r.items || []; },
@@ -160,9 +162,9 @@ export default function Dashboard() {
             )}
             {activities.slice(0, 6).map(act => (
               <div key={act.id} className="px-5 py-3">
-                <p className="text-sm text-gray-700">{act.action}</p>
+                <p className="text-sm text-gray-700">{act.title}</p>
                 <p className="text-xs text-gray-400 mt-0.5">
-                  {act.performed_by} · {act.created_date ? format(new Date(act.created_date), "MMM d, h:mm a") : ""}
+                  {act.at ? format(new Date(act.at), "MMM d, h:mm a") : ""}
                 </p>
               </div>
             ))}

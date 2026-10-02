@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from "react";
 import { sb } from "@/lib/supabase";
 import { base44 } from "@/api/base44Client";
+import { managePartnerDirectory } from "@/lib/partnerDirectory";
 import { useToast } from "@/components/ui/use-toast";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
@@ -8,7 +9,7 @@ import { createPageUrl } from "@/utils";
 import {
   ArrowLeft, Building2, FileText, Image, CreditCard, CheckSquare,
   MessageSquare, ClipboardCheck, Activity, Mail, Phone, MapPin, Calendar, Edit2,
-  Pencil, Check, X, Info, RefreshCw, ExternalLink, Plus, Send
+  Pencil, Check, X, Info, RefreshCw, ExternalLink, Plus, Send, Archive, Trash2
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -414,6 +415,43 @@ export default function PartnerDetail() {
     setAutoApplying(false);
   };
 
+  const archivePartner = async () => {
+    const archive = !partner?.archived;
+    const message = archive
+      ? `Archive "${partner.partner_name}"? They will be hidden from the partner list until you show archived partners.`
+      : `Restore "${partner.partner_name}" to the partner list?`;
+    if (!confirm(message)) return;
+    try {
+      await managePartnerDirectory(
+        { id: partnerId, base44_partner_id: partner?.base44_partner_id || null },
+        archive ? "archive" : "restore"
+      );
+      queryClient.invalidateQueries({ queryKey: ["partners-supabase"] });
+      queryClient.invalidateQueries({ queryKey: ["base44-partners"] });
+      toast({ title: `${archive ? "Archived" : "Restored"} ${partner.partner_name}.` });
+      if (archive) navigate(createPageUrl("Partners"));
+      else queryClient.invalidateQueries({ queryKey: ["partner", partnerId] });
+    } catch (e) {
+      toast({ title: archive ? "Failed to archive" : "Failed to restore", description: e.message, variant: "destructive" });
+    }
+  };
+
+  const deletePartner = async () => {
+    if (!confirm(`Delete "${partner.partner_name}" from the partner directory? This cannot be undone.`)) return;
+    try {
+      await managePartnerDirectory(
+        { id: partnerId, base44_partner_id: partner?.base44_partner_id || null },
+        "delete"
+      );
+      queryClient.invalidateQueries({ queryKey: ["partners-supabase"] });
+      queryClient.invalidateQueries({ queryKey: ["base44-partners"] });
+      toast({ title: `Deleted ${partner.partner_name}.` });
+      navigate(createPageUrl("Partners"));
+    } catch (e) {
+      toast({ title: "Failed to delete", description: e.message, variant: "destructive" });
+    }
+  };
+
   const markInactive = async () => {
     if (!confirm(`Mark "${partner.partner_name}" and all their properties as inactive?`)) return;
     await sb.update("partners", partnerId, { status: "inactive" });
@@ -503,6 +541,12 @@ export default function PartnerDetail() {
             Mark as Inactive
           </Button>
         )}
+        <Button variant="outline" size="sm" className="text-orange-700 border-orange-200 hover:bg-orange-50" onClick={archivePartner}>
+          <Archive className="w-3.5 h-3.5 mr-1.5" /> {partner.archived ? "Restore" : "Archive"}
+        </Button>
+        <Button variant="outline" size="sm" className="text-red-600 border-red-200 hover:bg-red-50" onClick={deletePartner}>
+          <Trash2 className="w-3.5 h-3.5 mr-1.5" /> Delete
+        </Button>
         {!partnerEntity?.portal_user_id && (partner?.primary_contact_email || partnerEntity?.primary_contact_email) && (
           <Button variant="outline" size="sm" className="text-blue-600 border-blue-200 hover:bg-blue-50" onClick={() => setActivationModalOpen(true)}>
             <Mail className="w-3.5 h-3.5 mr-1.5" /> Send activation email
