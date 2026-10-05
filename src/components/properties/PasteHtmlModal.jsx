@@ -16,6 +16,7 @@ import { Loader2, Code2, Check, ImageIcon } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 import { normalizeStorageUrl } from "@/lib/supabase";
 import { ingestPropertyImages } from "@/lib/propertyImagesBlob";
+import { extractHtmlImages } from "@/lib/extractHtmlImages";
 
 const SOURCE_META = {
   img: { label: "img", color: "bg-blue-100 text-blue-700" },
@@ -50,13 +51,7 @@ export default function PasteHtmlModal({
     setCandidates([]);
     setSelected(new Set());
     try {
-      const res = await base44.functions.invoke("scrapePropertyUrl", {
-        url: baseUrl || listingUrl || null,
-        mode: "paste",
-        html,
-        page_url: baseUrl || listingUrl || null,
-      });
-      const cands = res?.data?.data?.candidates || [];
+      const cands = extractHtmlImages(html, baseUrl || listingUrl || "");
       setCandidates(cands);
       setSelected(new Set(cands.map((c) => c.url)));
       if (cands.length === 0) {

@@ -59,6 +59,19 @@ export async function putImageBuffer(
   return blob.url;
 }
 
+function sniffImageType(buffer: Buffer) {
+  if (buffer.length >= 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) return "image/jpeg";
+  if (buffer.length >= 8 && buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4e && buffer[3] === 0x47) return "image/png";
+  if (buffer.length >= 6) {
+    const gif = buffer.toString("ascii", 0, 6);
+    if (gif === "GIF87a" || gif === "GIF89a") return "image/gif";
+  }
+  if (buffer.length >= 12 && buffer.toString("ascii", 0, 4) === "RIFF" && buffer.toString("ascii", 8, 12) === "WEBP") {
+    return "image/webp";
+  }
+  return "";
+}
+
 export async function ingestRemoteImage(url: string) {
   const source = String(url || "").trim();
   if (!source) return source;
@@ -72,9 +85,10 @@ export async function ingestRemoteImage(url: string) {
       redirect: "follow",
     });
     if (!res.ok) return source;
-    const contentType = res.headers.get("content-type") || "image/jpeg";
-    if (!contentType.startsWith("image/")) return source;
     const buffer = Buffer.from(await res.arrayBuffer());
+    const headerType = (res.headers.get("content-type") || "").split(";")[0].trim().toLowerCase();
+    const contentType = headerType.startsWith("image/") ? headerType : sniffImageType(buffer);
+    if (!contentType.startsWith("image/")) return source;
     return await putImageBuffer(buffer, { filename: source, contentType });
   } catch (error) {
     console.warn("[blob] ingest failed, keeping original URL", source, (error as Error).message);
