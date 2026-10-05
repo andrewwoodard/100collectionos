@@ -85,7 +85,7 @@ export default function PrivacyPolicy() {
             </p>
             <ul className="space-y-2 list-disc pl-5 mt-2">
               <li><strong className="text-gray-900">Stripe</strong> — payment processing</li>
-              <li><strong className="text-gray-900">Google</strong> — Drive and Sheets integration (only when you authorize it), and email via your account</li>
+              <li><strong className="text-gray-900">Google</strong> — portal usage analytics (Google Analytics), Drive and Sheets integration (only when you authorize it), and email via your account</li>
               <li><strong className="text-gray-900">Resend</strong> — transactional email delivery</li>
               <li><strong className="text-gray-900">Supabase</strong> — property data storage and sync to the public website</li>
             </ul>

@@ -57,6 +57,7 @@ import ResetPassword from '@/pages/ResetPassword';
 import ChangePassword from '@/pages/ChangePassword';
 import useAttributionCapture from '@/hooks/useAttributionCapture';
 import ScrollToTop from '@/components/ScrollToTop';
+import GoogleAnalytics from '@/components/GoogleAnalytics';
 
 
 const { Pages, Layout, mainPage } = pagesConfig;
@@ -186,6 +187,7 @@ function App() {
       <QueryClientProvider client={queryClientInstance}>
         <Router>
           <ScrollToTop />
+          <GoogleAnalytics />
           <ImpersonationProvider>
             <ImpersonationBanner />
             <AuthenticatedApp />
