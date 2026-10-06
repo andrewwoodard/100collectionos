@@ -4,6 +4,7 @@ import { requireAdmin, requireSession } from "./require-session.js";
 import { sendPortalEmail } from "./reset-email.js";
 import { handleStripeFunction, STRIPE_FUNCTIONS } from "./stripe-functions.js";
 import { handleBuildAdminEmail, handleGetEmailPreview } from "./email-preview.js";
+import { handleCheckPropertyLinks } from "./check-property-links.js";
 import { randomUUID } from "node:crypto";
 
 const TABLE_SEARCH_FIELDS: Record<string, string[]> = {
@@ -174,6 +175,10 @@ function fromSupabase(row: any) {
     images: parseImages(source.images),
     vrm_url: source.vrm_url,
     last_scan: source.last_scan,
+    last_page_check_at: source.last_page_check_at,
+    last_page_check_ok: source.last_page_check_ok,
+    last_page_check_status: source.last_page_check_status,
+    last_page_check_final_url: source.last_page_check_final_url,
   };
 }
 
@@ -1411,6 +1416,7 @@ export const LOCAL_FUNCTIONS = new Set([
   "getActivityFeed",
   "getEmailPreview",
   "buildAdminEmail",
+  "checkPropertyLinks",
   ...STRIPE_FUNCTIONS,
 ]);
 
@@ -1437,6 +1443,7 @@ export async function handleNeonFunction(req: any, res: any, functionName: strin
     else if (functionName === "getActivityFeed") await handleGetActivityFeed(req, res);
     else if (functionName === "getEmailPreview") await handleGetEmailPreview(req, res, body);
     else if (functionName === "buildAdminEmail") await handleBuildAdminEmail(req, res, body);
+    else if (functionName === "checkPropertyLinks") await handleCheckPropertyLinks(req, res, body);
     return true;
   } catch (error: any) {
     console.error("[neon-functions]", functionName, error);

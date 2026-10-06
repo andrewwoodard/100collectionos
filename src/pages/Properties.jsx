@@ -1,10 +1,10 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { base44 } from "@/api/base44Client";
 import { fetchAllProperties } from "@/lib/fetchAllProperties";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
-import { Plus, Building2, MapPin, Bed, Bath, Users as UsersIcon, EyeOff, Archive, RotateCcw, Sparkles } from "lucide-react";
+import { Plus, Building2, MapPin, Bed, Bath, Users as UsersIcon, EyeOff, Archive, RotateCcw, Sparkles, Link2, ExternalLink, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import StatusBadge from "../components/shared/StatusBadge";
 import EmptyState from "../components/shared/EmptyState";
@@ -18,7 +18,9 @@ import { useToast } from "@/components/ui/use-toast";
 
 export default function Properties() {
   const [filters, setFilters] = useState({ search: "", status: "all", partnerId: "all", partnerName: "all", propertyType: "all", onboardingStatus: "all", photoStatus: "all", minBedrooms: "all" });
-  const [tab, setTab] = useState("active"); // "active" | "draft" | "archived"
+  const [tab, setTab] = useState("active"); // "active" | "draft" | "archived" | "check-link"
+  const [linkScan, setLinkScan] = useState({ running: false, checked: 0, total: null, error: null });
+  const [linkScanKey, setLinkScanKey] = useState(0);
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [modalOpen, setModalOpen] = useState(false);
   const [aiModalOpen, setAiModalOpen] = useState(false);
@@ -102,10 +104,71 @@ export default function Properties() {
     setEditingProperty(null);
   };
 
-  // Tab-based grouping: Active (default) / Draft (most recent) / Archived
+  useEffect(() => {
+    if (tab !== "check-link") return;
+    let cancelled = false;
+    const since = new Date().toISOString();
+    setLinkScan({ running: true, checked: 0, total: null, error: null });
+
+    (async () => {
+      let checked = 0;
+      while (!cancelled) {
+        const res = await base44.functions.invoke("checkPropertyLinks", { since, limit: 12 });
+        if (cancelled) break;
+        const body = res?.data?.ok != null ? res.data : res?.ok != null ? res : res?.data;
+        if (body?.error) throw new Error(typeof body.error === "string" ? body.error : "Link check failed");
+        const results = Array.isArray(body?.results) ? body.results : [];
+        checked += results.length;
+        const remaining = Number(body?.remaining || 0);
+        if (!cancelled) {
+          setLinkScan({
+            running: remaining > 0 && results.length > 0,
+            checked,
+            total: checked + remaining,
+            error: null,
+          });
+        }
+        if (results.length) {
+          queryClient.setQueryData(["propertiesbase44"], (prev) => {
+            if (!Array.isArray(prev)) return prev;
+            const byId = new Map(results.map((row) => [String(row.id), row]));
+            return prev.map((property) => {
+              const hit = byId.get(String(property.id));
+              if (!hit) return property;
+              return {
+                ...property,
+                last_page_check_status: String(hit.status ?? ""),
+                last_page_check_ok: hit.ok ? "true" : "false",
+                last_page_check_at: hit.checked_at,
+                last_page_check_final_url: hit.final_url,
+              };
+            });
+          });
+        }
+        if (!remaining || !results.length) break;
+      }
+    })().catch((error) => {
+      if (!cancelled) {
+        setLinkScan((current) => ({
+          ...current,
+          running: false,
+          error: error?.message || "Link check failed",
+        }));
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [tab, linkScanKey, queryClient]);
+
+  // Tab-based grouping: Active (default) / Draft (most recent) / Archived / Check Link
+  const isBrokenLink = (property) => String(property.last_page_check_status) === "404";
   const tabBase = tab === "archived"
     ? properties.filter(p => p.archived_at)
-    : properties.filter(p => !p.archived_at);
+    : tab === "check-link"
+      ? properties.filter(isBrokenLink)
+      : properties.filter(p => !p.archived_at);
 
   const filtered = tabBase.filter(p => {
     const s = filters.search?.toLowerCase();
@@ -114,7 +177,7 @@ export default function Properties() {
       p.market?.toLowerCase().includes(s) ||
       p.address?.toLowerCase().includes(s) ||
       p.partner_name?.toLowerCase().includes(s);
-    const matchesTab = tab === "archived" ? true : p.status === tab;
+    const matchesTab = tab === "archived" || tab === "check-link" ? true : p.status === tab;
     const matchesPartner = filters.partnerId === "all" ||
       p.partner_id === filters.partnerId ||
       (filters.partnerName !== "all" && p.partner_name === filters.partnerName);
@@ -185,6 +248,8 @@ export default function Properties() {
   const activeCount = properties.filter(p => !p.archived_at && p.status === 'active').length;
   const draftCount = properties.filter(p => !p.archived_at && p.status === 'draft').length;
   const archivedCount = properties.filter(p => p.archived_at).length;
+  const brokenLinkCount = properties.filter(isBrokenLink).length;
+  const tabLabel = tab === "check-link" ? "Check Link" : tab.charAt(0).toUpperCase() + tab.slice(1);
 
   return (
     <div className="space-y-5 animate-fade-up">
@@ -192,7 +257,9 @@ export default function Properties() {
         <div>
           <h2 className="text-xl font-bold text-gray-900">All Properties</h2>
           <p className="text-sm text-gray-500">
-            Showing {filtered.length} {tab.charAt(0).toUpperCase() + tab.slice(1)} {filtered.length === 1 ? "property" : "properties"}
+            {tab === "check-link"
+              ? `${brokenLinkCount} ${brokenLinkCount === 1 ? "property has" : "properties have"} a 404 on the VRM link`
+              : `Showing ${filtered.length} ${tabLabel} ${filtered.length === 1 ? "property" : "properties"}`}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -209,7 +276,7 @@ export default function Properties() {
 
       {/* Status tabs: Active (default) / Draft (most recent) / Archived */}
       <div className="flex items-center gap-1 border-b border-gray-200">
-        {[{ id: "active", label: "Active", count: activeCount }, { id: "draft", label: "Draft", count: draftCount }, { id: "archived", label: "Archived", count: archivedCount }].map(t => (
+        {[{ id: "active", label: "Active", count: activeCount }, { id: "draft", label: "Draft", count: draftCount }, { id: "archived", label: "Archived", count: archivedCount }, { id: "check-link", label: "Check Link", count: brokenLinkCount }].map(t => (
           <button
             key={t.id}
             onClick={() => setTab(t.id)}
@@ -223,6 +290,29 @@ export default function Properties() {
       </div>
 
       <PropertyFilters partners={partners} onChange={setFilters} hideStatusAndArchived />
+
+      {tab === "check-link" && (
+        <div className="flex flex-col sm:flex-row sm:items-center gap-3 rounded-xl border border-gray-200 bg-white px-4 py-3">
+          <div className="flex items-center gap-2 text-sm text-gray-600">
+            {linkScan.running ? <Loader2 className="w-4 h-4 animate-spin text-[#C9A96E]" /> : <Link2 className="w-4 h-4 text-[#C9A96E]" />}
+            <span>
+              {linkScan.running
+                ? `Checking VRM links${linkScan.total ? ` · ${linkScan.checked} of ${linkScan.total}` : "…"}`
+                : linkScan.error
+                  ? linkScan.error
+                  : "VRM links checked. Properties below return a 404."}
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setLinkScanKey((key) => key + 1)}
+            disabled={linkScan.running}
+            className="sm:ml-auto text-sm font-medium text-[#0F172A] border border-gray-200 rounded-lg px-3 py-1.5 hover:bg-gray-50 disabled:opacity-50"
+          >
+            Recheck
+          </button>
+        </div>
+      )}
 
       {/* Bulk action bar */}
       {selectedIds.size > 0 && (
@@ -253,7 +343,15 @@ export default function Properties() {
       )}
 
       {filtered.length === 0 && !isLoading ? (
-        <EmptyState icon={Building2} title="No properties found" description="Add your first property" actionLabel="Add Property" onAction={() => setModalOpen(true)} />
+        tab === "check-link" ? (
+          <EmptyState
+            icon={Link2}
+            title={linkScan.running ? "Checking VRM links" : "No broken VRM links"}
+            description={linkScan.running ? "Properties that return a 404 will show up here as the check finishes." : "Every checked VRM URL is responding."}
+          />
+        ) : (
+          <EmptyState icon={Building2} title="No properties found" description="Add your first property" actionLabel="Add Property" onAction={() => setModalOpen(true)} />
+        )
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filtered.map(p => (
@@ -288,6 +386,17 @@ export default function Properties() {
                 </div>
                 <StatusBadge status={p.status} />
               </div>
+              {tab === "check-link" && p.vrm_url && (
+                <a
+                  href={p.vrm_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={(e) => e.stopPropagation()}
+                  className="flex items-start gap-1.5 text-xs text-red-600 hover:underline mb-3 break-all"
+                >
+                  <ExternalLink className="w-3 h-3 mt-0.5 shrink-0" /> {p.vrm_url}
+                </a>
+              )}
               {p.address && (
                 <div className="flex items-center gap-1.5 text-xs text-gray-500 mb-3">
                   <MapPin className="w-3 h-3" /> {p.address}
