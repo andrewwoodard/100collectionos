@@ -24,6 +24,7 @@ export default function Properties() {
   const [linkScan, setLinkScan] = useState({ running: false, checked: 0, total: null, error: null });
   const [linkScanKey, setLinkScanKey] = useState(0);
   const propertiesRef = useRef([]);
+  const linkScanMounted = useRef(true);
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [modalOpen, setModalOpen] = useState(false);
   const [aiModalOpen, setAiModalOpen] = useState(false);
@@ -111,6 +112,13 @@ export default function Properties() {
   };
 
   useEffect(() => {
+    linkScanMounted.current = true;
+    return () => {
+      linkScanMounted.current = false;
+    };
+  }, []);
+
+  useEffect(() => {
     if (tab !== "check-link" || isLoading || !basePropertiesFetched) return;
     if (linkScansStarted.has(linkScanKey)) return;
     linkScansStarted.add(linkScanKey);
@@ -127,12 +135,14 @@ export default function Properties() {
         if (body?.error) throw new Error(typeof body.error === "string" ? body.error : "Link check failed");
         const results = Array.isArray(body?.results) ? body.results : [];
         checked = Math.min(offset + 12, ids.length);
-        setLinkScan({
-          running: checked < ids.length,
-          checked,
-          total: ids.length,
-          error: null,
-        });
+        if (linkScanMounted.current) {
+          setLinkScan({
+            running: checked < ids.length,
+            checked,
+            total: ids.length,
+            error: null,
+          });
+        }
         if (results.length) {
           queryClient.setQueryData(["propertiesbase44"], (prev) => {
             if (!Array.isArray(prev)) return prev;
@@ -153,6 +163,7 @@ export default function Properties() {
       }
     })().catch((error) => {
       linkScansStarted.delete(linkScanKey);
+      if (!linkScanMounted.current) return;
       setLinkScan((current) => ({
         ...current,
         running: false,
