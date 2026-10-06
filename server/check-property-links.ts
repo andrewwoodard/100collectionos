@@ -63,31 +63,20 @@ export async function handleCheckPropertyLinks(req: any, res: any, body: any) {
   if ("error" in gate && gate.error) return json(res, gate.error, { error: gate.message });
 
   const pool = getNeonPool();
-  const since = body?.since ? new Date(body.since) : new Date();
-  if (Number.isNaN(since.getTime())) return json(res, 400, { error: "Invalid since timestamp" });
-  const limit = Math.min(Math.max(Number(body?.limit || 12), 1), 20);
-
-  const pending = await pool.query(
-    `SELECT count(*)::int AS remaining
-     FROM supabase.propertiesbase44
-     WHERE vrm_url ~* '^https?://'
-       AND (last_page_check_at IS NULL OR last_page_check_at < $1)`,
-    [since.toISOString()]
-  );
-  const remainingBefore = pending.rows[0]?.remaining || 0;
-  if (!remainingBefore) {
+  const ids = (Array.isArray(body?.ids) ? body.ids : [])
+    .map((id: unknown) => String(id || "").trim())
+    .filter(Boolean)
+    .slice(0, 20);
+  if (!ids.length) {
     return json(res, 200, { ok: true, checked: 0, remaining: 0, total: 0, results: [] });
   }
 
   const { rows } = await pool.query(
     `SELECT id, name, vrm_url
      FROM supabase.propertiesbase44
-     WHERE vrm_url ~* '^https?://'
-       AND (last_page_check_at IS NULL OR last_page_check_at < $1)
-     ORDER BY CASE WHEN last_page_check_status = '404' THEN 0 ELSE 1 END,
-              last_page_check_at ASC NULLS FIRST
-     LIMIT $2`,
-    [since.toISOString(), limit]
+     WHERE id = ANY($1::text[])
+       AND vrm_url ~* '^https?://'`,
+    [ids]
   );
 
   const checkedAt = new Date().toISOString();
@@ -120,8 +109,8 @@ export async function handleCheckPropertyLinks(req: any, res: any, body: any) {
   return json(res, 200, {
     ok: true,
     checked: results.length,
-    remaining: Math.max(remainingBefore - results.length, 0),
-    total: remainingBefore,
+    remaining: 0,
+    total: results.length,
     results,
   });
 }

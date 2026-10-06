@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { base44 } from "@/api/base44Client";
 import { fetchAllProperties } from "@/lib/fetchAllProperties";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -21,6 +21,7 @@ export default function Properties() {
   const [tab, setTab] = useState("active"); // "active" | "draft" | "archived" | "check-link"
   const [linkScan, setLinkScan] = useState({ running: false, checked: 0, total: null, error: null });
   const [linkScanKey, setLinkScanKey] = useState(0);
+  const propertiesRef = useRef([]);
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [modalOpen, setModalOpen] = useState(false);
   const [aiModalOpen, setAiModalOpen] = useState(false);
@@ -41,7 +42,7 @@ export default function Properties() {
   });
   // Base44 Property entities — fetched only for the entity ID (navigation to
   // PropertyDetail) and archive metadata (archived_at, archived_by_user_id).
-  const { data: baseProperties = [] } = useQuery({
+  const { data: baseProperties = [], isFetched: basePropertiesFetched } = useQuery({
     queryKey: ["properties-b44"],
     queryFn: () => fetchAllProperties(),
   });
@@ -73,6 +74,9 @@ export default function Properties() {
       supabase_property_id: sb.id,
     };
   }), [sbProperties, b44ByMatchKey]);
+  propertiesRef.current = properties;
+
+  const isActiveProperty = (property) => !property.archived_at && property.status === "active";
 
   const { data: partners = [] } = useQuery({
     queryKey: ["base44-partners"],
@@ -105,26 +109,28 @@ export default function Properties() {
   };
 
   useEffect(() => {
-    if (tab !== "check-link") return;
+    if (tab !== "check-link" || isLoading || !basePropertiesFetched) return;
     let cancelled = false;
-    const since = new Date().toISOString();
-    setLinkScan({ running: true, checked: 0, total: null, error: null });
+    const ids = propertiesRef.current
+      .filter((property) => isActiveProperty(property) && /^https?:\/\//i.test(property.vrm_url || ""))
+      .map((property) => String(property.supabase_property_id || property.id));
+    setLinkScan({ running: ids.length > 0, checked: 0, total: ids.length, error: null });
 
     (async () => {
       let checked = 0;
-      while (!cancelled) {
-        const res = await base44.functions.invoke("checkPropertyLinks", { since, limit: 12 });
+      for (let offset = 0; offset < ids.length; offset += 12) {
+        if (cancelled) break;
+        const res = await base44.functions.invoke("checkPropertyLinks", { ids: ids.slice(offset, offset + 12) });
         if (cancelled) break;
         const body = res?.data?.ok != null ? res.data : res?.ok != null ? res : res?.data;
         if (body?.error) throw new Error(typeof body.error === "string" ? body.error : "Link check failed");
         const results = Array.isArray(body?.results) ? body.results : [];
-        checked += results.length;
-        const remaining = Number(body?.remaining || 0);
+        checked = Math.min(offset + 12, ids.length);
         if (!cancelled) {
           setLinkScan({
-            running: remaining > 0 && results.length > 0,
+            running: checked < ids.length,
             checked,
-            total: checked + remaining,
+            total: ids.length,
             error: null,
           });
         }
@@ -145,7 +151,6 @@ export default function Properties() {
             });
           });
         }
-        if (!remaining || !results.length) break;
       }
     })().catch((error) => {
       if (!cancelled) {
@@ -160,10 +165,10 @@ export default function Properties() {
     return () => {
       cancelled = true;
     };
-  }, [tab, linkScanKey, queryClient]);
+  }, [tab, linkScanKey, isLoading, basePropertiesFetched, queryClient]);
 
   // Tab-based grouping: Active (default) / Draft (most recent) / Archived / Check Link
-  const isBrokenLink = (property) => String(property.last_page_check_status) === "404";
+  const isBrokenLink = (property) => isActiveProperty(property) && String(property.last_page_check_status) === "404";
   const tabBase = tab === "archived"
     ? properties.filter(p => p.archived_at)
     : tab === "check-link"
