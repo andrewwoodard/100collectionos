@@ -16,6 +16,8 @@ import PropertyFilters from "../components/shared/PropertyFilters";
 import ArchiveConfirmModal from "../components/properties/ArchiveConfirmModal";
 import { useToast } from "@/components/ui/use-toast";
 
+const linkScansStarted = new Set();
+
 export default function Properties() {
   const [filters, setFilters] = useState({ search: "", status: "all", partnerId: "all", partnerName: "all", propertyType: "all", onboardingStatus: "all", photoStatus: "all", minBedrooms: "all" });
   const [tab, setTab] = useState("active"); // "active" | "draft" | "archived" | "check-link"
@@ -110,7 +112,8 @@ export default function Properties() {
 
   useEffect(() => {
     if (tab !== "check-link" || isLoading || !basePropertiesFetched) return;
-    let cancelled = false;
+    if (linkScansStarted.has(linkScanKey)) return;
+    linkScansStarted.add(linkScanKey);
     const ids = propertiesRef.current
       .filter((property) => isActiveProperty(property) && /^https?:\/\//i.test(property.vrm_url || ""))
       .map((property) => String(property.supabase_property_id || property.id));
@@ -119,21 +122,17 @@ export default function Properties() {
     (async () => {
       let checked = 0;
       for (let offset = 0; offset < ids.length; offset += 12) {
-        if (cancelled) break;
         const res = await base44.functions.invoke("checkPropertyLinks", { ids: ids.slice(offset, offset + 12) });
-        if (cancelled) break;
         const body = res?.data?.ok != null ? res.data : res?.ok != null ? res : res?.data;
         if (body?.error) throw new Error(typeof body.error === "string" ? body.error : "Link check failed");
         const results = Array.isArray(body?.results) ? body.results : [];
         checked = Math.min(offset + 12, ids.length);
-        if (!cancelled) {
-          setLinkScan({
-            running: checked < ids.length,
-            checked,
-            total: ids.length,
-            error: null,
-          });
-        }
+        setLinkScan({
+          running: checked < ids.length,
+          checked,
+          total: ids.length,
+          error: null,
+        });
         if (results.length) {
           queryClient.setQueryData(["propertiesbase44"], (prev) => {
             if (!Array.isArray(prev)) return prev;
@@ -153,18 +152,13 @@ export default function Properties() {
         }
       }
     })().catch((error) => {
-      if (!cancelled) {
-        setLinkScan((current) => ({
-          ...current,
-          running: false,
-          error: error?.message || "Link check failed",
-        }));
-      }
+      linkScansStarted.delete(linkScanKey);
+      setLinkScan((current) => ({
+        ...current,
+        running: false,
+        error: error?.message || "Link check failed",
+      }));
     });
-
-    return () => {
-      cancelled = true;
-    };
   }, [tab, linkScanKey, isLoading, basePropertiesFetched, queryClient]);
 
   // Tab-based grouping: Active (default) / Draft (most recent) / Archived / Check Link
