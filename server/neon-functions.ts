@@ -5,6 +5,7 @@ import { sendPortalEmail } from "./reset-email.js";
 import { handleStripeFunction, STRIPE_FUNCTIONS } from "./stripe-functions.js";
 import { handleBuildAdminEmail, handleGetEmailPreview } from "./email-preview.js";
 import { handleCheckPropertyLinks } from "./check-property-links.js";
+import { handleSyncPropertyToSupabase } from "./sync-property-to-supabase.js";
 import { randomUUID } from "node:crypto";
 
 const TABLE_SEARCH_FIELDS: Record<string, string[]> = {
@@ -1417,6 +1418,7 @@ export const LOCAL_FUNCTIONS = new Set([
   "getEmailPreview",
   "buildAdminEmail",
   "checkPropertyLinks",
+  "syncPropertyToSupabase",
   ...STRIPE_FUNCTIONS,
 ]);
 
@@ -1444,6 +1446,7 @@ export async function handleNeonFunction(req: any, res: any, functionName: strin
     else if (functionName === "getEmailPreview") await handleGetEmailPreview(req, res, body);
     else if (functionName === "buildAdminEmail") await handleBuildAdminEmail(req, res, body);
     else if (functionName === "checkPropertyLinks") await handleCheckPropertyLinks(req, res, body);
+    else if (functionName === "syncPropertyToSupabase") await handleSyncPropertyToSupabase(req, res, body);
     return true;
   } catch (error: any) {
     console.error("[neon-functions]", functionName, error);

@@ -33,6 +33,7 @@ export function buildPropertyFromSubmission(s, { source = "approval" } = {}) {
     half_bathrooms: s.half_bathrooms ?? null,
     sleeps: s.sleeps ?? null,
     address: s.location_full || null,
+    market: s.market || null,
     location_city: s.location_city || null,
     location_state: s.location_state || null,
     location_country: s.location_country || null,

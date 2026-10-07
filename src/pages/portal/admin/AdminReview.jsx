@@ -127,36 +127,46 @@ export default function AdminReview() {
           const newProperty = await base44.entities.Property.create(propertyData);
           propertyId = newProperty.id;
           await base44.entities.PropertySubmission.update(id, { source_property_id: propertyId });
-          // Sync newly-created Property to Supabase so it appears in /Properties immediately
-          try {
-            const syncRes = await base44.functions.invoke("syncPropertyToSupabase", {
-              action: "sync_property",
-              id: newProperty.id,
-            });
-            const sbId = syncRes?.property?.id;
-            if (sbId && String(sbId) !== "null" && String(sbId) !== "undefined") {
-              await base44.entities.PropertySubmission.update(id, { supabase_property_id: String(sbId) });
-            }
-          } catch (e) {
-            console.warn("[approve] Supabase sync failed for new Property, will be caught by reconciliation:", e?.message);
-          }
         } catch (e) {
           console.warn("Property creation failed (will be caught by reconciliation):", e?.message);
         }
       }
 
-      // For EDIT submissions with an existing Property, apply the approved
-      // field changes (description, amenities, photos, etc.) to the Property
-      // (portal source of truth) and push the updated row to Supabase
-      // (propertiesbase44 — the public site table).
+      // For EDIT submissions, apply approved field/photo changes first.
       if (submission.submission_type === "edit" && propertyId) {
         try {
           const patch = buildPropertyEditPatch(submission);
           await base44.entities.Property.update(propertyId, patch);
-          base44.functions.invoke("syncPropertyToSupabase", { action: "sync_property", id: propertyId })
-            .catch(e => console.warn("[approve] post-edit Supabase sync failed (non-fatal):", e?.message));
         } catch (e) {
-          console.warn("[approve] Property edit apply failed (non-fatal):", e?.message);
+          console.error("[approve] Property edit apply failed:", e?.message);
+          toast({
+            variant: "destructive",
+            title: "Could not apply edit to property",
+            description: e?.message || "Fix the property record, then approve again.",
+          });
+        }
+      }
+
+      // Always publish the approved Property to Neon + public Supabase.
+      if (propertyId) {
+        try {
+          const syncRes = await base44.functions.invoke("syncPropertyToSupabase", {
+            action: "sync_property",
+            id: propertyId,
+          });
+          const syncBody = syncRes?.data?.ok != null || syncRes?.data?.property ? syncRes.data : syncRes;
+          if (syncBody?.error) throw new Error(syncBody.error);
+          const sbId = syncBody?.property?.id;
+          if (sbId && String(sbId) !== "null" && String(sbId) !== "undefined") {
+            await base44.entities.PropertySubmission.update(id, { supabase_property_id: String(sbId) });
+          }
+        } catch (e) {
+          console.error("[approve] Public site sync failed:", e?.message);
+          toast({
+            variant: "destructive",
+            title: "Approved in portal, but public site sync failed",
+            description: e?.message || "Open the property and sync again.",
+          });
         }
       }
 

@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { CheckCircle, Clock, Home, AlertCircle, Link2 } from "lucide-react";
+import { buildPropertyFromSubmission, buildPropertyEditPatch } from "@/lib/propertyMapping";
 
 // Pending = awaiting admin decision (published/active submissions are excluded).
 const PENDING_STATUSES = ["submitted", "under_review"];
@@ -50,9 +51,53 @@ export default function PropertySubmissionsList() {
   const handleApprove = async (s) => {
     setApprovingId(s.id);
     try {
-      await base44.functions.invoke("approvePropertySubmission", { submissionId: s.id });
-      showToast(`"${s.property_name}" published and license record created.`);
+      const user = await base44.auth.me();
+      const today = new Date().toISOString();
+      let propertyId = s.source_property_id || null;
+
+      // Create/update the portal Property first so local publish can read full text + photos.
+      if (!propertyId) {
+        const propertyData = buildPropertyFromSubmission({
+          ...s,
+          reviewed_by: user.email,
+          approved_date: today,
+        });
+        const created = await base44.entities.Property.create(propertyData);
+        propertyId = created.id;
+        await base44.entities.PropertySubmission.update(s.id, { source_property_id: propertyId });
+      } else if (s.submission_type === "edit") {
+        await base44.entities.Property.update(propertyId, buildPropertyEditPatch(s));
+      }
+
+      const syncRes = await base44.functions.invoke("syncPropertyToSupabase", {
+        action: "sync_property",
+        id: propertyId,
+      });
+      const syncBody = syncRes?.data?.ok != null || syncRes?.data?.property ? syncRes.data : syncRes;
+      if (syncBody?.error) throw new Error(syncBody.error);
+      const sbId = syncBody?.property?.id;
+      if (sbId && String(sbId) !== "null" && String(sbId) !== "undefined") {
+        await base44.entities.PropertySubmission.update(s.id, { supabase_property_id: String(sbId) });
+      }
+
+      // License + partner notification (may no-op if already active)
+      try {
+        await base44.functions.invoke("approvePropertySubmission", { submissionId: s.id });
+      } catch (e) {
+        // If the helper already marked the submission active elsewhere, still keep the publish.
+        if (!/already published/i.test(e?.response?.data?.error || e?.message || "")) {
+          console.warn("[approve] license/notification helper:", e?.message);
+        }
+        await base44.entities.PropertySubmission.update(s.id, {
+          status: "active",
+          reviewed_by: user.email,
+          approved_date: today,
+        });
+      }
+
+      showToast(`"${s.property_name}" published to the public site.`);
       qc.invalidateQueries(["admin-submissions"]);
+      qc.invalidateQueries(["propertiesbase44"]);
       setConfirming(null);
     } catch (e) {
       const msg = e?.response?.data?.error || e?.message || "Approval failed.";
