@@ -11,12 +11,9 @@ function slugify(value: unknown) {
     .replace(/^-+|-+$/g, "");
 }
 
-/** Strip leading inventory codes like NH118 / SS77 from public URL slugs. */
+/** Public path slug from the property name (keeps inventory codes like SNH313). */
 function publicPropertySlug(name: unknown) {
-  const cleaned = String(name || "")
-    .replace(/^[A-Z]{1,6}\d+\s+/i, "")
-    .trim();
-  return slugify(cleaned || name);
+  return slugify(name);
 }
 
 function asString(value: unknown) {
@@ -102,13 +99,18 @@ async function loadPartnerDestination(partnerId: string | null | undefined) {
 }
 
 function buildPublicRecord(property: Record<string, any>, destination: string) {
-  const listingUrl = asString(property.listing_url || property.vrm_url);
+  const listingUrl = asString(property.listing_url || property.vrm_url || property.url);
   const dest = destination || asString(property.market) || asString(property.location_city);
   const destSlug = slugify(dest);
   const propSlug = publicPropertySlug(property.property_name);
   const photos = asPhotos(property.photo_urls);
-  const siteUrl =
-    destSlug && propSlug ? `/destinations/${destSlug}/${propSlug}` : listingUrl || "https://the100collection.com";
+  if (!destSlug || !propSlug) {
+    throw new Error("Property needs a destination/market and property name to publish");
+  }
+  if (!photos.length) {
+    throw new Error("Property has no photos to publish — add photos before approving");
+  }
+  const siteUrl = `/destinations/${destSlug}/${propSlug}`;
 
   let status = asString(property.status) || "draft";
   let active = status === "active";
@@ -167,8 +169,13 @@ function buildPublicRecord(property: Record<string, any>, destination: string) {
     record.prop_categories = JSON.stringify(amenities);
   }
 
+  // Keep required public fields even when optional copy is blank.
+  const required = new Set(["name", "destination", "url", "vrm_url", "status", "images", "property_image", "photo_count"]);
   return Object.fromEntries(
-    Object.entries(record).filter(([, value]) => value !== null && value !== undefined && value !== "")
+    Object.entries(record).filter(([key, value]) => {
+      if (required.has(key)) return value !== null && value !== undefined;
+      return value !== null && value !== undefined && value !== "";
+    })
   );
 }
 
