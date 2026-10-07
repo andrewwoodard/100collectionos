@@ -1,7 +1,16 @@
 import { getNeonPool, json, newId, quoteIdent } from "./neon-db.js";
 import { requireSession } from "./require-session.js";
 
-const JSON_FIELDS = new Set(["images", "vrm_images", "prop_categories", "tags", "reviews"]);
+// Neon `supabase.propertiesbase44` stores these as jsonb (not plain text).
+const JSON_FIELDS = new Set([
+  "images",
+  "vrm_images",
+  "prop_categories",
+  "categories",
+  "tags",
+  "reviews",
+  "propdescription",
+]);
 
 function slugify(value: unknown) {
   return String(value || "")
@@ -9,6 +18,17 @@ function slugify(value: unknown) {
     .trim()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
+}
+
+/** Bind value for a jsonb column — plain prose must be JSON-encoded. */
+function toJsonbParam(value: unknown) {
+  if (value == null || value === "") return null;
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (trimmed.startsWith("{") || trimmed.startsWith("[")) return trimmed;
+    return JSON.stringify(value);
+  }
+  return JSON.stringify(value);
 }
 
 /** Public path slug from the property name (keeps inventory codes like SNH313). */
@@ -165,7 +185,8 @@ function buildPublicRecord(property: Record<string, any>, destination: string) {
 
   const amenities = Array.isArray(property.amenities) ? property.amenities.filter(Boolean) : [];
   if (amenities.length) {
-    record.categories = amenities.join(", ");
+    // Both columns are jsonb on Neon — store amenity lists as JSON arrays.
+    record.categories = JSON.stringify(amenities);
     record.prop_categories = JSON.stringify(amenities);
   }
 
@@ -203,13 +224,13 @@ async function upsertNeon(record: Record<string, any>, property: Record<string, 
   const listingUrl = asString(property.listing_url || property.vrm_url);
   const sbId = asString(property.supabase_property_id);
   const cols = Object.keys(record);
-  const values = Object.values(record);
+  const values = cols.map((col) => (JSON_FIELDS.has(col) ? toJsonbParam(record[col]) : record[col]));
 
   if (sbId && sbId !== "null" && sbId !== "undefined") {
     const { rows } = await pool.query(
       `UPDATE supabase.propertiesbase44 SET ${sqlAssignments(cols, 2)}
        WHERE id = $1 OR row_id::text = $1
-       RETURNING id, row_id, name, url, vrm_url`,
+       RETURNING id, row_id, name, url, vrm_url, photo_count, destination`,
       [sbId, ...values]
     );
     if (rows[0]) return rows[0];
@@ -227,10 +248,32 @@ async function upsertNeon(record: Record<string, any>, property: Record<string, 
       const { rows } = await pool.query(
         `UPDATE supabase.propertiesbase44 SET ${sqlAssignments(cols, 2)}
          WHERE id = $1
-         RETURNING id, row_id, name, url, vrm_url`,
+         RETURNING id, row_id, name, url, vrm_url, photo_count, destination`,
         [existing[0].id, ...values]
       );
       return rows[0];
+    }
+  }
+
+  // Prefer updating an incomplete stub stamped earlier (same property name + partner).
+  const partnerId = asString(property.partner_id);
+  const propName = asString(property.property_name);
+  if (partnerId && propName) {
+    const { rows: stubs } = await pool.query(
+      `SELECT id, row_id FROM supabase.propertiesbase44
+       WHERE partner_id = $1 AND name = $2
+       ORDER BY created_at DESC NULLS LAST
+       LIMIT 1`,
+      [partnerId, propName]
+    );
+    if (stubs[0]) {
+      const { rows } = await pool.query(
+        `UPDATE supabase.propertiesbase44 SET ${sqlAssignments(cols, 2)}
+         WHERE id = $1
+         RETURNING id, row_id, name, url, vrm_url, photo_count, destination`,
+        [stubs[0].id, ...values]
+      );
+      if (rows[0]) return rows[0];
     }
   }
 
@@ -240,7 +283,7 @@ async function upsertNeon(record: Record<string, any>, property: Record<string, 
   const { rows } = await pool.query(
     `INSERT INTO supabase.propertiesbase44 (${insertCols.map(quoteIdent).join(", ")})
      VALUES (${sqlInsertPlaceholders(insertCols)})
-     RETURNING id, row_id, name, url, vrm_url`,
+     RETURNING id, row_id, name, url, vrm_url, photo_count, destination`,
     insertVals
   );
   return rows[0];
@@ -319,9 +362,18 @@ export async function handleSyncPropertyToSupabase(req: any, res: any, body: any
     }
 
     const neonRow = await upsertNeon(record, property);
+    if (!neonRow?.url || !record.images) {
+      throw new Error("Publish incomplete — public url and photos are required");
+    }
+    if (!asString(neonRow.destination)) {
+      throw new Error("Publish incomplete — destination/market is required");
+    }
     const publicId = String(neonRow.row_id || neonRow.id);
     await stampProperty(property.id, publicId);
     const remote = await upsertRemoteSupabase(record, publicId);
+    if (remote && "skipped" in remote && remote.skipped) {
+      throw new Error(remote.reason || "Supabase credentials missing — public site was not updated");
+    }
 
     return json(res, 200, {
       ok: true,
@@ -331,6 +383,7 @@ export async function handleSyncPropertyToSupabase(req: any, res: any, body: any
         name: neonRow.name,
         url: neonRow.url,
         vrm_url: neonRow.vrm_url,
+        destination: neonRow.destination,
         photo_count: record.photo_count || "0",
       },
       remote,

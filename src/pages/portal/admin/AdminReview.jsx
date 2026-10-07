@@ -123,7 +123,13 @@ export default function AdminReview() {
       // Create Property record from submission (skip if already linked — e.g. edit submissions)
       if (!propertyId) {
         try {
-          const propertyData = buildPropertyFromSubmission(submission);
+          // Use the just-written approval fields — in-memory `submission` is stale until refetch.
+          const propertyData = buildPropertyFromSubmission({
+            ...submission,
+            ...updates,
+            reviewed_by: updates.reviewed_by || submission.reviewed_by,
+            approved_date: updates.approved_date || submission.approved_date,
+          });
           const newProperty = await base44.entities.Property.create(propertyData);
           propertyId = newProperty.id;
           await base44.entities.PropertySubmission.update(id, { source_property_id: propertyId });

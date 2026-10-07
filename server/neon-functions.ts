@@ -390,12 +390,43 @@ async function withIngestedImages(record: Record<string, any>) {
   return record;
 }
 
+function slugifyPublic(value: unknown) {
+  return String(value || "")
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
 function toPropertyRecord(data: any) {
   const record = pickColumns(data, PROP_COLUMNS, PROP_ALIASES);
   if (data?.listing_url && !record.vrm_url) record.vrm_url = data.listing_url;
   if (data?.status !== undefined && record.active === undefined) {
     record.active = data.status === "active";
   }
+
+  // Map portal Property photo_urls → public images when callers pass entity-shaped data.
+  if (record.images == null && Array.isArray(data?.photo_urls) && data.photo_urls.length) {
+    const photos = data.photo_urls.map((u: any) => String(u || "").trim()).filter(Boolean);
+    if (photos.length) {
+      record.images = JSON.stringify(photos);
+      record.vrm_images = JSON.stringify(photos);
+      record.property_image = photos[0];
+      record.photo_count = String(photos.length);
+    }
+  }
+
+  // Public site path — never leave url null when we have destination + name.
+  const dest = String(record.destination || data?.market || "").trim();
+  const name = String(record.name || data?.property_name || "").trim();
+  const destSlug = slugifyPublic(dest);
+  const propSlug = slugifyPublic(name);
+  if (destSlug && propSlug) {
+    const siteUrl = `/destinations/${destSlug}/${propSlug}`;
+    if (!record.url || record.url === data?.listing_url) record.url = siteUrl;
+    if (!record.vrm_url) record.vrm_url = String(data?.listing_url || siteUrl);
+  }
+
   return record;
 }
 
