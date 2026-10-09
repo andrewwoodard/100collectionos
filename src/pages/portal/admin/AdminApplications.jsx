@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "react-router-dom";
 import { base44 } from "@/api/base44Client";
-import { CheckCircle, XCircle, Mail, Users, Clock, MessageSquare, ChevronLeft, Building2, Home, CalendarClock, LogIn, Link2, AlertTriangle, RotateCcw, Trash2, Archive, ArchiveRestore } from "lucide-react";
+import { CheckCircle, XCircle, Mail, Users, Clock, MessageSquare, ChevronLeft, Building2, Home, CalendarClock, LogIn, Link2, AlertTriangle, RotateCcw, Trash2, Archive, ArchiveRestore, UserRound } from "lucide-react";
 import { useAuth } from "@/lib/AuthContext";
 import { resolveAdminNotificationEmail } from "@/components/apply/ApplyShared";
 import StatusPill from "@/components/shared/StatusPill";
@@ -37,6 +37,30 @@ const TYPE_STYLES = {
   property_owner:   { cls: "bg-purple-50 text-purple-700 border-purple-200",       label: "Owner",   icon: Home },
   existing_partner_access_request: { cls: "bg-amber-50 text-amber-700 border-amber-200", label: "Portal Access", icon: LogIn },
 };
+
+const STAFF_ROLES = new Set(["admin", "operations", "onboarding"]);
+
+function adminDisplayName(u) {
+  return u?.full_name || u?.name || u?.email || "Admin";
+}
+
+function OwnerBadge({ name, email, className = "" }) {
+  if (!name && !email) {
+    return (
+      <span className={`inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-slate-50 text-slate-400 border border-slate-200 ${className}`}>
+        <UserRound className="w-2.5 h-2.5" /> Unassigned
+      </span>
+    );
+  }
+  return (
+    <span
+      title={email || name}
+      className={`inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-[#0D1B2A]/6 text-[#0D1B2A] border border-[#0D1B2A]/15 ${className}`}
+    >
+      <UserRound className="w-2.5 h-2.5" /> {name || email}
+    </span>
+  );
+}
 
 // ─── Approve Dialog ────────────────────────────────────────────────────────────
 function ApproveDialog({ app, onClose, onSuccess }) {
@@ -592,9 +616,12 @@ function CreateNewPartnerDialog({ app, onClose, onSuccess }) {
 
 // ─── Detail View ───────────────────────────────────────────────────────────────
 function ApplicationDetail({ app, onBack, onAction, onRestore, onDelete, onToggleArchive }) {
+  const qc = useQueryClient();
   const [dialog, setDialog] = useState(null); // "approve" | "reject" | "more_info" | "interview"
   const [toast, setToast] = useState(null);
   const [archiveBusy, setArchiveBusy] = useState(false);
+  const [ownerSaving, setOwnerSaving] = useState(false);
+  const [ownerUserId, setOwnerUserId] = useState(app.owner_user_id || "");
   const [comments, setComments] = useState(() =>
     Array.isArray(app.internal_comments) ? app.internal_comments : []
   );
@@ -602,6 +629,18 @@ function ApplicationDetail({ app, onBack, onAction, onRestore, onDelete, onToggl
   useEffect(() => {
     setComments(Array.isArray(app.internal_comments) ? app.internal_comments : []);
   }, [app.id, app.internal_comments]);
+
+  useEffect(() => {
+    setOwnerUserId(app.owner_user_id || "");
+  }, [app.id, app.owner_user_id]);
+
+  const { data: staffUsers = [] } = useQuery({
+    queryKey: ["admin-users-light"],
+    queryFn: () => base44.entities.User.list("-created_date", 500),
+  });
+  const assignableAdmins = staffUsers
+    .filter((u) => STAFF_ROLES.has(u.role))
+    .sort((a, b) => adminDisplayName(a).localeCompare(adminDisplayName(b)));
 
   const st = STATUS_STYLES[app.status] || STATUS_STYLES.pending;
   const tt = TYPE_STYLES[app.applicant_type] || TYPE_STYLES.property_manager;
@@ -611,6 +650,30 @@ function ApplicationDetail({ app, onBack, onAction, onRestore, onDelete, onToggl
   const showToast = (msg) => {
     setToast(msg);
     setTimeout(() => setToast(null), 4000);
+  };
+
+  const handleOwnerChange = async (nextId) => {
+    const previous = ownerUserId;
+    setOwnerUserId(nextId);
+    setOwnerSaving(true);
+    try {
+      const selectedUser = assignableAdmins.find((u) => u.id === nextId);
+      const patch = selectedUser
+        ? {
+            owner_user_id: selectedUser.id,
+            owner_email: selectedUser.email || null,
+            owner_name: adminDisplayName(selectedUser),
+          }
+        : { owner_user_id: null, owner_email: null, owner_name: null };
+      await base44.entities.PartnerApplication.update(app.id, patch);
+      await qc.invalidateQueries({ queryKey: ["partner-applications"] });
+      showToast(selectedUser ? `Assigned to ${adminDisplayName(selectedUser)}` : "Owner cleared");
+    } catch (e) {
+      setOwnerUserId(previous);
+      showToast(e?.message || "Failed to update owner");
+    } finally {
+      setOwnerSaving(false);
+    }
   };
 
   const handleArchive = async () => {
@@ -655,6 +718,29 @@ function ApplicationDetail({ app, onBack, onAction, onRestore, onDelete, onToggl
               </div>
               <div className="text-sm text-slate-500 mt-0.5">{app.email}</div>
               <div className="text-xs text-slate-400 mt-0.5">{new Date(app.created_date).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })}</div>
+              <div className="mt-3 max-w-xs">
+                <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mb-1 block">
+                  Assigned owner
+                </label>
+                <select
+                  value={ownerUserId}
+                  onChange={(e) => handleOwnerChange(e.target.value)}
+                  disabled={ownerSaving}
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-700 bg-white focus:outline-none focus:border-slate-400 disabled:opacity-60"
+                >
+                  <option value="">Unassigned</option>
+                  {ownerUserId && !assignableAdmins.some((u) => u.id === ownerUserId) && (
+                    <option value={ownerUserId}>
+                      {app.owner_name || app.owner_email || "Assigned user"}
+                    </option>
+                  )}
+                  {assignableAdmins.map((u) => (
+                    <option key={u.id} value={u.id}>
+                      {adminDisplayName(u)}{u.email ? ` (${u.email})` : ""}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
           </div>
           {/* Actions */}
@@ -1103,8 +1189,10 @@ export default function AdminApplications({ embedded = false }) {
         ) : (
           <div className="divide-y divide-slate-50">
             {/* Header row */}
-            <div className="hidden sm:grid grid-cols-[2fr_1.5fr_1fr_1fr_1fr_auto] gap-4 px-6 py-3 bg-slate-50/70 text-[10px] font-semibold text-slate-400 uppercase tracking-wide">
-              <span>Applicant</span><span>Company</span><span>Type</span><span>Properties</span><span>Status</span><span />
+            <div className="hidden sm:grid grid-cols-[minmax(0,2fr)_minmax(7rem,0.7fr)_auto] gap-4 px-6 py-3 bg-slate-50/70 text-[10px] font-semibold text-slate-400 uppercase tracking-wide">
+              <span>Applicant</span>
+              <span>Owner</span>
+              <span />
             </div>
             {filtered.map(app => {
               const st = STATUS_STYLES[app.status] || STATUS_STYLES.pending;
@@ -1174,8 +1262,15 @@ export default function AdminApplications({ embedded = false }) {
                         {app.property_count && <span>· {app.property_count} properties</span>}
                         {(app.property_locations || app.property_address) && <span>· {app.property_locations || app.property_address}</span>}
                       </div>
+                      <div className="sm:hidden mt-1.5">
+                        <OwnerBadge name={app.owner_name} email={app.owner_email} />
+                      </div>
                     </div>
-                    <div className="text-[10px] text-slate-400 flex-shrink-0">{new Date(app.created_date).toLocaleDateString()}</div>
+                    <div className="hidden sm:flex flex-col items-end gap-1 flex-shrink-0 min-w-[7rem]">
+                      <OwnerBadge name={app.owner_name} email={app.owner_email} />
+                      <div className="text-[10px] text-slate-400">{new Date(app.created_date).toLocaleDateString()}</div>
+                    </div>
+                    <div className="sm:hidden text-[10px] text-slate-400 flex-shrink-0">{new Date(app.created_date).toLocaleDateString()}</div>
                   </div>
                 </button>
                 <div className="flex items-center gap-2 flex-shrink-0">

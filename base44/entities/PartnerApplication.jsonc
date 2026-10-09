@@ -133,6 +133,19 @@
       "type": "string",
       "description": "Internal notes / reject reason / more info request"
     },
+    "owner_user_id": {
+      "type": "string",
+      "description": "User.id of the admin assigned as owner of this application"
+    },
+    "owner_email": {
+      "type": "string",
+      "format": "email",
+      "description": "Email of the assigned admin owner (denormalized for list display)"
+    },
+    "owner_name": {
+      "type": "string",
+      "description": "Display name of the assigned admin owner (denormalized for list display)"
+    },
     "internal_comments": {
       "type": "array",
       "description": "Threaded internal admin comments about this application (not visible to applicants).",
