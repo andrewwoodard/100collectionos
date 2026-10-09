@@ -1,6 +1,5 @@
 import React, { useState, useRef, useCallback, useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Trash2, Plus, ImageIcon, GripVertical, UploadCloud } from "lucide-react";
@@ -17,15 +16,25 @@ import {
 } from "@/components/ui/dialog";
 import AiPhotoPullButton from "./AiPhotoPullButton";
 import PasteHtmlButton from "./PasteHtmlButton";
+import { syncPropertyGalleryImages } from "@/lib/syncPropertyGalleryImages";
 
 /**
  * Editable image gallery backed by the `propertiesbase44.images` column.
  * Supports drag-to-reorder, file upload, URL add, and delete — all of which
- * write the updated array back to Supabase via the supabaseProperties function.
+ * write the updated array to propertiesbase44.images AND Property.photo_urls.
  */
-export default function SupabaseImagesGallery({ images: propImages = [], supabasePropertyId, sbQueryKey, listingUrl }) {
+export default function SupabaseImagesGallery({
+  images: propImages = [],
+  supabasePropertyId,
+  propertyId,
+  seedProperty,
+  sbQueryKey,
+  listingUrl,
+  onSupabaseId,
+}) {
   const queryClient = useQueryClient();
   const [localImages, setLocalImages] = useState(propImages);
+  const [linkedSbId, setLinkedSbId] = useState(supabasePropertyId || null);
   const [addOpen, setAddOpen] = useState(false);
   const [newUrl, setNewUrl] = useState("");
   const [saving, setSaving] = useState(false);
@@ -43,26 +52,40 @@ export default function SupabaseImagesGallery({ images: propImages = [], supabas
     setLocalImages(propImages);
   }, [propImages]);
 
-  // Persist the images array to propertiesbase44.images
+  useEffect(() => {
+    setLinkedSbId(supabasePropertyId || null);
+  }, [supabasePropertyId]);
+
+  // Persist to propertiesbase44.images + Property.photo_urls (create/link row if needed)
   const saveImages = useCallback(async (newImages) => {
-    if (!supabasePropertyId) return;
     setSaving(true);
     try {
-      const res = await base44.functions.invoke("supabaseProperties", {
-        action: "update",
-        id: supabasePropertyId,
-        data: { images: newImages },
+      const result = await syncPropertyGalleryImages({
+        propertyId,
+        supabasePropertyId: linkedSbId || supabasePropertyId,
+        images: newImages,
+        seed: seedProperty || {},
+        listingUrl,
       });
-      if (res.data?.property) {
-        queryClient.setQueryData(["supabase-property", sbQueryKey], res.data.property);
-        queryClient.invalidateQueries({ queryKey: ["propertiesbase44"] });
-        queryClient.invalidateQueries({ queryKey: ["properties"] });
+      if (result.supabasePropertyId && result.supabasePropertyId !== linkedSbId) {
+        setLinkedSbId(result.supabasePropertyId);
+        onSupabaseId?.(result.supabasePropertyId);
       }
-    } catch {
+      if (result.property) {
+        queryClient.setQueryData(["supabase-property", sbQueryKey], result.property);
+      }
+      queryClient.invalidateQueries({ queryKey: ["supabase-property", sbQueryKey] });
+      queryClient.invalidateQueries({ queryKey: ["propertiesbase44"] });
+      queryClient.invalidateQueries({ queryKey: ["properties"] });
+      if (propertyId) {
+        queryClient.invalidateQueries({ queryKey: ["property", propertyId] });
+      }
+    } catch (e) {
+      console.error("[SupabaseImagesGallery] save failed:", e?.message || e);
     } finally {
       setSaving(false);
     }
-  }, [supabasePropertyId, sbQueryKey, queryClient]);
+  }, [linkedSbId, supabasePropertyId, propertyId, seedProperty, listingUrl, sbQueryKey, queryClient, onSupabaseId]);
 
   // Upload files via the Add Image dialog
   const handleFiles = useCallback(async (files) => {
@@ -180,15 +203,27 @@ export default function SupabaseImagesGallery({ images: propImages = [], supabas
         <div className="flex items-center gap-2">
           <AiPhotoPullButton
             listingUrl={listingUrl}
-            supabasePropertyId={supabasePropertyId}
+            supabasePropertyId={linkedSbId || supabasePropertyId}
+            propertyId={propertyId}
+            seedProperty={seedProperty}
             sbQueryKey={sbQueryKey}
             currentImages={localImages}
+            onImagesChange={async (next) => {
+              setLocalImages(next);
+              await saveImages(next);
+            }}
           />
           <PasteHtmlButton
             listingUrl={listingUrl}
-            supabasePropertyId={supabasePropertyId}
+            supabasePropertyId={linkedSbId || supabasePropertyId}
+            propertyId={propertyId}
+            seedProperty={seedProperty}
             sbQueryKey={sbQueryKey}
             currentImages={localImages}
+            onImagesChange={async (next) => {
+              setLocalImages(next);
+              await saveImages(next);
+            }}
           />
           <Button size="sm" onClick={() => setAddOpen(true)}>
             <Plus className="w-3.5 h-3.5 mr-1.5" /> Add Image

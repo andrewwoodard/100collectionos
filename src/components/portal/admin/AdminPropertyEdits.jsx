@@ -5,6 +5,8 @@ import StatusPill from "@/components/shared/StatusPill";
 import EditChanges from "@/components/portal/admin/EditChanges";
 import { Search, Eye, CheckCircle, X, Building2, MessageSquare } from "lucide-react";
 import { toast } from "sonner";
+import { syncPropertyGalleryImages } from "@/lib/syncPropertyGalleryImages";
+import { ingestPropertyImages } from "@/lib/propertyImagesBlob";
 
 // Fields to copy from the edit submission onto the source Property when approved
 const EDITABLE_FIELDS = [
@@ -61,6 +63,19 @@ export default function AdminPropertyEdits({ embedded }) {
         if (sub[f] !== undefined && sub[f] !== null && sub[f] !== "") patch[f] = sub[f];
       });
       await base44.entities.Property.update(sub.source_property_id, patch);
+
+      // Photo changes must land on propertiesbase44.images (public site), not only photo_urls.
+      if (Array.isArray(patch.photo_urls)) {
+        const property = await base44.entities.Property.get(sub.source_property_id).catch(() => null);
+        const durableUrls = await ingestPropertyImages(patch.photo_urls);
+        await syncPropertyGalleryImages({
+          propertyId: sub.source_property_id,
+          supabasePropertyId: property?.supabase_property_id,
+          images: durableUrls,
+          seed: property || { property_name: sub.property_name, partner_id: sub.partner_id },
+          listingUrl: property?.listing_url || property?.vrm_url || sub.listing_url,
+        });
+      }
 
       // Mark submission approved
       await base44.entities.PropertySubmission.update(sub.id, {

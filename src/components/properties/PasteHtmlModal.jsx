@@ -1,6 +1,5 @@
 import React, { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -17,6 +16,7 @@ import { useToast } from "@/components/ui/use-toast";
 import { normalizeStorageUrl } from "@/lib/supabase";
 import { ingestPropertyImages } from "@/lib/propertyImagesBlob";
 import { extractHtmlImages } from "@/lib/extractHtmlImages";
+import { syncPropertyGalleryImages } from "@/lib/syncPropertyGalleryImages";
 
 const SOURCE_META = {
   img: { label: "img", color: "bg-blue-100 text-blue-700" },
@@ -33,8 +33,11 @@ export default function PasteHtmlModal({
   onClose,
   listingUrl,
   supabasePropertyId,
+  propertyId,
+  seedProperty,
   sbQueryKey,
   currentImages = [],
+  onImagesChange,
 }) {
   const [html, setHtml] = useState("");
   const [baseUrl, setBaseUrl] = useState(listingUrl || "");
@@ -88,7 +91,7 @@ export default function PasteHtmlModal({
 
   const handleAdd = async () => {
     if (selected.size === 0) return;
-    if (!supabasePropertyId) {
+    if (!supabasePropertyId && !propertyId && !listingUrl) {
       toast({ variant: "destructive", title: "No property", description: "Save the property first." });
       return;
     }
@@ -108,30 +111,24 @@ export default function PasteHtmlModal({
         return;
       }
 
-      if (supabasePropertyId) {
-        const merged = [...(currentImages || []), ...newUrls];
-        const updateRes = await base44.functions.invoke("supabaseProperties", {
-          action: "update",
-          id: supabasePropertyId,
-          data: { images: merged },
+      const merged = [...(currentImages || []), ...newUrls];
+      if (onImagesChange) {
+        await onImagesChange(merged);
+      } else {
+        const result = await syncPropertyGalleryImages({
+          propertyId,
+          supabasePropertyId,
+          images: merged,
+          seed: seedProperty || {},
+          listingUrl,
         });
-        if (updateRes.data?.error) throw new Error(updateRes.data.error);
-        if (updateRes.data?.property) {
-          queryClient.setQueryData(["supabase-property", sbQueryKey], updateRes.data.property);
+        if (result.property) {
+          queryClient.setQueryData(["supabase-property", sbQueryKey], result.property);
         }
+        queryClient.invalidateQueries({ queryKey: ["supabase-property", sbQueryKey] });
         queryClient.invalidateQueries({ queryKey: ["propertiesbase44"] });
         queryClient.invalidateQueries({ queryKey: ["properties"] });
-      } else if (listingUrl) {
-        for (const u of newUrls) {
-          await base44.functions.invoke("imageMetadata", {
-            action: "create",
-            data: { original_url: u, proppage: listingUrl, property_url: listingUrl },
-          });
-        }
-        queryClient.invalidateQueries({ queryKey: ["property-images", listingUrl] });
-      } else {
-        toast({ variant: "destructive", title: "No property", description: "Save the property first." });
-        return;
+        if (propertyId) queryClient.invalidateQueries({ queryKey: ["property", propertyId] });
       }
       toast({
         title: `Added ${newUrls.length} photo${newUrls.length !== 1 ? "s" : ""}`,

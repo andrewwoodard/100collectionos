@@ -133,6 +133,33 @@
       "type": "string",
       "description": "Internal notes / reject reason / more info request"
     },
+    "internal_comments": {
+      "type": "array",
+      "description": "Threaded internal admin comments about this application (not visible to applicants).",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "author_email": {
+            "type": "string",
+            "format": "email"
+          },
+          "author_name": {
+            "type": "string"
+          },
+          "content": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "default": []
+    },
     "archived": {
       "type": "boolean",
       "default": false,

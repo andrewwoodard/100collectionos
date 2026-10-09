@@ -15,7 +15,7 @@ const LABELS = {
 
 const PLACEHOLDERS = {
   RESEND_API_KEY: "re_xxxxxxxxxxxx",
-  RESEND_FROM: "The 100 Collection <noreply@the100collection.com>",
+  RESEND_FROM: "The 100 Collection <hello@portal.the100collection.com>",
   ADMIN_NOTIFICATION_LIST: "admin@the100collection.com, ops@the100collection.com",
 };
 

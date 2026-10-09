@@ -1,5 +1,6 @@
 import { getNeonPool, json, newId, quoteIdent } from "./neon-db.js";
 import { requireSession } from "./require-session.js";
+import { hasRemoteSupabase, supabaseRest } from "./supabase-remote.js";
 
 // Neon `supabase.propertiesbase44` stores these as jsonb (not plain text).
 const JSON_FIELDS = new Set([
@@ -52,46 +53,6 @@ function asPhotos(value: unknown) {
     out.push(url);
   }
   return out;
-}
-
-function supabaseConfig() {
-  const url = process.env.BASE44_SUPABASE_URL || process.env.SUPABASE_URL || "";
-  const key =
-    process.env.BASE44_SUPABASE_SERVICE_ROLE_KEY ||
-    process.env.SUPABASE_SERVICE_ROLE_KEY ||
-    "";
-  return { url: url.replace(/\/$/, ""), key };
-}
-
-async function supabaseRest(path: string, init: RequestInit = {}) {
-  const { url, key } = supabaseConfig();
-  if (!url || !key) throw new Error("Supabase credentials are not configured");
-  const res = await fetch(`${url}/rest/v1/${path}`, {
-    ...init,
-    headers: {
-      apikey: key,
-      Authorization: `Bearer ${key}`,
-      Accept: "application/json",
-      "Content-Type": "application/json",
-      Prefer: "return=representation",
-      ...(init.headers || {}),
-    },
-  });
-  const text = await res.text();
-  let data: any = null;
-  try {
-    data = text ? JSON.parse(text) : null;
-  } catch {
-    data = text;
-  }
-  if (!res.ok) {
-    const message =
-      (data && (data.message || data.error_description || data.error)) ||
-      text ||
-      `Supabase ${res.status}`;
-    throw new Error(typeof message === "string" ? message : JSON.stringify(message));
-  }
-  return data;
 }
 
 async function loadProperty(propertyId: string) {
@@ -290,8 +251,7 @@ async function upsertNeon(record: Record<string, any>, property: Record<string, 
 }
 
 async function upsertRemoteSupabase(record: Record<string, any>, rowId: string) {
-  const { url, key } = supabaseConfig();
-  if (!url || !key) {
+  if (!hasRemoteSupabase()) {
     return { skipped: true as const, reason: "Supabase credentials missing" };
   }
 

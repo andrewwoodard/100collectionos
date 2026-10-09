@@ -80,28 +80,47 @@ export function takeResetResult(email: string) {
   return entry || null;
 }
 
+const DEFAULT_REPLY_TO = "info@the100collection.com";
+
 export async function sendPortalEmail({
   to,
   subject,
   html,
   text,
+  replyTo,
 }: {
-  to: string;
+  to: string | string[];
   subject: string;
   html: string;
   text: string;
+  replyTo?: string | string[];
 }) {
   const { apiKey, from } = await getResendConfig();
   if (!apiKey) {
     return { ok: true as const, skipped: "RESEND_API_KEY not configured" };
   }
+  const toArray = (Array.isArray(to) ? to : [to]).map((r) => String(r || "").trim()).filter(Boolean);
+  if (!toArray.length) {
+    return { ok: false as const, error: "to is required" };
+  }
+  const replyToValue = replyTo ?? DEFAULT_REPLY_TO;
+  const replyToArray = (Array.isArray(replyToValue) ? replyToValue : [replyToValue])
+    .map((r) => String(r || "").trim())
+    .filter(Boolean);
   const res = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${apiKey}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ from, to: [to], subject, html, text }),
+    body: JSON.stringify({
+      from,
+      to: toArray,
+      subject,
+      html,
+      text,
+      ...(replyToArray.length ? { reply_to: replyToArray.length === 1 ? replyToArray[0] : replyToArray } : {}),
+    }),
   });
   if (!res.ok) {
     const errText = await res.text();

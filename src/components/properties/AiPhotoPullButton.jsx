@@ -14,8 +14,11 @@ import AiPhotoPullModal from "./AiPhotoPullModal";
 export default function AiPhotoPullButton({
   listingUrl,
   supabasePropertyId,
+  propertyId,
+  seedProperty,
   sbQueryKey,
   currentImages = [],
+  onImagesChange,
 }) {
   const [open, setOpen] = useState(false);
 
@@ -36,8 +39,11 @@ export default function AiPhotoPullButton({
         onClose={() => setOpen(false)}
         listingUrl={listingUrl}
         supabasePropertyId={supabasePropertyId}
+        propertyId={propertyId}
+        seedProperty={seedProperty}
         sbQueryKey={sbQueryKey}
         currentImages={currentImages}
+        onImagesChange={onImagesChange}
       />
     </>
   );

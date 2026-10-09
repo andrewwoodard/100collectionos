@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "react-router-dom";
 import { base44 } from "@/api/base44Client";
@@ -11,6 +11,7 @@ import LinkActivationModal from "@/components/admin/LinkActivationModal";
 import BatchApproveDialog from "@/components/admin/BatchApproveDialog";
 import BulkDeleteSpamModal from "@/components/admin/BulkDeleteSpamModal";
 import PropertySubmissionsList from "@/components/admin/PropertySubmissionsList";
+import ApplicationInternalComments from "@/components/portal/admin/ApplicationInternalComments";
 
 function externalUrl(value) {
   const raw = String(value || "").trim();
@@ -252,66 +253,248 @@ function RejectDialog({ app, onClose, onSuccess }) {
 // ─── Interview Dialog ──────────────────────────────────────────────────────────
 function InterviewDialog({ app, onClose, onSuccess }) {
   const qc = useQueryClient();
+  const [toEmail, setToEmail] = useState(app.email || "");
   const [scheduledAt, setScheduledAt] = useState("");
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
 
   const handleSend = async () => {
+    const recipient = toEmail.trim();
+    if (!recipient) return;
     setLoading(true);
-    await base44.entities.PartnerApplication.update(app.id, {
-      status: "interview_invited",
-      admin_notes: message || app.admin_notes,
-    });
-    // If partner record exists, stamp interview_scheduled_at
-    if (scheduledAt) {
-      try {
-        const partners = await base44.entities.Partner.filter({ primary_contact_email: app.email });
-        if (partners[0]) {
-          await base44.entities.Partner.update(partners[0].id, { interview_scheduled_at: scheduledAt });
-        }
-      } catch (_) {}
-    }
-    const interviewMsg = scheduledAt
-      ? `You've been invited to an interview on ${new Date(scheduledAt).toLocaleString("en-US", { dateStyle: "long", timeStyle: "short" })}.${message ? ` ${message}` : ""}`
-      : `You've been invited to an interview with The 100 Collection team.${message ? ` ${message}` : ""}`;
-    await Promise.all([
-      base44.entities.PortalNotification.create({
-        recipient_email: app.email,
+    try {
+      await base44.entities.PartnerApplication.update(app.id, {
+        status: "interview_invited",
+        admin_notes: message || app.admin_notes,
+      });
+      // If partner record exists, stamp interview_scheduled_at
+      if (scheduledAt) {
+        try {
+          const partners = await base44.entities.Partner.filter({ primary_contact_email: app.email });
+          if (partners[0]) {
+            await base44.entities.Partner.update(partners[0].id, { interview_scheduled_at: scheduledAt });
+          }
+        } catch (_) {}
+      }
+      const inviteLead = scheduledAt
+        ? `You've been invited to an interview on ${new Date(scheduledAt).toLocaleString("en-US", { dateStyle: "long", timeStyle: "short" })}.`
+        : `You've been invited to an interview with The 100 Collection team.`;
+      const adminMessage = message.trim();
+      const interviewMsg = adminMessage ? `${inviteLead} ${adminMessage}` : inviteLead;
+
+      await base44.entities.PortalNotification.create({
+        recipient_email: recipient,
         recipient_role: "partner",
         type: "general",
         title: "Interview Scheduled with The 100 Collection",
         message: interviewMsg,
         link: "/portal/dashboard",
         is_read: false,
-      }),
-      base44.integrations.Core.SendEmail({
-        to: app.email,
+      }).catch(() => {});
+
+      // Local sendResendEmail (not Core.SendEmail) — Core.SendEmail often throws
+      // axios "Network Error" after the mail already went out.
+      const firstName = (app.full_name || "there").split(" ")[0];
+      const builtRes = await base44.functions.invoke("buildAdminEmail", {
+        eventType: "INTERVIEW INVITATION",
+        urgency: "success",
+        headline: "Interview Invitation",
+        subheadline: `Hi ${firstName},`,
+        contextBlock: interviewMsg,
         subject: "Interview Invitation — The 100 Collection",
-        body: `Hi ${app.full_name},\n\n${interviewMsg}\n\nThank you,\nThe 100 Collection Team`,
-      }),
-    ]);
-    qc.invalidateQueries(["partner-applications"]);
-    setLoading(false);
-    onSuccess("Interview invitation sent.");
-    onClose();
+        replyPrompt: true,
+      });
+      const built = builtRes?.data;
+      if (built?.html && built?.subject) {
+        const sendRes = await base44.functions.invoke("sendResendEmail", {
+          to: recipient,
+          subject: built.subject,
+          html: built.html,
+          text: built.text || `Hi ${app.full_name},\n\n${interviewMsg}\n\nThank you,\nThe 100 Collection Team`,
+        });
+        const sendBody = sendRes?.data || sendRes;
+        if (sendBody?.error) throw new Error(sendBody.error);
+        if (sendBody?.skipped) {
+          onSuccess(`Invitation saved, but email skipped: ${sendBody.skipped}`);
+          qc.invalidateQueries(["partner-applications"]);
+          onClose();
+          return;
+        }
+      } else {
+        throw new Error(built?.error || "Could not build interview email");
+      }
+
+      qc.invalidateQueries(["partner-applications"]);
+      onSuccess("Interview invitation sent.");
+      onClose();
+    } catch (e) {
+      const msg = e?.message || e?.toString?.() || "Failed to send interview invitation.";
+      // Status may already be updated — still surface a clear message.
+      onSuccess(msg === "Network Error" ? "Invitation saved, but the email response failed. Check the inbox before retrying." : msg);
+      qc.invalidateQueries(["partner-applications"]);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
     <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl shadow-xl max-w-sm w-full p-6">
-        <h3 className="text-base font-semibold text-[#0D1B2A] mb-3">Invite to Interview</h3>
+      <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6">
+        <h3 className="text-base font-semibold text-[#0D1B2A] mb-1">Invite to Interview</h3>
+        <p className="text-xs text-slate-400 mb-4">
+          Sends the interview invitation email to the applicant.
+        </p>
+        <label className="text-xs text-slate-500 uppercase tracking-wide mb-1.5 block">Send to</label>
+        <input
+          type="email"
+          value={toEmail}
+          onChange={(e) => setToEmail(e.target.value)}
+          className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-700 focus:outline-none focus:border-slate-400 mb-4"
+          placeholder="applicant@email.com"
+        />
         <label className="text-xs text-slate-500 uppercase tracking-wide mb-1.5 block">Interview Date & Time (optional)</label>
         <input type="datetime-local" value={scheduledAt} onChange={e => setScheduledAt(e.target.value)}
           className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-700 focus:outline-none focus:border-slate-400 mb-4" />
-        <label className="text-xs text-slate-500 uppercase tracking-wide mb-1.5 block">Message to applicant (optional)</label>
-        <textarea value={message} onChange={e => setMessage(e.target.value)} rows={3}
+        <label className="text-xs text-slate-500 uppercase tracking-wide mb-1.5 block">Admin message</label>
+        <textarea value={message} onChange={e => setMessage(e.target.value)} rows={4}
           className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-700 resize-none focus:outline-none focus:border-slate-400 mb-5"
           placeholder="We'd love to learn more about your portfolio…" />
         <div className="flex gap-3">
           <button onClick={onClose} className="flex-1 px-4 py-2 text-sm border border-slate-200 rounded-lg text-slate-600 hover:bg-slate-50">Cancel</button>
-          <button onClick={handleSend} disabled={loading}
+          <button onClick={handleSend} disabled={loading || !toEmail.trim()}
             className="flex-1 px-4 py-2 text-sm bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-60 font-medium">
             {loading ? "Sending…" : "Send Invite"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Test Interview Email Dialog ───────────────────────────────────────────────
+function normalizeHttpUrl(raw) {
+  const trimmed = (raw || "").trim();
+  if (!trimmed) return "";
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  return `https://${trimmed}`;
+}
+
+function TestInterviewEmailDialog({ defaultEmail, onClose, onSuccess }) {
+  const [toEmail, setToEmail] = useState(defaultEmail || "");
+  const [message, setMessage] = useState(
+    "We would like to schedule a first-round interview this week. Are you available Thursday or Friday afternoon?"
+  );
+  const [linkUrl, setLinkUrl] = useState("");
+  const [buttonLabel, setButtonLabel] = useState("Schedule Interview");
+  const [loading, setLoading] = useState(false);
+
+  const handleSend = async () => {
+    const to = toEmail.trim();
+    if (!to) return;
+    setLoading(true);
+    try {
+      const firstName = (to.split("@")[0] || "there").replace(/[._]/g, " ");
+      const adminMessage =
+        message.trim() ||
+        "We would like to schedule a first-round interview this week. Are you available Thursday or Friday afternoon?";
+      const ctaUrl = normalizeHttpUrl(linkUrl);
+      const ctaLabel = (buttonLabel.trim() || "Schedule Interview");
+
+      const builtRes = await base44.functions.invoke("buildAdminEmail", {
+        eventType: "INTERVIEW INVITATION",
+        urgency: "success",
+        headline: "Interview Invitation",
+        subheadline: `Hi ${firstName},`,
+        contextBlock: `You've been invited to an interview with The 100 Collection team. ${adminMessage}`.trim(),
+        subject: "Interview Invitation — The 100 Collection",
+        replyPrompt: true,
+        ...(ctaUrl ? { ctaUrl, ctaLabel } : {}),
+      });
+      const built = builtRes?.data;
+      if (!built?.html || !built?.subject) {
+        throw new Error(built?.error || "Could not build interview email");
+      }
+
+      const sendRes = await base44.functions.invoke("sendResendEmail", {
+        to,
+        subject: `[TEST] ${built.subject}`,
+        html: built.html,
+        text: built.text || undefined,
+      });
+      const sendBody = sendRes?.data || sendRes;
+      if (sendBody?.error) throw new Error(sendBody.error);
+      if (sendBody?.skipped) {
+        onSuccess(`Test skipped: ${sendBody.skipped}`);
+        onClose();
+        return;
+      }
+      if (sendBody?.ok === false) {
+        throw new Error(sendBody?.error || "Send failed");
+      }
+      onSuccess(`Test interview email sent to ${to}`);
+      onClose();
+    } catch (e) {
+      const msg = e?.message || e?.toString?.() || "Failed to send test interview email";
+      onSuccess(
+        msg === "Network Error"
+          ? "Email may have sent — check the inbox. The browser got a network error on the response."
+          : msg
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6 max-h-[90vh] overflow-y-auto">
+        <h3 className="text-base font-semibold text-[#0D1B2A] mb-1">Send test interview email</h3>
+        <p className="text-xs text-slate-400 mb-4">
+          Preview the Invite to Interview email. Nothing on the application changes.
+        </p>
+        <label className="text-xs text-slate-500 uppercase tracking-wide mb-1.5 block">Send to</label>
+        <input
+          type="email"
+          value={toEmail}
+          onChange={(e) => setToEmail(e.target.value)}
+          className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-700 focus:outline-none focus:border-slate-400 mb-4"
+          placeholder="you@the100collection.com"
+        />
+        <label className="text-xs text-slate-500 uppercase tracking-wide mb-1.5 block">Admin message</label>
+        <textarea
+          value={message}
+          onChange={(e) => setMessage(e.target.value)}
+          rows={4}
+          className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-700 resize-none focus:outline-none focus:border-slate-400 mb-4"
+          placeholder="Message included in the interview invitation…"
+        />
+        <label className="text-xs text-slate-500 uppercase tracking-wide mb-1.5 block">Button link (optional)</label>
+        <input
+          type="url"
+          value={linkUrl}
+          onChange={(e) => setLinkUrl(e.target.value)}
+          className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-700 focus:outline-none focus:border-slate-400 mb-4"
+          placeholder="https://calendly.com/…"
+        />
+        <label className="text-xs text-slate-500 uppercase tracking-wide mb-1.5 block">Button label</label>
+        <input
+          type="text"
+          value={buttonLabel}
+          onChange={(e) => setButtonLabel(e.target.value)}
+          disabled={!linkUrl.trim()}
+          className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-700 focus:outline-none focus:border-slate-400 mb-5 disabled:bg-slate-50 disabled:text-slate-400"
+          placeholder="Schedule Interview"
+        />
+        <div className="flex gap-3">
+          <button onClick={onClose} className="flex-1 px-4 py-2 text-sm border border-slate-200 rounded-lg text-slate-600 hover:bg-slate-50">
+            Cancel
+          </button>
+          <button
+            onClick={handleSend}
+            disabled={loading || !toEmail.trim()}
+            className="flex-1 px-4 py-2 text-sm bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-60 font-medium"
+          >
+            {loading ? "Sending…" : "Send test email"}
           </button>
         </div>
       </div>
@@ -412,6 +595,13 @@ function ApplicationDetail({ app, onBack, onAction, onRestore, onDelete, onToggl
   const [dialog, setDialog] = useState(null); // "approve" | "reject" | "more_info" | "interview"
   const [toast, setToast] = useState(null);
   const [archiveBusy, setArchiveBusy] = useState(false);
+  const [comments, setComments] = useState(() =>
+    Array.isArray(app.internal_comments) ? app.internal_comments : []
+  );
+
+  useEffect(() => {
+    setComments(Array.isArray(app.internal_comments) ? app.internal_comments : []);
+  }, [app.id, app.internal_comments]);
 
   const st = STATUS_STYLES[app.status] || STATUS_STYLES.pending;
   const tt = TYPE_STYLES[app.applicant_type] || TYPE_STYLES.property_manager;
@@ -647,11 +837,17 @@ function ApplicationDetail({ app, onBack, onAction, onRestore, onDelete, onToggl
         )}
 
         {app.admin_notes && (
-          <div className="px-6 pb-6">
-            <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mb-2">Admin Notes</div>
+          <div className="px-6 pb-5">
+            <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mb-2">Legacy admin notes</div>
             <div className="bg-amber-50 border border-amber-100 rounded-xl p-4 text-sm text-slate-600 leading-relaxed">{app.admin_notes}</div>
           </div>
         )}
+
+        <ApplicationInternalComments
+          applicationId={app.id}
+          comments={comments}
+          onUpdated={setComments}
+        />
       </div>
 
       {dialog === "approve" && (
@@ -680,6 +876,7 @@ export default function AdminApplications({ embedded = false }) {
   const [toast, setToast] = useState(null);
   const [showArchived, setShowArchived] = useState(false);
   const [busyArchiveId, setBusyArchiveId] = useState(null);
+  const [testInterviewOpen, setTestInterviewOpen] = useState(false);
   const qc = useQueryClient();
   const { user } = useAuth();
 
@@ -799,7 +996,7 @@ export default function AdminApplications({ embedded = false }) {
       )}
 
       {/* View toggle */}
-      <div className="flex items-center gap-2 mb-5">
+      <div className="flex flex-wrap items-center gap-2 mb-5">
         <button onClick={() => setViewMode("partners")}
           className={`text-xs px-3 py-1.5 rounded-full border transition-all ${viewMode === "partners" ? "bg-[#0D1B2A] text-white border-[#0D1B2A]" : "border-slate-200 text-slate-600 hover:border-slate-400"}`}>
           Partner Applications
@@ -808,7 +1005,25 @@ export default function AdminApplications({ embedded = false }) {
           className={`text-xs px-3 py-1.5 rounded-full border transition-all ${viewMode === "properties" ? "bg-[#0D1B2A] text-white border-[#0D1B2A]" : "border-slate-200 text-slate-600 hover:border-slate-400"}`}>
           Property Submissions
         </button>
+        {viewMode === "partners" && (
+          <button
+            onClick={() => setTestInterviewOpen(true)}
+            className="ml-auto flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full border border-purple-200 bg-purple-50 text-purple-700 hover:bg-purple-100 transition-all"
+            title="Send yourself a sample of the Invite to Interview email"
+          >
+            <Mail className="w-3.5 h-3.5" />
+            Send test interview email
+          </button>
+        )}
       </div>
+
+      {testInterviewOpen && (
+        <TestInterviewEmailDialog
+          defaultEmail={user?.email || ""}
+          onClose={() => setTestInterviewOpen(false)}
+          onSuccess={showToast}
+        />
+      )}
 
       {viewMode === "properties" ? (
         <PropertySubmissionsList />
@@ -945,6 +1160,11 @@ export default function AdminApplications({ embedded = false }) {
                         {app.applicant_type === "property_owner" && app.submitted_properties?.length > 0 && (
                           <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#C9A96E]/10 text-[#C9A96E] border border-[#C9A96E]/20 flex items-center gap-1">
                             <Home className="w-2.5 h-2.5" /> {app.submitted_properties.length} properties
+                          </span>
+                        )}
+                        {Array.isArray(app.internal_comments) && app.internal_comments.length > 0 && (
+                          <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200 flex items-center gap-1">
+                            <MessageSquare className="w-2.5 h-2.5" /> {app.internal_comments.length}
                           </span>
                         )}
                       </div>

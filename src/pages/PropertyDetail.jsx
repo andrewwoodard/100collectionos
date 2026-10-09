@@ -917,7 +917,21 @@ export default function PropertyDetail() {
           <TabsTrigger value="notes">Notes ({notes.length})</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="images"><PropertyImagesTab listingUrl={property.vrm_url || property.listing_url} propertyImages={propertyImagesArr} supabasePropertyId={hasSbId ? sbId : supabaseProperty?.id} sbQueryKey={sbQueryKey} /></TabsContent>
+        <TabsContent value="images">
+          <PropertyImagesTab
+            listingUrl={property.vrm_url || property.listing_url}
+            propertyImages={propertyImagesArr}
+            photoUrls={baseProperty?.photo_urls || []}
+            supabasePropertyId={hasSbId ? sbId : supabaseProperty?.id}
+            propertyId={baseProperty?.id || propertyId}
+            seedProperty={baseProperty || property}
+            sbQueryKey={sbQueryKey}
+            onSupabaseId={() => {
+              queryClient.invalidateQueries({ queryKey: ["property", propertyId] });
+              queryClient.invalidateQueries({ queryKey: ["supabase-property"] });
+            }}
+          />
+        </TabsContent>
         <TabsContent value="onboarding"><RelatedEntitiesTab type="onboarding" items={onboarding} /></TabsContent>
         <TabsContent value="documents"><RelatedEntitiesTab type="documents" items={documents} /></TabsContent>
         <TabsContent value="media"><RelatedEntitiesTab type="media" items={media} /></TabsContent>

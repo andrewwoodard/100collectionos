@@ -4,6 +4,7 @@ import { requireAdmin, requireSession } from "./require-session.js";
 import { sendPortalEmail } from "./reset-email.js";
 import { handleStripeFunction, STRIPE_FUNCTIONS } from "./stripe-functions.js";
 import { handleBuildAdminEmail, handleGetEmailPreview } from "./email-preview.js";
+import { handleSendResendEmail } from "./send-resend-email.js";
 import { handleCheckPropertyLinks } from "./check-property-links.js";
 import { handleSyncPropertyToSupabase } from "./sync-property-to-supabase.js";
 import { randomUUID } from "node:crypto";
@@ -390,6 +391,16 @@ async function withIngestedImages(record: Record<string, any>) {
   return record;
 }
 
+async function mirrorPublicPropertyRow(row: any) {
+  if (!row) return;
+  try {
+    const { mirrorPropertiesbase44ToRemote } = await import("./supabase-remote.js");
+    await mirrorPropertiesbase44ToRemote(row);
+  } catch (error: any) {
+    console.warn("[supabaseProperties] remote mirror failed:", error?.message || error);
+  }
+}
+
 function slugifyPublic(value: unknown) {
   return String(value || "")
     .toLowerCase()
@@ -505,6 +516,7 @@ async function handleSupabaseProperties(res: any, body: any) {
       ...record,
     });
     const { rows } = await pool.query(insert.sql, insert.params);
+    await mirrorPublicPropertyRow(rows[0]);
     return json(res, 200, { property: fromSupabase(rows[0]) });
   }
 
@@ -519,6 +531,7 @@ async function handleSupabaseProperties(res: any, body: any) {
     );
     const { rows } = await pool.query(update.sql, update.params);
     if (!rows[0]) return json(res, 404, { error: "Property not found" });
+    await mirrorPublicPropertyRow(rows[0]);
     return json(res, 200, { property: fromSupabase(rows[0]) });
   }
 
@@ -1448,6 +1461,7 @@ export const LOCAL_FUNCTIONS = new Set([
   "getActivityFeed",
   "getEmailPreview",
   "buildAdminEmail",
+  "sendResendEmail",
   "checkPropertyLinks",
   "syncPropertyToSupabase",
   ...STRIPE_FUNCTIONS,
@@ -1476,6 +1490,7 @@ export async function handleNeonFunction(req: any, res: any, functionName: strin
     else if (functionName === "getActivityFeed") await handleGetActivityFeed(req, res);
     else if (functionName === "getEmailPreview") await handleGetEmailPreview(req, res, body);
     else if (functionName === "buildAdminEmail") await handleBuildAdminEmail(req, res, body);
+    else if (functionName === "sendResendEmail") await handleSendResendEmail(req, res, body);
     else if (functionName === "checkPropertyLinks") await handleCheckPropertyLinks(req, res, body);
     else if (functionName === "syncPropertyToSupabase") await handleSyncPropertyToSupabase(req, res, body);
     return true;

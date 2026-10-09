@@ -11,8 +11,11 @@ import PasteHtmlModal from "./PasteHtmlModal";
 export default function PasteHtmlButton({
   listingUrl,
   supabasePropertyId,
+  propertyId,
+  seedProperty,
   sbQueryKey,
   currentImages = [],
+  onImagesChange,
 }) {
   const [open, setOpen] = useState(false);
 
@@ -32,8 +35,11 @@ export default function PasteHtmlButton({
         onClose={() => setOpen(false)}
         listingUrl={listingUrl}
         supabasePropertyId={supabasePropertyId}
+        propertyId={propertyId}
+        seedProperty={seedProperty}
         sbQueryKey={sbQueryKey}
         currentImages={currentImages}
+        onImagesChange={onImagesChange}
       />
     </>
   );
