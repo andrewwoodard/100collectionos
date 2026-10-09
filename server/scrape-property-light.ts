@@ -24,6 +24,51 @@ function hostOf(url: string) {
   }
 }
 
+function nameFromUrlSlug(listingUrl: string) {
+  try {
+    const slug = new URL(listingUrl).pathname.split("/").filter(Boolean).pop() || "";
+    if (!slug || slug.length < 3) return "";
+    return slug
+      .replace(/\.[a-z0-9]+$/i, "")
+      .replace(/[-_]+/g, " ")
+      .replace(/\b([a-z]?[a-z]{0,3})(\d+)\b/gi, (_, letters, digits) => `${letters.toUpperCase()}${digits}`)
+      .replace(/\b([a-z])/g, (m) => m.toUpperCase())
+      .trim();
+  } catch {
+    return "";
+  }
+}
+
+function isBlockedHtml(html: string, status?: number) {
+  if (status && status >= 400) return true;
+  const sample = String(html || "").slice(0, 4000).toLowerCase();
+  return (
+    /<title[^>]*>\s*403\s*forbidden/i.test(html) ||
+    /<title[^>]*>\s*access denied/i.test(html) ||
+    /<title[^>]*>\s*attention required/i.test(html) ||
+    sample.includes("just a moment") ||
+    sample.includes("cf-browser-verification") ||
+    sample.includes("connection was blocked by the security system") ||
+    sample.includes("your connection was blocked") ||
+    sample.includes("sorry, you have been blocked") ||
+    sample.includes("enable javascript and cookies to continue")
+  );
+}
+
+function isBadPropertyName(name: string) {
+  const n = String(name || "").trim().toLowerCase();
+  if (!n) return true;
+  return (
+    n === "403 forbidden" ||
+    n === "404 not found" ||
+    n === "access denied" ||
+    n === "attention required" ||
+    n.includes("just a moment") ||
+    n.startsWith("403 ") ||
+    n.startsWith("404 ")
+  );
+}
+
 function resolveUrl(raw: string, baseUrl: string) {
   let u = String(raw || "")
     .trim()
@@ -219,6 +264,26 @@ function extractPhotos(html: string, pageUrl: string) {
   return found.slice(0, MAX_PHOTOS);
 }
 
+async function fetchViaProxy(url: string) {
+  // Datacenter IPs (Vercel) are often blocked by Streamline/Cloudflare WAF.
+  // allorigins fetches from a different egress and returns the raw HTML.
+  const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
+  const res = await fetch(proxyUrl, {
+    redirect: "follow",
+    signal: AbortSignal.timeout(FETCH_MS + 5000),
+    headers: {
+      "User-Agent": BROWSER_UA,
+      Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    },
+  });
+  if (!res.ok) throw new Error(`Proxy fetch returned ${res.status}`);
+  const html = await res.text();
+  if (!html || html.length < 200 || isBlockedHtml(html, res.status)) {
+    throw new Error("Proxy fetch returned a blocked or empty page");
+  }
+  return { html, finalUrl: url, via: "proxy" as const };
+}
+
 async function fetchHtml(url: string) {
   const userAgents = [
     BROWSER_UA,
@@ -235,19 +300,26 @@ async function fetchHtml(url: string) {
           Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         },
       });
-      if (!res.ok) {
-        lastError = new Error(`Listing page returned ${res.status}`);
+      const html = await res.text();
+      if (!res.ok || isBlockedHtml(html, res.status)) {
+        lastError = new Error(`Listing page blocked or returned ${res.status}`);
         continue;
       }
-      const html = await res.text();
       if (html && html.length > 200) {
-        return { html, finalUrl: res.url || url };
+        return { html, finalUrl: res.url || url, via: "direct" as const };
       }
       lastError = new Error("Listing page returned empty HTML");
     } catch (error: any) {
       lastError = error instanceof Error ? error : new Error(String(error?.message || error));
     }
   }
+
+  try {
+    return await fetchViaProxy(url);
+  } catch (error: any) {
+    lastError = error instanceof Error ? error : new Error(String(error?.message || error));
+  }
+
   throw lastError || new Error("Failed to fetch listing page");
 }
 
@@ -259,17 +331,29 @@ export async function handleScrapePropertyLight(req: any, res: any, body: any) {
   }
 
   try {
-    const { html, finalUrl } = await fetchHtml(url);
+    const { html, finalUrl, via } = await fetchHtml(url);
     const jsonLd = extractJsonLd(html);
     const photo_urls = extractPhotos(html, finalUrl);
     const host = hostOf(finalUrl) || hostOf(url);
+    const slugName = nameFromUrlSlug(url);
     const title = extractTitle(html, jsonLd);
+    const cleaned = cleanPropertyName(title, host);
+    const property_name = !isBadPropertyName(cleaned)
+      ? cleaned
+      : slugName || host || "Untitled Property";
     const details = extractListingDetails(html, jsonLd);
+
+    if (!photo_urls.length && isBadPropertyName(cleaned) && !slugName) {
+      return json(res, 200, {
+        success: false,
+        error: "Listing site blocked the scrape (no usable title or photos).",
+      });
+    }
 
     return json(res, 200, {
       success: true,
       data: {
-        property_name: cleanPropertyName(title, host),
+        property_name,
         photo_urls,
         location_full: details.location_full,
         bedrooms: details.bedrooms,
@@ -280,7 +364,7 @@ export async function handleScrapePropertyLight(req: any, res: any, body: any) {
         description: details.description,
         unique_features: undefined,
         why_100_collection: undefined,
-        source: "light_html",
+        source: via === "proxy" ? "light_html_proxy" : "light_html",
         photo_count: photo_urls.length,
       },
     });

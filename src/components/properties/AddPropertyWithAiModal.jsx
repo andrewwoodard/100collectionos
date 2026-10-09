@@ -33,6 +33,26 @@ function hostHintFromUrl(listingUrl) {
   }
 }
 
+function nameFromUrlSlug(listingUrl) {
+  try {
+    const slug = new URL(listingUrl).pathname.split("/").filter(Boolean).pop() || "";
+    if (!slug || slug.length < 3) return hostHintFromUrl(listingUrl);
+    return slug
+      .replace(/\.[a-z0-9]+$/i, "")
+      .replace(/[-_]+/g, " ")
+      .replace(/\b([a-z]?[a-z]{0,3})(\d+)\b/gi, (_, letters, digits) => `${letters.toUpperCase()}${digits}`)
+      .replace(/\b([a-z])/g, (m) => m.toUpperCase())
+      .trim();
+  } catch {
+    return hostHintFromUrl(listingUrl);
+  }
+}
+
+function isBadScrapedName(name) {
+  const n = String(name || "").trim().toLowerCase();
+  return !n || n === "403 forbidden" || n === "404 not found" || n.startsWith("403 ") || n.includes("access denied");
+}
+
 function truncate(value, max) {
   const s = String(value || "");
   if (s.length <= max) return s || undefined;
@@ -88,15 +108,43 @@ export default function AddPropertyWithAiModal({ open, onOpenChange, partners = 
     if (!body?.success || !data) {
       throw new Error(body?.error || "Light scrape found no listing data.");
     }
+    const photo_urls = normalizePhotos(data.photo_urls);
+    const property_name = isBadScrapedName(data.property_name)
+      ? nameFromUrlSlug(url)
+      : data.property_name;
+    // Treat WAF block pages (title "403 Forbidden", zero photos) as failure.
+    if (isBadScrapedName(data.property_name) && photo_urls.length === 0) {
+      throw new Error(body?.error || "Listing site blocked the scrape.");
+    }
     return {
       ...data,
-      photo_urls: normalizePhotos(data.photo_urls),
+      property_name,
+      photo_urls,
+      _discoverFallback: true,
+    };
+  };
+
+  const scrapeViaDiscover = async () => {
+    const discoverRes = await base44.functions.invoke("scrapePropertyUrl", {
+      url,
+      mode: "discover",
+      partner_id: partnerId || undefined,
+    });
+    const payload = discoverRes?.data || discoverRes;
+    const candidates = payload?.data?.candidates || payload?.candidates || [];
+    if (!candidates.length) {
+      throw new Error(payload?.error || "No listing photos found for this URL.");
+    }
+    const photo_urls = normalizePhotos(candidates.map((c) => c.url || c).filter(Boolean));
+    return {
+      property_name: nameFromUrlSlug(url),
+      photo_urls,
       _discoverFallback: true,
     };
   };
 
   const minimalFromUrl = () => ({
-    property_name: hostHintFromUrl(url),
+    property_name: nameFromUrlSlug(url),
     photo_urls: [],
     _discoverFallback: true,
     _urlOnly: true,
@@ -108,7 +156,7 @@ export default function AddPropertyWithAiModal({ open, onOpenChange, partners = 
     setScrapeError("");
     setScraped(null);
     try {
-      // Heavy / large-gallery hosts: never call full Base44 scrape.
+      // Heavy / large-gallery hosts: never call full Base44 AI scrape (timeouts).
       if (isHeavyScrapeHost(url)) {
         try {
           const light = await scrapeViaLight();
@@ -118,11 +166,20 @@ export default function AddPropertyWithAiModal({ open, onOpenChange, partners = 
             description: `${(light.photo_urls || []).length} photos ready${light.property_name ? ` · ${light.property_name}` : ""}. Review the preview, then create.`,
           });
         } catch (lightErr) {
-          setScraped(minimalFromUrl());
-          toast({
-            title: "URL saved — scrape timed out",
-            description: friendlyNetError(lightErr, "Create the draft now, then add photos/details manually."),
-          });
+          try {
+            const discovered = await scrapeViaDiscover();
+            setScraped(discovered);
+            toast({
+              title: "Scrape complete",
+              description: `${(discovered.photo_urls || []).length} photos ready · ${discovered.property_name}. Review the preview, then create.`,
+            });
+          } catch {
+            setScraped(minimalFromUrl());
+            toast({
+              title: "URL saved — listing site blocked the scrape",
+              description: friendlyNetError(lightErr, "Create the draft from this URL, then add photos/details manually."),
+            });
+          }
         }
         return;
       }
