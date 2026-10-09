@@ -8,8 +8,23 @@ import EmptyState from "../shared/EmptyState";
 import { Building2, CheckCircle2, Gift, Pencil, Plus, Sparkles, X, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/use-toast";
+import { useAuth } from "@/lib/AuthContext";
 import PropertyFormModal from "../properties/PropertyFormModal";
 import AddPropertyWithAiModal from "../properties/AddPropertyWithAiModal";
+
+const PROPERTY_STATUSES = [
+  { value: "draft", label: "Draft" },
+  { value: "active", label: "Active" },
+  { value: "paused", label: "Paused" },
+  { value: "inactive", label: "Inactive" },
+];
+
+const STATUS_SELECT_CLASS = {
+  draft: "border-slate-200 bg-slate-50 text-slate-700",
+  active: "border-emerald-200 bg-emerald-50 text-emerald-800",
+  paused: "border-amber-200 bg-amber-50 text-amber-800",
+  inactive: "border-slate-300 bg-slate-100 text-slate-600",
+};
 
 function LicenceSelector({ prop, lic, isChanging, isSaving, unusedLicenseRecords, stripeLicenses, availableStripeSlots, onApply, onCancel }) {
   const [selected, setSelected] = useState("");
@@ -54,12 +69,72 @@ function LicenceSelector({ prop, lic, isChanging, isSaving, unusedLicenseRecords
 export default function PartnerPropertiesTab({ properties, partnerId, partner, stripeData, base44PartnerId }) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { user } = useAuth();
   // propertyId -> true if in "change" mode
   const [changing, setChanging] = useState({});
   const [saving, setSaving] = useState(new Set());
   const [removing, setRemoving] = useState(new Set());
+  const [statusSaving, setStatusSaving] = useState(new Set());
   const [addModalOpen, setAddModalOpen] = useState(false);
   const [aiModalOpen, setAiModalOpen] = useState(false);
+
+  const invalidatePropertyQueries = () => {
+    queryClient.invalidateQueries({ queryKey: ["partner-properties", partnerId, partner?.partner_name] });
+    queryClient.invalidateQueries({ queryKey: ["properties"] });
+    queryClient.invalidateQueries({ queryKey: ["propertiesbase44"] });
+    queryClient.invalidateQueries({ queryKey: ["properties-b44"] });
+    queryClient.invalidateQueries({ queryKey: ["property"] });
+  };
+
+  const handleStatusChange = async (prop, nextStatus) => {
+    if (!prop?.id || prop._isDraftSubmission || prop.status === nextStatus) return;
+    setStatusSaving((prev) => new Set(prev).add(prop.id));
+    try {
+      const patch =
+        nextStatus === "active"
+          ? { status: "active", archived_at: null, archived_by_user_id: null }
+          : nextStatus === "inactive"
+            ? {
+                status: "inactive",
+                archived_at: new Date().toISOString(),
+                archived_by_user_id: user?.id || null,
+              }
+            : { status: nextStatus };
+
+      await base44.entities.Property.update(prop.id, patch);
+
+      const sbId = prop.supabase_property_id;
+      if (sbId && sbId !== "null" && sbId !== "undefined") {
+        await base44.functions
+          .invoke("supabaseProperties", {
+            action: "update",
+            id: sbId,
+            data: { status: nextStatus === "active" ? "active" : nextStatus === "inactive" ? "inactive" : nextStatus },
+          })
+          .catch(() => {});
+      }
+      // Keep public listing in sync when activating / changing live status.
+      base44.functions.invoke("syncPropertyToSupabase", { action: "sync_property", id: prop.id }).catch(() => {});
+
+      invalidatePropertyQueries();
+      toast({
+        title: "Status updated",
+        description: `${prop.property_name || "Property"} → ${nextStatus}`,
+      });
+    } catch (err) {
+      toast({
+        variant: "destructive",
+        title: "Could not update status",
+        description: err?.message || "Try again",
+      });
+    } finally {
+      setStatusSaving((prev) => {
+        const next = new Set(prev);
+        next.delete(prop.id);
+        return next;
+      });
+    }
+  };
 
   const handleAiCreated = () => {
     queryClient.invalidateQueries({ queryKey: ["partner-properties", partnerId, partner?.partner_name] });
@@ -301,7 +376,28 @@ export default function PartnerPropertiesTab({ properties, partnerId, partner, s
                       : "—"}
                   </td>
                   <td className="px-5 py-3">
-                    <StatusBadge status={prop.status} />
+                    {isDraft ? (
+                      <StatusBadge status={prop.status} />
+                    ) : (
+                      <select
+                        value={PROPERTY_STATUSES.some((s) => s.value === prop.status) ? prop.status : "draft"}
+                        disabled={statusSaving.has(prop.id)}
+                        onChange={(e) => handleStatusChange(prop, e.target.value)}
+                        className={`text-xs font-medium rounded-full border px-2.5 py-1 focus:outline-none focus:ring-2 focus:ring-[#C9A96E]/40 disabled:opacity-60 ${
+                          STATUS_SELECT_CLASS[prop.status] || STATUS_SELECT_CLASS.draft
+                        }`}
+                        title="Change property status"
+                      >
+                        {!PROPERTY_STATUSES.some((s) => s.value === prop.status) && prop.status && (
+                          <option value={prop.status}>{prop.status}</option>
+                        )}
+                        {PROPERTY_STATUSES.map((s) => (
+                          <option key={s.value} value={s.value}>
+                            {s.label}
+                          </option>
+                        ))}
+                      </select>
+                    )}
                   </td>
                   <td className="px-5 py-3">
                     {hasLicence && !isChanging ? (

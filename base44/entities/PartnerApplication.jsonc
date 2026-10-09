@@ -146,6 +146,29 @@
       "type": "string",
       "description": "Display name of the assigned admin owner (denormalized for list display)"
     },
+    "interview_invited_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the latest interview invitation email was sent"
+    },
+    "interview_invited_by_user_id": {
+      "type": "string",
+      "description": "User.id of the admin who sent the latest interview invitation"
+    },
+    "interview_invited_by_email": {
+      "type": "string",
+      "format": "email",
+      "description": "Email of the admin who sent the latest interview invitation"
+    },
+    "interview_invited_by_name": {
+      "type": "string",
+      "description": "Display name of the admin who sent the latest interview invitation"
+    },
+    "interview_invite_to": {
+      "type": "string",
+      "format": "email",
+      "description": "Recipient email used for the latest interview invitation"
+    },
     "internal_comments": {
       "type": "array",
       "description": "Threaded internal admin comments about this application (not visible to applicants).",

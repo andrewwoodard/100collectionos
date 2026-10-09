@@ -275,11 +275,23 @@ function RejectDialog({ app, onClose, onSuccess }) {
 }
 
 // ─── Interview Dialog ──────────────────────────────────────────────────────────
+function normalizeHttpUrl(raw) {
+  const trimmed = (raw || "").trim();
+  if (!trimmed) return "";
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  return `https://${trimmed}`;
+}
+
+const DEFAULT_INTERVIEW_MESSAGE =
+  "We would like to schedule a first-round interview this week. Are you available Thursday or Friday afternoon?";
+
 function InterviewDialog({ app, onClose, onSuccess }) {
   const qc = useQueryClient();
+  const { user } = useAuth();
   const [toEmail, setToEmail] = useState(app.email || "");
-  const [scheduledAt, setScheduledAt] = useState("");
-  const [message, setMessage] = useState("");
+  const [message, setMessage] = useState(DEFAULT_INTERVIEW_MESSAGE);
+  const [linkUrl, setLinkUrl] = useState("");
+  const [buttonLabel, setButtonLabel] = useState("Schedule Interview");
   const [loading, setLoading] = useState(false);
 
   const handleSend = async () => {
@@ -287,24 +299,32 @@ function InterviewDialog({ app, onClose, onSuccess }) {
     if (!recipient) return;
     setLoading(true);
     try {
+      const adminMessage = message.trim() || DEFAULT_INTERVIEW_MESSAGE;
+      const ctaUrl = normalizeHttpUrl(linkUrl);
+      const ctaLabel = buttonLabel.trim() || "Schedule Interview";
+      const interviewMsg = `You've been invited to an interview with The 100 Collection team. ${adminMessage}`.trim();
+      const invitedAt = new Date().toISOString();
+      const invitedByName = user?.full_name || user?.name || user?.email || "Admin";
+      const invitedByEmail = user?.email || null;
+      const existingComments = Array.isArray(app.internal_comments) ? app.internal_comments : [];
+      const auditComment = {
+        id: typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `c_${Date.now()}`,
+        author_email: invitedByEmail || "",
+        author_name: invitedByName,
+        content: `Interview invitation sent to ${recipient}${ctaUrl ? ` (CTA: ${ctaUrl})` : ""}.`,
+        created_at: invitedAt,
+      };
+
       await base44.entities.PartnerApplication.update(app.id, {
         status: "interview_invited",
-        admin_notes: message || app.admin_notes,
+        admin_notes: adminMessage || app.admin_notes,
+        interview_invited_at: invitedAt,
+        interview_invited_by_user_id: user?.id || null,
+        interview_invited_by_email: invitedByEmail,
+        interview_invited_by_name: invitedByName,
+        interview_invite_to: recipient,
+        internal_comments: [...existingComments, auditComment],
       });
-      // If partner record exists, stamp interview_scheduled_at
-      if (scheduledAt) {
-        try {
-          const partners = await base44.entities.Partner.filter({ primary_contact_email: app.email });
-          if (partners[0]) {
-            await base44.entities.Partner.update(partners[0].id, { interview_scheduled_at: scheduledAt });
-          }
-        } catch (_) {}
-      }
-      const inviteLead = scheduledAt
-        ? `You've been invited to an interview on ${new Date(scheduledAt).toLocaleString("en-US", { dateStyle: "long", timeStyle: "short" })}.`
-        : `You've been invited to an interview with The 100 Collection team.`;
-      const adminMessage = message.trim();
-      const interviewMsg = adminMessage ? `${inviteLead} ${adminMessage}` : inviteLead;
 
       await base44.entities.PortalNotification.create({
         recipient_email: recipient,
@@ -316,8 +336,6 @@ function InterviewDialog({ app, onClose, onSuccess }) {
         is_read: false,
       }).catch(() => {});
 
-      // Local sendResendEmail (not Core.SendEmail) — Core.SendEmail often throws
-      // axios "Network Error" after the mail already went out.
       const firstName = (app.full_name || "there").split(" ")[0];
       const builtRes = await base44.functions.invoke("buildAdminEmail", {
         eventType: "INTERVIEW INVITATION",
@@ -327,25 +345,29 @@ function InterviewDialog({ app, onClose, onSuccess }) {
         contextBlock: interviewMsg,
         subject: "Interview Invitation — The 100 Collection",
         replyPrompt: true,
+        ...(ctaUrl ? { ctaUrl, ctaLabel } : {}),
       });
       const built = builtRes?.data;
-      if (built?.html && built?.subject) {
-        const sendRes = await base44.functions.invoke("sendResendEmail", {
-          to: recipient,
-          subject: built.subject,
-          html: built.html,
-          text: built.text || `Hi ${app.full_name},\n\n${interviewMsg}\n\nThank you,\nThe 100 Collection Team`,
-        });
-        const sendBody = sendRes?.data || sendRes;
-        if (sendBody?.error) throw new Error(sendBody.error);
-        if (sendBody?.skipped) {
-          onSuccess(`Invitation saved, but email skipped: ${sendBody.skipped}`);
-          qc.invalidateQueries(["partner-applications"]);
-          onClose();
-          return;
-        }
-      } else {
+      if (!built?.html || !built?.subject) {
         throw new Error(built?.error || "Could not build interview email");
+      }
+
+      const sendRes = await base44.functions.invoke("sendResendEmail", {
+        to: recipient,
+        subject: built.subject,
+        html: built.html,
+        text: built.text || `Hi ${app.full_name},\n\n${interviewMsg}\n\nThank you,\nThe 100 Collection Team`,
+      });
+      const sendBody = sendRes?.data || sendRes;
+      if (sendBody?.error) throw new Error(sendBody.error);
+      if (sendBody?.skipped) {
+        onSuccess(`Invitation saved, but email skipped: ${sendBody.skipped}`);
+        qc.invalidateQueries(["partner-applications"]);
+        onClose();
+        return;
+      }
+      if (sendBody?.ok === false) {
+        throw new Error(sendBody?.error || "Send failed");
       }
 
       qc.invalidateQueries(["partner-applications"]);
@@ -353,7 +375,6 @@ function InterviewDialog({ app, onClose, onSuccess }) {
       onClose();
     } catch (e) {
       const msg = e?.message || e?.toString?.() || "Failed to send interview invitation.";
-      // Status may already be updated — still surface a clear message.
       onSuccess(msg === "Network Error" ? "Invitation saved, but the email response failed. Check the inbox before retrying." : msg);
       qc.invalidateQueries(["partner-applications"]);
     } finally {
@@ -363,10 +384,10 @@ function InterviewDialog({ app, onClose, onSuccess }) {
 
   return (
     <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6">
+      <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6 max-h-[90vh] overflow-y-auto">
         <h3 className="text-base font-semibold text-[#0D1B2A] mb-1">Invite to Interview</h3>
         <p className="text-xs text-slate-400 mb-4">
-          Sends the interview invitation email to the applicant.
+          Sends the interview invitation email to the applicant and marks them as Interview Invited.
         </p>
         <label className="text-xs text-slate-500 uppercase tracking-wide mb-1.5 block">Send to</label>
         <input
@@ -376,13 +397,31 @@ function InterviewDialog({ app, onClose, onSuccess }) {
           className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-700 focus:outline-none focus:border-slate-400 mb-4"
           placeholder="applicant@email.com"
         />
-        <label className="text-xs text-slate-500 uppercase tracking-wide mb-1.5 block">Interview Date & Time (optional)</label>
-        <input type="datetime-local" value={scheduledAt} onChange={e => setScheduledAt(e.target.value)}
-          className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-700 focus:outline-none focus:border-slate-400 mb-4" />
         <label className="text-xs text-slate-500 uppercase tracking-wide mb-1.5 block">Admin message</label>
-        <textarea value={message} onChange={e => setMessage(e.target.value)} rows={4}
-          className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-700 resize-none focus:outline-none focus:border-slate-400 mb-5"
-          placeholder="We'd love to learn more about your portfolio…" />
+        <textarea
+          value={message}
+          onChange={(e) => setMessage(e.target.value)}
+          rows={4}
+          className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-700 resize-none focus:outline-none focus:border-slate-400 mb-4"
+          placeholder="Message included in the interview invitation…"
+        />
+        <label className="text-xs text-slate-500 uppercase tracking-wide mb-1.5 block">Button link (optional)</label>
+        <input
+          type="url"
+          value={linkUrl}
+          onChange={(e) => setLinkUrl(e.target.value)}
+          className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-700 focus:outline-none focus:border-slate-400 mb-4"
+          placeholder="https://calendly.com/…"
+        />
+        <label className="text-xs text-slate-500 uppercase tracking-wide mb-1.5 block">Button label</label>
+        <input
+          type="text"
+          value={buttonLabel}
+          onChange={(e) => setButtonLabel(e.target.value)}
+          disabled={!linkUrl.trim()}
+          className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-700 focus:outline-none focus:border-slate-400 mb-5 disabled:bg-slate-50 disabled:text-slate-400"
+          placeholder="Schedule Interview"
+        />
         <div className="flex gap-3">
           <button onClick={onClose} className="flex-1 px-4 py-2 text-sm border border-slate-200 rounded-lg text-slate-600 hover:bg-slate-50">Cancel</button>
           <button onClick={handleSend} disabled={loading || !toEmail.trim()}
@@ -396,18 +435,10 @@ function InterviewDialog({ app, onClose, onSuccess }) {
 }
 
 // ─── Test Interview Email Dialog ───────────────────────────────────────────────
-function normalizeHttpUrl(raw) {
-  const trimmed = (raw || "").trim();
-  if (!trimmed) return "";
-  if (/^https?:\/\//i.test(trimmed)) return trimmed;
-  return `https://${trimmed}`;
-}
 
 function TestInterviewEmailDialog({ defaultEmail, onClose, onSuccess }) {
   const [toEmail, setToEmail] = useState(defaultEmail || "");
-  const [message, setMessage] = useState(
-    "We would like to schedule a first-round interview this week. Are you available Thursday or Friday afternoon?"
-  );
+  const [message, setMessage] = useState(DEFAULT_INTERVIEW_MESSAGE);
   const [linkUrl, setLinkUrl] = useState("");
   const [buttonLabel, setButtonLabel] = useState("Schedule Interview");
   const [loading, setLoading] = useState(false);
@@ -418,11 +449,9 @@ function TestInterviewEmailDialog({ defaultEmail, onClose, onSuccess }) {
     setLoading(true);
     try {
       const firstName = (to.split("@")[0] || "there").replace(/[._]/g, " ");
-      const adminMessage =
-        message.trim() ||
-        "We would like to schedule a first-round interview this week. Are you available Thursday or Friday afternoon?";
+      const adminMessage = message.trim() || DEFAULT_INTERVIEW_MESSAGE;
       const ctaUrl = normalizeHttpUrl(linkUrl);
-      const ctaLabel = (buttonLabel.trim() || "Schedule Interview");
+      const ctaLabel = buttonLabel.trim() || "Schedule Interview";
 
       const builtRes = await base44.functions.invoke("buildAdminEmail", {
         eventType: "INTERVIEW INVITATION",
@@ -718,6 +747,21 @@ function ApplicationDetail({ app, onBack, onAction, onRestore, onDelete, onToggl
               </div>
               <div className="text-sm text-slate-500 mt-0.5">{app.email}</div>
               <div className="text-xs text-slate-400 mt-0.5">{new Date(app.created_date).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })}</div>
+              {app.interview_invited_at && (
+                <div className="mt-2 text-xs text-purple-700 bg-purple-50 border border-purple-100 rounded-lg px-2.5 py-1.5 inline-flex items-center gap-1.5">
+                  <CalendarClock className="w-3.5 h-3.5 flex-shrink-0" />
+                  <span>
+                    Interview invite sent{" "}
+                    {new Date(app.interview_invited_at).toLocaleString("en-US", {
+                      dateStyle: "medium",
+                      timeStyle: "short",
+                    })}
+                    {" · "}
+                    by {app.interview_invited_by_name || app.interview_invited_by_email || "admin"}
+                    {app.interview_invite_to ? ` → ${app.interview_invite_to}` : ""}
+                  </span>
+                </div>
+              )}
               <div className="mt-3 max-w-xs">
                 <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mb-1 block">
                   Assigned owner
@@ -1253,6 +1297,18 @@ export default function AdminApplications({ embedded = false }) {
                         {Array.isArray(app.internal_comments) && app.internal_comments.length > 0 && (
                           <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200 flex items-center gap-1">
                             <MessageSquare className="w-2.5 h-2.5" /> {app.internal_comments.length}
+                          </span>
+                        )}
+                        {app.interview_invited_at && (
+                          <span
+                            title={app.interview_invite_to ? `Sent to ${app.interview_invite_to}` : undefined}
+                            className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-purple-50 text-purple-700 border border-purple-200 flex items-center gap-1"
+                          >
+                            <CalendarClock className="w-2.5 h-2.5" />
+                            Invited {new Date(app.interview_invited_at).toLocaleDateString()}
+                            {app.interview_invited_by_name || app.interview_invited_by_email
+                              ? ` · ${app.interview_invited_by_name || app.interview_invited_by_email}`
+                              : ""}
                           </span>
                         )}
                       </div>
