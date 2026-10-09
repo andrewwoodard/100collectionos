@@ -10,14 +10,48 @@ import { useToast } from "@/components/ui/use-toast";
 
 // Property types accepted by the propertiesbase44 house_type column
 const VALID_TYPES = new Set(["villa", "apartment", "house", "condo", "estate", "cabin", "other"]);
-const MAX_PHOTOS = 60;
+const MAX_PHOTOS = 40;
+const MAX_TEXT = 6000;
+function isHeavyScrapeHost(listingUrl) {
+  try {
+    const host = new URL(listingUrl).hostname.replace(/^www\./, "").toLowerCase();
+    // Coastal Carolina (OBX + Carolina Beach), Streamline VRS, LMPM hub links
+    if (host.includes("coastalcarolina")) return true;
+    if (host.includes("streamlinevrs")) return true;
+    if (/[?&]hub_property_id=/.test(listingUrl)) return true;
+    return false;
+  } catch {
+    return false;
+  }
+}
+
+function hostHintFromUrl(listingUrl) {
+  try {
+    return new URL(listingUrl).hostname.replace(/^www\./, "");
+  } catch {
+    return "Property";
+  }
+}
+
+function truncate(value, max) {
+  const s = String(value || "");
+  if (s.length <= max) return s || undefined;
+  return s.slice(0, max);
+}
 
 function friendlyNetError(err, fallback) {
   const msg = err?.message || err?.toString?.() || fallback;
-  if (msg === "Network Error") {
-    return "The request timed out (common with large photo sets). Try again, or create with fewer photos.";
+  if (msg === "Network Error" || /timeout|timed out|ETIMEDOUT|ECONNABORTED/i.test(msg)) {
+    return "The request timed out (common with large photo sets). Try again — the property may still create with a lighter photo scan.";
   }
   return msg;
+}
+
+function normalizePhotos(list) {
+  return (Array.isArray(list) ? list : [])
+    .map((u) => String(u || "").trim())
+    .filter(Boolean)
+    .slice(0, MAX_PHOTOS);
 }
 
 export default function AddPropertyWithAiModal({ open, onOpenChange, partners = [], onCreated, presetPartnerId }) {
@@ -40,21 +74,90 @@ export default function AddPropertyWithAiModal({ open, onOpenChange, partners = 
 
   const close = () => { reset(); onOpenChange(false); };
 
+  // Local Vercel HTML scrape — no Base44 LLM / fingerprint (those time out).
+  const scrapeViaLight = async () => {
+    const res = await base44.functions.invoke("scrapePropertyLight", { url });
+    // SDK returns response.data already — so shape is { success, data } (not axios-wrapped).
+    const body =
+      res && (res.success !== undefined || res.error !== undefined)
+        ? res
+        : res?.data && (res.data.success !== undefined || res.data.error !== undefined)
+          ? res.data
+          : res?.data || res;
+    const data = body?.data;
+    if (!body?.success || !data) {
+      throw new Error(body?.error || "Light scrape found no listing data.");
+    }
+    return {
+      ...data,
+      photo_urls: normalizePhotos(data.photo_urls),
+      _discoverFallback: true,
+    };
+  };
+
+  const minimalFromUrl = () => ({
+    property_name: hostHintFromUrl(url),
+    photo_urls: [],
+    _discoverFallback: true,
+    _urlOnly: true,
+  });
+
   const handleScrape = async () => {
     if (!url) return;
     setScraping(true);
     setScrapeError("");
     setScraped(null);
     try {
-      const res = await base44.functions.invoke("scrapePropertyUrl", { url, partner_id: partnerId || undefined });
-      const data = res?.data?.data;
-      if (!data) {
-        setScrapeError(res?.data?.error || "Could not extract property data from this URL.");
-      } else {
-        setScraped(data);
+      // Heavy / large-gallery hosts: never call full Base44 scrape.
+      if (isHeavyScrapeHost(url)) {
+        try {
+          const light = await scrapeViaLight();
+          setScraped(light);
+          toast({
+            title: "Photos ready",
+            description: `${(light.photo_urls || []).length} photos from a fast page scan. Edit name/details after create.`,
+          });
+        } catch (lightErr) {
+          setScraped(minimalFromUrl());
+          toast({
+            title: "URL saved — scrape timed out",
+            description: friendlyNetError(lightErr, "Create the draft now, then add photos/details manually."),
+          });
+        }
+        return;
       }
-    } catch (e) {
-      setScrapeError(friendlyNetError(e, "Scraping failed."));
+
+      try {
+        const res = await base44.functions.invoke("scrapePropertyUrl", {
+          url,
+          partner_id: partnerId || undefined,
+        });
+        const data = res?.data?.data;
+        if (data) {
+          setScraped({
+            ...data,
+            photo_urls: normalizePhotos(data.photo_urls),
+          });
+          return;
+        }
+      } catch {
+        // Fall through to light scrape.
+      }
+
+      try {
+        const light = await scrapeViaLight();
+        setScraped(light);
+        toast({
+          title: "Partial scrape",
+          description: "Full AI scrape timed out — saved photos from a fast page scan. Edit details after create.",
+        });
+      } catch (lightErr) {
+        setScraped(minimalFromUrl());
+        toast({
+          title: "URL saved — scrape timed out",
+          description: friendlyNetError(lightErr, "Create the draft now, then add photos/details manually."),
+        });
+      }
     } finally {
       setScraping(false);
     }
@@ -64,16 +167,15 @@ export default function AddPropertyWithAiModal({ open, onOpenChange, partners = 
     if (!scraped) return;
     setCreating(true);
     try {
-      const selectedPartner = partners.find(p => p.id === partnerId);
-      const photos = (Array.isArray(scraped.photo_urls) ? scraped.photo_urls : [])
-        .map((u) => String(u || "").trim())
-        .filter(Boolean)
-        .slice(0, MAX_PHOTOS);
+      const selectedPartner = partners.find((p) => p.id === partnerId);
+      const photos = normalizePhotos(scraped.photo_urls);
 
-      const propertyPayload = {
+      // Slim create first — large photo_urls + long AI text in one request
+      // was timing out for Coastal Carolina Vacations listings.
+      const slimPayload = {
         property_name: scraped.property_name || "Untitled Property",
         market: selectedPartner?.market || scraped.location_city || scraped.location_state || undefined,
-        address: scraped.location_full || undefined,
+        address: truncate(scraped.location_full, 500),
         listing_url: url,
         vrm_url: url,
         bedrooms: scraped.bedrooms,
@@ -83,68 +185,64 @@ export default function AddPropertyWithAiModal({ open, onOpenChange, partners = 
         partner_id: partnerId || undefined,
         partner_name: selectedPartner?.partner_name || undefined,
         status: "draft",
-        photo_urls: photos,
-        excerpt: scraped.short_summary || undefined,
-        unique_feature: scraped.unique_features || undefined,
-        why_onehundred: scraped.why_100_collection || undefined,
-        text: scraped.description || undefined,
-        description: scraped.description || undefined,
-        short_summary: scraped.short_summary || undefined,
+        short_summary: truncate(scraped.short_summary, 800),
+        excerpt: truncate(scraped.short_summary, 800),
       };
 
-      // Partner Properties tab is driven by Property entities — create that first.
-      const created = await base44.entities.Property.create(propertyPayload);
+      const created = await base44.entities.Property.create(slimPayload);
 
-      // Mirror into propertiesbase44 without downloading every remote photo in-request
-      // (Coastal Carolina / LMPM listings often return 50–100+ images → Network Error).
-      try {
-        const sbRes = await base44.functions.invoke("supabaseProperties", {
+      // Attach photos + long copy in the background — awaiting this was still
+      // hitting gateway timeouts on 40+ photo Coastal Carolina listings.
+      void base44.entities.Property.update(created.id, {
+        photo_urls: photos,
+        unique_feature: truncate(scraped.unique_features, 2000),
+        why_onehundred: truncate(scraped.why_100_collection, 2000),
+        text: truncate(scraped.description, MAX_TEXT),
+        description: truncate(scraped.description, MAX_TEXT),
+      }).catch((err) => {
+        console.warn("[AddPropertyWithAi] detail update failed", err);
+      });
+
+      // Mirror to admin Properties table in the background — do not block success.
+      const sbImages = photos.slice(0, 24);
+      void base44.functions
+        .invoke("supabaseProperties", {
           action: "create",
           skip_image_ingest: true,
           data: {
-            property_name: propertyPayload.property_name,
-            market: propertyPayload.market,
-            address: propertyPayload.address,
+            property_name: slimPayload.property_name,
+            market: slimPayload.market,
+            address: slimPayload.address,
             listing_url: url,
             vrm_url: url,
-            bedrooms: propertyPayload.bedrooms,
-            bathrooms: propertyPayload.bathrooms,
-            sleeps: propertyPayload.sleeps,
-            property_type: propertyPayload.property_type,
+            bedrooms: slimPayload.bedrooms,
+            bathrooms: slimPayload.bathrooms,
+            sleeps: slimPayload.sleeps,
+            property_type: slimPayload.property_type,
             partner_id: partnerId || undefined,
-            partner_name: propertyPayload.partner_name,
+            partner_name: slimPayload.partner_name,
             status: "draft",
             active: false,
-            images: photos,
-            excerpt: propertyPayload.excerpt,
-            unique_feature: propertyPayload.unique_feature,
-            why_onehundred: propertyPayload.why_onehundred,
-            text: propertyPayload.text,
+            images: sbImages,
+            excerpt: slimPayload.excerpt,
+            text: truncate(scraped.description, 2000),
           },
-        });
-        const sbBody = sbRes?.data || sbRes;
-        if (sbBody?.error) throw new Error(sbBody.error);
-        const sbId = sbBody?.property?.id ?? sbBody?.property?.row_id;
-        if (sbId) {
-          await base44.entities.Property.update(created.id, {
-            supabase_property_id: String(sbId),
-          }).catch(() => {});
-        }
-      } catch (sbErr) {
-        // Property already exists — surface a soft warning rather than failing the add.
-        console.warn("[AddPropertyWithAi] supabase mirror failed", sbErr);
-        toast({
-          title: "Property saved as draft",
-          description:
-            friendlyNetError(sbErr, "Public listing sync failed") +
-            " Open the property to sync photos later.",
-        });
-        onCreated?.(created);
-        close();
-        return;
-      }
+        })
+        .then(async (sbRes) => {
+          const sbBody = sbRes?.data || sbRes;
+          const sbId = sbBody?.property?.id ?? sbBody?.property?.row_id;
+          if (sbId) {
+            await base44.entities.Property.update(created.id, {
+              supabase_property_id: String(sbId),
+            }).catch(() => {});
+          }
+        })
+        .catch((err) => console.warn("[AddPropertyWithAi] supabase mirror failed", err));
 
-      toast({ title: "Property created", description: scraped.property_name || "Added via AI scrape" });
+      toast({
+        title: "Property created",
+        description: scraped.property_name || "Added via AI scrape",
+      });
       onCreated?.(created);
       close();
     } catch (e) {
@@ -174,7 +272,7 @@ export default function AddPropertyWithAiModal({ open, onOpenChange, partners = 
               <Input
                 placeholder="https://vrbo.com/12345"
                 value={url}
-                onChange={e => setUrl(e.target.value)}
+                onChange={(e) => setUrl(e.target.value)}
                 disabled={scraping}
               />
               <Button
@@ -197,7 +295,9 @@ export default function AddPropertyWithAiModal({ open, onOpenChange, partners = 
               <Select value={partnerId} onValueChange={setPartnerId}>
                 <SelectTrigger className="mt-1"><SelectValue placeholder="Assign to a partner" /></SelectTrigger>
                 <SelectContent>
-                  {[...partners].sort((a, b) => (a.partner_name || "").localeCompare(b.partner_name || "")).map(p => <SelectItem key={p.id} value={p.id}>{p.partner_name}</SelectItem>)}
+                  {[...partners].sort((a, b) => (a.partner_name || "").localeCompare(b.partner_name || "")).map((p) => (
+                    <SelectItem key={p.id} value={p.id}>{p.partner_name}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -212,6 +312,16 @@ export default function AddPropertyWithAiModal({ open, onOpenChange, partners = 
           {scraped && (
             <div className="border border-gray-100 rounded-xl p-4 space-y-3 bg-gray-50/50">
               <div className="text-xs font-semibold uppercase tracking-wide text-[#C9A96E]">Extracted Preview</div>
+              {scraped._urlOnly && (
+                <p className="text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-2.5 py-1.5">
+                  Scrape timed out — you can still create a draft from this URL, then add photos and details manually.
+                </p>
+              )}
+              {scraped._discoverFallback && !scraped._urlOnly && (
+                <p className="text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-2.5 py-1.5">
+                  Used a fast page scan (full AI extract times out on large galleries). Edit the name and details after create.
+                </p>
+              )}
               <div className="grid grid-cols-2 gap-3 text-sm">
                 <div>
                   <span className="text-xs text-gray-400">Name</span>
@@ -236,10 +346,7 @@ export default function AddPropertyWithAiModal({ open, onOpenChange, partners = 
               )}
               <div>
                 <span className="text-xs text-gray-400">
-                  {(scraped.photo_urls || []).length} photos extracted
-                  {(scraped.photo_urls || []).length > MAX_PHOTOS
-                    ? ` (first ${MAX_PHOTOS} will be saved)`
-                    : ""}
+                  {(scraped.photo_urls || []).length} photos ready
                 </span>
                 <div className="flex gap-2 mt-2 overflow-x-auto pb-1">
                   {(scraped.photo_urls || []).slice(0, 8).map((u, i) => (

@@ -394,14 +394,21 @@ async function withIngestedImages(record: Record<string, any>) {
   return record;
 }
 
-async function mirrorPublicPropertyRow(row: any) {
+async function mirrorPublicPropertyRow(row: any, { wait = false }: { wait?: boolean } = {}) {
   if (!row) return;
-  try {
-    const { mirrorPropertiesbase44ToRemote } = await import("./supabase-remote.js");
-    await mirrorPropertiesbase44ToRemote(row);
-  } catch (error: any) {
-    console.warn("[supabaseProperties] remote mirror failed:", error?.message || error);
-  }
+  const run = async () => {
+    try {
+      const { mirrorPropertiesbase44ToRemote } = await import("./supabase-remote.js");
+      await mirrorPropertiesbase44ToRemote(row);
+    } catch (error: any) {
+      console.warn("[supabaseProperties] remote mirror failed:", error?.message || error);
+    }
+  };
+  // Status/active must reach classic Supabase (public destination pages) before
+  // we return — otherwise draft toggles look saved in the portal but stay live.
+  // Large image creates can still opt into fire-and-forget with wait:false.
+  if (wait) await run();
+  else void run();
 }
 
 function slugifyPublic(value: unknown) {
@@ -531,7 +538,8 @@ async function handleSupabaseProperties(res: any, body: any) {
       ...record,
     });
     const { rows } = await pool.query(insert.sql, insert.params);
-    await mirrorPublicPropertyRow(rows[0]);
+    // Image-heavy creates: don't block the response on remote dual-write.
+    await mirrorPublicPropertyRow(rows[0], { wait: !body.skip_image_ingest });
     return json(res, 200, { property: fromSupabase(rows[0]) });
   }
 
@@ -554,7 +562,27 @@ async function handleSupabaseProperties(res: any, body: any) {
     );
     const { rows } = await pool.query(update.sql, update.params);
     if (!rows[0]) return json(res, 404, { error: "Property not found" });
-    await mirrorPublicPropertyRow(rows[0]);
+    // Always wait on updates — status/active must hit the public site.
+    await mirrorPublicPropertyRow(rows[0], { wait: true });
+
+    // Draft/inactive/paused should leave partner destination showcases.
+    const statusChangingOff = data?.status !== undefined && data.status !== "active";
+    const activeChangingOff =
+      data?.active !== undefined && !(data.active === true || data.active === "true");
+    if (statusChangingOff || activeChangingOff) {
+      try {
+        const { removePropertyFromPartnerShowcase } = await import("./showcase-visibility.js");
+        const showcaseResult = await removePropertyFromPartnerShowcase({
+          partnerName: rows[0].partner_name,
+          propertyName: rows[0].name,
+          listingUrl: rows[0].vrm_url || rows[0].url,
+        });
+        return json(res, 200, { property: fromSupabase(rows[0]), showcase: showcaseResult });
+      } catch (error: any) {
+        console.warn("[supabaseProperties] showcase removal failed:", error?.message || error);
+      }
+    }
+
     return json(res, 200, { property: fromSupabase(rows[0]) });
   }
 
@@ -1487,6 +1515,7 @@ export const LOCAL_FUNCTIONS = new Set([
   "sendResendEmail",
   "checkPropertyLinks",
   "syncPropertyToSupabase",
+  "scrapePropertyLight",
   ...STRIPE_FUNCTIONS,
 ]);
 
@@ -1516,6 +1545,10 @@ export async function handleNeonFunction(req: any, res: any, functionName: strin
     else if (functionName === "sendResendEmail") await handleSendResendEmail(req, res, body);
     else if (functionName === "checkPropertyLinks") await handleCheckPropertyLinks(req, res, body);
     else if (functionName === "syncPropertyToSupabase") await handleSyncPropertyToSupabase(req, res, body);
+    else if (functionName === "scrapePropertyLight") {
+      const { handleScrapePropertyLight } = await import("./scrape-property-light.js");
+      await handleScrapePropertyLight(req, res, body);
+    }
     return true;
   } catch (error: any) {
     console.error("[neon-functions]", functionName, error);

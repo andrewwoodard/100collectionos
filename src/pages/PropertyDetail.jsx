@@ -317,11 +317,16 @@ export default function PropertyDetail() {
       }
       return;
     }
+    // Public destination pages key off `active`; keep it in sync when status changes.
+    const updateData =
+      field === "status"
+        ? { status: value, active: value === "active", ...(value !== "active" ? { portal_visible: false } : {}) }
+        : { [field]: value };
     const res = await base44.functions.invoke("supabaseProperties", {
       action: "update",
       id: targetId || undefined,
       url: !targetId ? lookupUrl : undefined,
-      data: { [field]: value },
+      data: updateData,
     });
     if (res.data?.property) {
       queryClient.setQueryData(["supabase-property", sbQueryKey], res.data.property);

@@ -108,7 +108,7 @@ export default function PartnerPropertiesTab({ properties, partnerId, partner, s
       const sbPayload = {
         status: nextStatus,
         active: nextStatus === "active",
-        ...(nextStatus === "inactive" || nextStatus === "paused" ? { portal_visible: false } : {}),
+        ...(nextStatus !== "active" ? { portal_visible: false } : {}),
       };
       let sbUpdated = false;
       if (sbId || lookupUrl) {
