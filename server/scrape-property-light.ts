@@ -68,13 +68,130 @@ function preferFullSize(url: string) {
   return url.replace(/\/thumbnail_/gi, "/image_").replace(/[-_]thumb(nail)?(?=\.|$)/gi, "");
 }
 
-function extractTitle(html: string) {
-  const og =
-    html.match(/property=["']og:title["'][^>]*content=["']([^"']+)["']/i)?.[1] ||
-    html.match(/content=["']([^"']+)["'][^>]*property=["']og:title["']/i)?.[1];
-  if (og) return og.trim();
+function decodeEntities(value: string) {
+  return String(value || "")
+    .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n)))
+    .replace(/&#x([0-9a-f]+);/gi, (_, n) => String.fromCharCode(parseInt(n, 16)))
+    .replace(/&amp;/g, "&")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;|&apos;/g, "'")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function metaContent(html: string, property: string) {
+  const re1 = new RegExp(
+    `property=["']${property}["'][^>]*content=["']([^"']+)["']`,
+    "i"
+  );
+  const re2 = new RegExp(
+    `content=["']([^"']+)["'][^>]*property=["']${property}["']`,
+    "i"
+  );
+  const re3 = new RegExp(`name=["']${property}["'][^>]*content=["']([^"']+)["']`, "i");
+  return decodeEntities(html.match(re1)?.[1] || html.match(re2)?.[1] || html.match(re3)?.[1] || "");
+}
+
+function extractJsonLd(html: string) {
+  const items: any[] = [];
+  for (const m of html.matchAll(
+    /<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi
+  )) {
+    try {
+      const parsed = JSON.parse(m[1]);
+      if (Array.isArray(parsed)) items.push(...parsed);
+      else if (parsed) items.push(parsed);
+    } catch {
+      /* ignore bad JSON-LD */
+    }
+  }
+  return items;
+}
+
+function extractTitle(html: string, jsonLd: any[]) {
+  for (const item of jsonLd) {
+    const name = item?.name || item?.headline;
+    if (typeof name === "string" && name.trim()) return decodeEntities(name);
+  }
+  const og = metaContent(html, "og:title");
+  if (og) return og;
   const title = html.match(/<title[^>]*>([^<]+)<\/title>/i)?.[1];
-  return title ? title.replace(/\s+/g, " ").trim() : "";
+  return title ? decodeEntities(title) : "";
+}
+
+function cleanPropertyName(title: string, host: string) {
+  let name = decodeEntities(title || "");
+  // Drop common site suffixes: "SNH263 Gone Coastal - Coastal Carolina Vacations"
+  name = name
+    .replace(/\s*[\-|–|—]\s*Coastal Carolina Vacations\s*$/i, "")
+    .replace(/\s*[\-|–|—]\s*.+\s+Vacations?\s*$/i, "")
+    .replace(/\s*\|\s*.+$/i, "")
+    .trim();
+  return name || host || "Untitled Property";
+}
+
+function extractListingDetails(html: string, jsonLd: any[]) {
+  const textFromLd = jsonLd
+    .map((item) => [item?.description, item?.name].filter(Boolean).join(" "))
+    .join(" ");
+  const ogDesc = metaContent(html, "og:description") || metaContent(html, "description");
+  const plain = decodeEntities(
+    `${textFromLd} ${ogDesc} ${html.replace(/<script[\s\S]*?<\/script>/gi, " ").replace(/<[^>]+>/g, " ")}`
+  );
+
+  const toNum = (value: unknown) => {
+    const n = Number(value);
+    return Number.isFinite(n) ? n : undefined;
+  };
+
+  const bedrooms =
+    toNum(plain.match(/(\d+)\s*[-]?\s*bed(?:room)?s?\b/i)?.[1]) ||
+    toNum(plain.match(/\bbed(?:room)?s?\s*[:#]?\s*(\d+)/i)?.[1]);
+
+  // Prefer "5-full and 2-half bath" style (common on Streamline / OBX sites).
+  const fullHalf = plain.match(
+    /(\d+)\s*[-]?\s*full(?:\s+bath(?:room)?s?)?(?:\s+and)?\s+(\d+)\s*[-]?\s*half\s*bath/i
+  );
+  const fullOnly = plain.match(/(\d+)\s*[-]?\s*full\s*bath/i);
+  const halfOnly = plain.match(/(\d+)\s*[-]?\s*half\s*bath/i);
+  const bathsSimple =
+    toNum(plain.match(/(\d+(?:\.\d+)?)\s*[-]?\s*bath(?:room)?s?\b/i)?.[1]) ||
+    toNum(plain.match(/\bbath(?:room)?s?\s*[:#]?\s*(\d+(?:\.\d+)?)/i)?.[1]);
+  let bathrooms: number | undefined;
+  if (fullHalf) {
+    bathrooms = Number(fullHalf[1]) + Number(fullHalf[2]) * 0.5;
+  } else if (fullOnly || halfOnly) {
+    bathrooms = (toNum(fullOnly?.[1]) || 0) + (toNum(halfOnly?.[1]) || 0) * 0.5;
+  } else if (bathsSimple !== undefined) {
+    bathrooms = bathsSimple;
+  }
+
+  const sleeps =
+    toNum(plain.match(/\b(?:sleeps|occupancy|guests?)\s*[:\-]?\s*(\d+)/i)?.[1]) ||
+    toNum(plain.match(/(\d+)\s*(?:guests?|people)\b/i)?.[1]);
+
+  const locatedIn = decodeEntities(plain.match(/\bLocated in ([^!.?,]{3,40})/i)?.[1] || "");
+  const placeName = decodeEntities(
+    plain.match(/\bin ([A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+){0,3}\s+(?:Head|Beach|Island|Shores|City))\b/)?.[1] ||
+      ""
+  );
+  const location = (locatedIn || placeName || "").replace(/\s+/g, " ").trim() || undefined;
+
+  const short_summary = ogDesc ? ogDesc.slice(0, 400) : undefined;
+  const description = textFromLd
+    ? decodeEntities(String(jsonLd.find((i) => i?.description)?.description || "")).slice(0, 6000) || undefined
+    : short_summary;
+
+  return {
+    bedrooms: Number.isFinite(bedrooms) ? bedrooms : undefined,
+    bathrooms: Number.isFinite(bathrooms as number) ? bathrooms : undefined,
+    sleeps: Number.isFinite(sleeps) ? sleeps : undefined,
+    location_full: location,
+    short_summary,
+    description,
+  };
 }
 
 function extractPhotos(html: string, pageUrl: string) {
@@ -143,22 +260,24 @@ export async function handleScrapePropertyLight(req: any, res: any, body: any) {
 
   try {
     const { html, finalUrl } = await fetchHtml(url);
+    const jsonLd = extractJsonLd(html);
     const photo_urls = extractPhotos(html, finalUrl);
-    const title = extractTitle(html);
     const host = hostOf(finalUrl) || hostOf(url);
+    const title = extractTitle(html, jsonLd);
+    const details = extractListingDetails(html, jsonLd);
 
     return json(res, 200, {
       success: true,
       data: {
-        property_name: title || host || "Untitled Property",
+        property_name: cleanPropertyName(title, host),
         photo_urls,
-        location_full: undefined,
-        bedrooms: undefined,
-        bathrooms: undefined,
-        sleeps: undefined,
+        location_full: details.location_full,
+        bedrooms: details.bedrooms,
+        bathrooms: details.bathrooms,
+        sleeps: details.sleeps,
         property_type: undefined,
-        short_summary: undefined,
-        description: undefined,
+        short_summary: details.short_summary,
+        description: details.description,
         unique_features: undefined,
         why_100_collection: undefined,
         source: "light_html",

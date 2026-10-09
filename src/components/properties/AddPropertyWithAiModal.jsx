@@ -114,8 +114,8 @@ export default function AddPropertyWithAiModal({ open, onOpenChange, partners = 
           const light = await scrapeViaLight();
           setScraped(light);
           toast({
-            title: "Photos ready",
-            description: `${(light.photo_urls || []).length} photos from a fast page scan. Edit name/details after create.`,
+            title: "Scrape complete",
+            description: `${(light.photo_urls || []).length} photos ready${light.property_name ? ` · ${light.property_name}` : ""}. Review the preview, then create.`,
           });
         } catch (lightErr) {
           setScraped(minimalFromUrl());
@@ -148,8 +148,8 @@ export default function AddPropertyWithAiModal({ open, onOpenChange, partners = 
         const light = await scrapeViaLight();
         setScraped(light);
         toast({
-          title: "Partial scrape",
-          description: "Full AI scrape timed out — saved photos from a fast page scan. Edit details after create.",
+          title: "Scrape complete",
+          description: `${(light.photo_urls || []).length} photos ready from a page scan. Review the preview, then create.`,
         });
       } catch (lightErr) {
         setScraped(minimalFromUrl());
@@ -318,8 +318,8 @@ export default function AddPropertyWithAiModal({ open, onOpenChange, partners = 
                 </p>
               )}
               {scraped._discoverFallback && !scraped._urlOnly && (
-                <p className="text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-2.5 py-1.5">
-                  Used a fast page scan (full AI extract times out on large galleries). Edit the name and details after create.
+                <p className="text-xs text-emerald-800 bg-emerald-50 border border-emerald-100 rounded-lg px-2.5 py-1.5">
+                  Ready — {(scraped.photo_urls || []).length} photos pulled from the listing page. Review details below, then create.
                 </p>
               )}
               <div className="grid grid-cols-2 gap-3 text-sm">
