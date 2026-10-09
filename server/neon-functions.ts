@@ -160,7 +160,10 @@ function fromSupabase(row: any) {
     partner_name: source.partner_name,
     internal_notes: source.propdescription,
     address: source.address,
-    status: source.active === true || source.active === "true" ? "active" : source.status || "inactive",
+    // Prefer explicit status column; only fall back to the active boolean.
+    status:
+      source.status ||
+      (source.active === true || source.active === "true" ? "active" : "inactive"),
     onboarding_status: source.onboarding_status || "not_started",
     photography_status: source.photography_status || "not_started",
     launch_date: source.launch_date,

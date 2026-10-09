@@ -78,14 +78,6 @@ export default function PartnerPropertiesTab({ properties, partnerId, partner, s
   const [addModalOpen, setAddModalOpen] = useState(false);
   const [aiModalOpen, setAiModalOpen] = useState(false);
 
-  const invalidatePropertyQueries = () => {
-    queryClient.invalidateQueries({ queryKey: ["partner-properties", partnerId, partner?.partner_name] });
-    queryClient.invalidateQueries({ queryKey: ["properties"] });
-    queryClient.invalidateQueries({ queryKey: ["propertiesbase44"] });
-    queryClient.invalidateQueries({ queryKey: ["properties-b44"] });
-    queryClient.invalidateQueries({ queryKey: ["property"] });
-  };
-
   const handleStatusChange = async (prop, nextStatus) => {
     if (!prop?.id || prop._isDraftSubmission || prop.status === nextStatus) return;
     setStatusSaving((prev) => new Set(prev).add(prop.id));
@@ -101,22 +93,49 @@ export default function PartnerPropertiesTab({ properties, partnerId, partner, s
               }
             : { status: nextStatus };
 
+      // Partner list may only have _supabaseRowId from overlay — keep entity linked.
+      const sbIdRaw = prop.supabase_property_id || prop._supabaseRowId;
+      const sbId =
+        sbIdRaw && sbIdRaw !== "null" && sbIdRaw !== "undefined" ? String(sbIdRaw) : null;
+      if (sbId && !prop.supabase_property_id) {
+        patch.supabase_property_id = sbId;
+      }
+
       await base44.entities.Property.update(prop.id, patch);
 
-      const sbId = prop.supabase_property_id;
-      if (sbId && sbId !== "null" && sbId !== "undefined") {
+      // Admin Properties table is backed by propertiesbase44 — update status + active there.
+      const lookupUrl = prop.listing_url || prop.vrm_url || "";
+      const sbPayload = {
+        status: nextStatus,
+        active: nextStatus === "active",
+        ...(nextStatus === "inactive" || nextStatus === "paused" ? { portal_visible: false } : {}),
+      };
+      let sbUpdated = false;
+      if (sbId || lookupUrl) {
+        const sbRes = await base44.functions.invoke("supabaseProperties", {
+          action: "update",
+          id: sbId || undefined,
+          url: lookupUrl || undefined,
+          data: sbPayload,
+        });
+        const sbBody = sbRes?.data || sbRes;
+        if (sbBody?.error) throw new Error(sbBody.error);
+        if (sbBody?.property) sbUpdated = true;
+      }
+      if (!sbUpdated) {
+        // Fallback full sync (may no-op if photos are missing).
         await base44.functions
-          .invoke("supabaseProperties", {
-            action: "update",
-            id: sbId,
-            data: { status: nextStatus === "active" ? "active" : nextStatus === "inactive" ? "inactive" : nextStatus },
-          })
+          .invoke("syncPropertyToSupabase", { action: "sync_property", id: prop.id })
           .catch(() => {});
       }
-      // Keep public listing in sync when activating / changing live status.
-      base44.functions.invoke("syncPropertyToSupabase", { action: "sync_property", id: prop.id }).catch(() => {});
 
-      invalidatePropertyQueries();
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["partner-properties"] }),
+        queryClient.invalidateQueries({ queryKey: ["properties"] }),
+        queryClient.invalidateQueries({ queryKey: ["propertiesbase44"] }),
+        queryClient.invalidateQueries({ queryKey: ["properties-b44"] }),
+        queryClient.invalidateQueries({ queryKey: ["property"] }),
+      ]);
       toast({
         title: "Status updated",
         description: `${prop.property_name || "Property"} → ${nextStatus}`,

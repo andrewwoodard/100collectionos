@@ -206,9 +206,10 @@ export default function PartnerDetail() {
         }
       }
 
-      // Display attributes sourced from Supabase (source of truth). id and
-      // partner fields stay from Base44 so license/portal updates keep working.
-      const OVERLAY = ["status", "market", "property_type", "bedrooms", "bathrooms", "sleeps", "address", "onboarding_status", "photography_status", "launch_date"];
+      // Display attributes sourced from Supabase for beds/market/etc. Status stays
+      // on the Base44 Property record (admin-managed) so partner-tab changes are
+      // not overwritten by a stale propertiesbase44 overlay.
+      const OVERLAY = ["market", "property_type", "bedrooms", "bathrooms", "sleeps", "address", "onboarding_status", "photography_status", "launch_date"];
       const mergedRows = b44Rows.map(p => {
         const supa = (p.listing_url && supaByUrl.get(norm(p.listing_url))) || (p.vrm_url && supaByUrl.get(norm(p.vrm_url))) || null;
         if (!supa) return p;
@@ -217,6 +218,7 @@ export default function PartnerDetail() {
           if (supa[k] !== undefined && supa[k] !== null) merged[k] = supa[k];
         }
         merged._supabaseRowId = supa.id;
+        if (!merged.supabase_property_id && supa.id) merged.supabase_property_id = String(supa.id);
         return merged;
       });
 
