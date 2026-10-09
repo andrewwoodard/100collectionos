@@ -10,6 +10,15 @@ import { useToast } from "@/components/ui/use-toast";
 
 // Property types accepted by the propertiesbase44 house_type column
 const VALID_TYPES = new Set(["villa", "apartment", "house", "condo", "estate", "cabin", "other"]);
+const MAX_PHOTOS = 60;
+
+function friendlyNetError(err, fallback) {
+  const msg = err?.message || err?.toString?.() || fallback;
+  if (msg === "Network Error") {
+    return "The request timed out (common with large photo sets). Try again, or create with fewer photos.";
+  }
+  return msg;
+}
 
 export default function AddPropertyWithAiModal({ open, onOpenChange, partners = [], onCreated, presetPartnerId }) {
   const { toast } = useToast();
@@ -45,7 +54,7 @@ export default function AddPropertyWithAiModal({ open, onOpenChange, partners = 
         setScraped(data);
       }
     } catch (e) {
-      setScrapeError(e.message || "Scraping failed.");
+      setScrapeError(friendlyNetError(e, "Scraping failed."));
     } finally {
       setScraping(false);
     }
@@ -56,7 +65,12 @@ export default function AddPropertyWithAiModal({ open, onOpenChange, partners = 
     setCreating(true);
     try {
       const selectedPartner = partners.find(p => p.id === partnerId);
-      const payload = {
+      const photos = (Array.isArray(scraped.photo_urls) ? scraped.photo_urls : [])
+        .map((u) => String(u || "").trim())
+        .filter(Boolean)
+        .slice(0, MAX_PHOTOS);
+
+      const propertyPayload = {
         property_name: scraped.property_name || "Untitled Property",
         market: selectedPartner?.market || scraped.location_city || scraped.location_state || undefined,
         address: scraped.location_full || undefined,
@@ -69,19 +83,76 @@ export default function AddPropertyWithAiModal({ open, onOpenChange, partners = 
         partner_id: partnerId || undefined,
         partner_name: selectedPartner?.partner_name || undefined,
         status: "draft",
-        images: scraped.photo_urls || [],
+        photo_urls: photos,
         excerpt: scraped.short_summary || undefined,
         unique_feature: scraped.unique_features || undefined,
         why_onehundred: scraped.why_100_collection || undefined,
         text: scraped.description || undefined,
+        description: scraped.description || undefined,
+        short_summary: scraped.short_summary || undefined,
       };
-      const res = await base44.functions.invoke("supabaseProperties", { action: "create", data: payload });
-      if (res?.data?.error) throw new Error(res.data.error);
+
+      // Partner Properties tab is driven by Property entities — create that first.
+      const created = await base44.entities.Property.create(propertyPayload);
+
+      // Mirror into propertiesbase44 without downloading every remote photo in-request
+      // (Coastal Carolina / LMPM listings often return 50–100+ images → Network Error).
+      try {
+        const sbRes = await base44.functions.invoke("supabaseProperties", {
+          action: "create",
+          skip_image_ingest: true,
+          data: {
+            property_name: propertyPayload.property_name,
+            market: propertyPayload.market,
+            address: propertyPayload.address,
+            listing_url: url,
+            vrm_url: url,
+            bedrooms: propertyPayload.bedrooms,
+            bathrooms: propertyPayload.bathrooms,
+            sleeps: propertyPayload.sleeps,
+            property_type: propertyPayload.property_type,
+            partner_id: partnerId || undefined,
+            partner_name: propertyPayload.partner_name,
+            status: "draft",
+            active: false,
+            images: photos,
+            excerpt: propertyPayload.excerpt,
+            unique_feature: propertyPayload.unique_feature,
+            why_onehundred: propertyPayload.why_onehundred,
+            text: propertyPayload.text,
+          },
+        });
+        const sbBody = sbRes?.data || sbRes;
+        if (sbBody?.error) throw new Error(sbBody.error);
+        const sbId = sbBody?.property?.id ?? sbBody?.property?.row_id;
+        if (sbId) {
+          await base44.entities.Property.update(created.id, {
+            supabase_property_id: String(sbId),
+          }).catch(() => {});
+        }
+      } catch (sbErr) {
+        // Property already exists — surface a soft warning rather than failing the add.
+        console.warn("[AddPropertyWithAi] supabase mirror failed", sbErr);
+        toast({
+          title: "Property saved as draft",
+          description:
+            friendlyNetError(sbErr, "Public listing sync failed") +
+            " Open the property to sync photos later.",
+        });
+        onCreated?.(created);
+        close();
+        return;
+      }
+
       toast({ title: "Property created", description: scraped.property_name || "Added via AI scrape" });
-      onCreated?.();
+      onCreated?.(created);
       close();
     } catch (e) {
-      toast({ title: "Create failed", description: e.message, variant: "destructive" });
+      toast({
+        title: "Create failed",
+        description: friendlyNetError(e, "Could not create property"),
+        variant: "destructive",
+      });
     } finally {
       setCreating(false);
     }
@@ -164,7 +235,12 @@ export default function AddPropertyWithAiModal({ open, onOpenChange, partners = 
                 <p className="text-sm text-gray-600 italic line-clamp-2">{scraped.short_summary}</p>
               )}
               <div>
-                <span className="text-xs text-gray-400">{(scraped.photo_urls || []).length} photos extracted</span>
+                <span className="text-xs text-gray-400">
+                  {(scraped.photo_urls || []).length} photos extracted
+                  {(scraped.photo_urls || []).length > MAX_PHOTOS
+                    ? ` (first ${MAX_PHOTOS} will be saved)`
+                    : ""}
+                </span>
                 <div className="flex gap-2 mt-2 overflow-x-auto pb-1">
                   {(scraped.photo_urls || []).slice(0, 8).map((u, i) => (
                     <img key={i} src={u} alt="" className="w-16 h-16 object-cover rounded-md border border-gray-200 flex-shrink-0" onError={(e) => { e.currentTarget.style.display = "none"; }} />

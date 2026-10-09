@@ -508,11 +508,23 @@ async function handleSupabaseProperties(res: any, body: any) {
   }
 
   if (action === "create") {
-    const record = await withIngestedImages(toPropertyRecord({
+    const mapped = toPropertyRecord({
       ...data,
       row_id: data?.row_id || Date.now(),
       created_at: data?.created_at || new Date().toISOString(),
-    }));
+    });
+    // skip_image_ingest: AI add often sends 40–100 remote URLs; downloading them
+    // in-request exceeds the gateway timeout and surfaces as axios "Network Error".
+    const record = body.skip_image_ingest
+      ? mapped
+      : await withIngestedImages(mapped);
+    const imageList = parseImages(record.images);
+    if (imageList.length) {
+      record.images = JSON.stringify(imageList);
+      if (!record.vrm_images) record.vrm_images = JSON.stringify(imageList);
+      if (!record.property_image) record.property_image = imageList[0];
+      if (!record.photo_count) record.photo_count = String(imageList.length);
+    }
     if (!record.name) record.name = data?.property_name || data?.name || "Untitled property";
     const insert = buildInsert("supabase.propertiesbase44", {
       id: String(record.row_id || newId()),
@@ -524,7 +536,15 @@ async function handleSupabaseProperties(res: any, body: any) {
   }
 
   if (action === "update") {
-    const record = await withIngestedImages(toPropertyRecord(data || {}));
+    const mapped = toPropertyRecord(data || {});
+    const record = body.skip_image_ingest ? mapped : await withIngestedImages(mapped);
+    const imageList = parseImages(record.images);
+    if (imageList.length && body.skip_image_ingest) {
+      record.images = JSON.stringify(imageList);
+      if (!record.vrm_images) record.vrm_images = JSON.stringify(imageList);
+      if (!record.property_image) record.property_image = imageList[0];
+      if (!record.photo_count) record.photo_count = String(imageList.length);
+    }
     if (!Object.keys(record).length) return json(res, 400, { error: "No updatable fields" });
     const update = buildUpdate(
       "supabase.propertiesbase44",

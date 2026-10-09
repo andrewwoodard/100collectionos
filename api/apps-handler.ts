@@ -7,6 +7,9 @@ export const config = {
   },
 };
 
+// AI property add / image-heavy updates can exceed the default serverless budget.
+export const maxDuration = 60;
+
 export default function handler(req: IncomingMessage, res: ServerResponse) {
   return handleAppsRequest(req, res);
 }
