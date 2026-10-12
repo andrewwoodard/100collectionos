@@ -17,14 +17,21 @@ export async function uploadPropertyImage(file) {
   return data.url;
 }
 
-export async function ingestPropertyImages(urls) {
+/**
+ * @param {string[]} urls
+ * @param {{ existingUrls?: string[] }} [opts] Existing gallery URLs for content-dedup
+ */
+export async function ingestPropertyImages(urls, opts = {}) {
   const list = (urls || []).map((u) => String(u || "").trim()).filter(Boolean);
   if (!list.length) return [];
+  const existingUrls = (opts.existingUrls || [])
+    .map((u) => String(u || "").trim())
+    .filter(Boolean);
   const res = await fetch("/api/images/ingest", {
     method: "POST",
     credentials: "include",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ urls: list }),
+    body: JSON.stringify({ urls: list, existing_urls: existingUrls }),
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || "Ingest failed");

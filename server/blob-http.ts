@@ -29,8 +29,9 @@ export async function handleImageIngest(req: any, res: any) {
     const raw = await readBody(req);
     const body = raw ? JSON.parse(raw) : {};
     const urls = Array.isArray(body.urls) ? body.urls : [];
-    const ingested = await ingestRemoteImages(urls.map(String));
-    return json(res, 200, { urls: ingested });
+    const existingUrls = Array.isArray(body.existing_urls) ? body.existing_urls.map(String) : [];
+    const ingested = await ingestRemoteImages(urls.map(String), { existingUrls });
+    return json(res, 200, { urls: ingested, skipped: Math.max(0, urls.length - ingested.length) });
   } catch (error: any) {
     console.error("[image-ingest]", error);
     return json(res, 500, { error: error.message || "Ingest failed" });

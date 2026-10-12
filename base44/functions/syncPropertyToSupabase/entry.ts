@@ -214,15 +214,15 @@ async function fetchOrderedImages(supabase, base44, listingUrl, propertyId, phot
     const sorted = applyImageOrder(metaImages, orderedIds);
 
     for (const img of sorted) {
-      // Prefer Supabase storage URL (from storage_path), then original_url
+      // Prefer Supabase storage URL; fall back to original_url — never both
+      // (same photo at two hosts was doubling galleries on sync).
       const storageUrl = img.storage_path ? SUPABASE_STORAGE_BASE + img.storage_path : null;
-      if (storageUrl && !seen.has(storageUrl)) {
-        seen.add(storageUrl);
-        imageUrls.push(storageUrl);
-      }
-      if (img.original_url && !seen.has(img.original_url)) {
-        seen.add(img.original_url);
-        imageUrls.push(img.original_url);
+      const preferred = storageUrl || img.original_url || null;
+      if (preferred && !seen.has(preferred)) {
+        seen.add(preferred);
+        if (storageUrl) seen.add(storageUrl);
+        if (img.original_url) seen.add(img.original_url);
+        imageUrls.push(preferred);
       }
     }
   }

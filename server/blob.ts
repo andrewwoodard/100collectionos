@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { put } from "@vercel/blob";
 
 const MAX_BYTES = 15 * 1024 * 1024;
@@ -72,10 +73,13 @@ function sniffImageType(buffer: Buffer) {
   return "";
 }
 
-export async function ingestRemoteImage(url: string) {
+function sha256Hex(buffer: Buffer) {
+  return createHash("sha256").update(buffer).digest("hex");
+}
+
+async function fetchImageBuffer(url: string): Promise<{ buffer: Buffer; contentType: string } | null> {
   const source = String(url || "").trim();
-  if (!source) return source;
-  if (isAlreadyHosted(source) || !blobConfigured()) return source;
+  if (!source) return null;
   try {
     const res = await fetch(source, {
       headers: {
@@ -83,26 +87,132 @@ export async function ingestRemoteImage(url: string) {
         Accept: "image/*,*/*;q=0.8",
       },
       redirect: "follow",
+      signal: AbortSignal.timeout(20000),
     });
-    if (!res.ok) return source;
+    if (!res.ok) return null;
     const buffer = Buffer.from(await res.arrayBuffer());
+    if (!buffer.length || buffer.length > MAX_BYTES) return null;
     const headerType = (res.headers.get("content-type") || "").split(";")[0].trim().toLowerCase();
     const contentType = headerType.startsWith("image/") ? headerType : sniffImageType(buffer);
-    if (!contentType.startsWith("image/")) return source;
-    return await putImageBuffer(buffer, { filename: source, contentType });
+    if (!contentType.startsWith("image/")) return null;
+    return { buffer, contentType };
+  } catch {
+    return null;
+  }
+}
+
+async function hashImageUrl(url: string): Promise<string | null> {
+  const fetched = await fetchImageBuffer(url);
+  return fetched ? sha256Hex(fetched.buffer) : null;
+}
+
+export async function ingestRemoteImage(url: string) {
+  const source = String(url || "").trim();
+  if (!source) return source;
+  if (isAlreadyHosted(source) || !blobConfigured()) return source;
+  try {
+    const fetched = await fetchImageBuffer(source);
+    if (!fetched) return source;
+    return await putImageBuffer(fetched.buffer, {
+      filename: source,
+      contentType: fetched.contentType,
+    });
   } catch (error) {
     console.warn("[blob] ingest failed, keeping original URL", source, (error as Error).message);
     return source;
   }
 }
 
-export async function ingestRemoteImages(urls: string[]) {
+export type IngestRemoteImagesOptions = {
+  /** Gallery URLs already on the property — skip re-uploading matching bytes. */
+  existingUrls?: string[];
+};
+
+/**
+ * Ingest remote images into Vercel Blob.
+ * Content-dedupes against `existingUrls` and within the batch so AI photo pulls
+ * don't append the same listing photos as new blob URLs on every run.
+ */
+export async function ingestRemoteImages(
+  urls: string[],
+  opts: IngestRemoteImagesOptions = {}
+) {
   const list = (urls || []).map((u) => String(u || "").trim()).filter(Boolean);
+  const existingList = (opts.existingUrls || [])
+    .map((u) => String(u || "").trim())
+    .filter(Boolean);
+
+  const knownHashes = new Set<string>();
+  const existingExact = new Set(existingList);
+
+  for (let i = 0; i < existingList.length; i += CONCURRENCY) {
+    const batch = existingList.slice(i, i + CONCURRENCY);
+    const hashes = await Promise.all(batch.map((url) => hashImageUrl(url)));
+    for (const hash of hashes) {
+      if (hash) knownHashes.add(hash);
+    }
+  }
+
   const out: string[] = [];
   for (let i = 0; i < list.length; i += CONCURRENCY) {
     const batch = list.slice(i, i + CONCURRENCY);
-    const mapped = await Promise.all(batch.map((url) => ingestRemoteImage(url)));
-    out.push(...mapped);
+    const mapped = await Promise.all(
+      batch.map(async (source) => {
+        if (existingExact.has(source)) return null;
+
+        // Already on our CDN / partner hosts: only keep if not already listed.
+        if (isAlreadyHosted(source) || !blobConfigured()) {
+          const hash = await hashImageUrl(source);
+          if (hash) {
+            if (knownHashes.has(hash)) return null;
+            knownHashes.add(hash);
+          }
+          return source;
+        }
+
+        const fetched = await fetchImageBuffer(source);
+        if (!fetched) return source;
+        const hash = sha256Hex(fetched.buffer);
+        if (knownHashes.has(hash)) return null;
+        knownHashes.add(hash);
+        try {
+          return await putImageBuffer(fetched.buffer, {
+            filename: source,
+            contentType: fetched.contentType,
+          });
+        } catch (error) {
+          console.warn("[blob] ingest failed, keeping original URL", source, (error as Error).message);
+          return source;
+        }
+      })
+    );
+    for (const url of mapped) {
+      if (url) out.push(url);
+    }
+  }
+  return out;
+}
+
+/** Keep first URL for each unique image payload (SHA-256). */
+export async function dedupeUrlsByContent(urls: string[]) {
+  const list = (urls || []).map((u) => String(u || "").trim()).filter(Boolean);
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (let i = 0; i < list.length; i += CONCURRENCY) {
+    const batch = list.slice(i, i + CONCURRENCY);
+    const hashes = await Promise.all(batch.map((url) => hashImageUrl(url)));
+    for (let j = 0; j < batch.length; j++) {
+      const url = batch[j];
+      const hash = hashes[j];
+      if (hash) {
+        if (seen.has(hash)) continue;
+        seen.add(hash);
+        out.push(url);
+      } else if (!seen.has(`url:${url}`)) {
+        seen.add(`url:${url}`);
+        out.push(url);
+      }
+    }
   }
   return out;
 }

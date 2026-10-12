@@ -36,7 +36,7 @@ async function patchRemoteVrmShowcase(vrmId: string | number, showcase: any[]) {
   });
 }
 
-async function unsetSanityShowcaseItem(sanityId: string, keys: string[]) {
+function sanityConfig() {
   const token =
     process.env.SANITY_WRITE_TOKEN ||
     process.env.SANITY_API_TOKEN ||
@@ -44,15 +44,12 @@ async function unsetSanityShowcaseItem(sanityId: string, keys: string[]) {
     "";
   const project = process.env.SANITY_PROJECT_ID || "b2yibrs1";
   const dataset = process.env.SANITY_DATASET || "production";
-  if (!token || !sanityId || !keys.length) {
-    return { skipped: true as const, reason: !token ? "no_token" : "nothing_to_unset" };
-  }
-  const mutations = keys.map((key) => ({
-    patch: {
-      id: sanityId,
-      unset: [`showcase[_key=="${key}"]`],
-    },
-  }));
+  return { token, project, dataset };
+}
+
+async function sanityMutate(mutations: any[]) {
+  const { token, project, dataset } = sanityConfig();
+  if (!token) return { skipped: true as const, reason: "no_token" };
   const res = await fetch(
     `https://${project}.api.sanity.io/v2021-10-21/data/mutate/${dataset}?returnIds=true`,
     {
@@ -69,7 +66,38 @@ async function unsetSanityShowcaseItem(sanityId: string, keys: string[]) {
     console.warn("[showcase-visibility] Sanity mutate failed", res.status, data?.message || data);
     return { skipped: true as const, reason: "sanity_mutate_failed", error: data?.message || String(res.status) };
   }
+  return { skipped: false as const, data };
+}
+
+async function unsetSanityShowcaseItem(sanityId: string, keys: string[]) {
+  if (!sanityId || !keys.length) {
+    return { skipped: true as const, reason: "nothing_to_unset" };
+  }
+  const mutations = keys.map((key) => ({
+    patch: {
+      id: sanityId,
+      unset: [`showcase[_key=="${key}"]`],
+    },
+  }));
+  const result = await sanityMutate(mutations);
+  if (result.skipped) return result;
   return { skipped: false as const, unset: keys.length };
+}
+
+/** Rename/update a Sanity showcase row in place (keeps existing gallery images). */
+export async function patchSanityShowcaseItem(
+  sanityId: string,
+  key: string,
+  fields: Record<string, unknown>
+) {
+  if (!sanityId || !key) return { skipped: true as const, reason: "missing_ids" };
+  const set: Record<string, unknown> = {};
+  for (const [field, value] of Object.entries(fields)) {
+    set[`showcase[_key=="${key}"].${field}`] = value;
+  }
+  const result = await sanityMutate([{ patch: { id: sanityId, set } }]);
+  if (result.skipped) return result;
+  return { skipped: false as const, key, fields: Object.keys(fields) };
 }
 
 /**

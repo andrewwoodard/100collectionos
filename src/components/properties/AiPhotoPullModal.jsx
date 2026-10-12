@@ -110,9 +110,13 @@ export default function AiPhotoPullModal({
       }
 
       const norm = (u) => (u ? normalizeStorageUrl(u) || u : u);
-      const existingSet = new Set((currentImages || []).map(norm));
+      const existing = (currentImages || []).map(norm).filter(Boolean);
+      const existingSet = new Set(existing);
+      // URL-level skip first; ingest also content-dedupes against existing
+      // blob URLs so rescans don't re-upload the same listing photos.
       const newUrls = await ingestPropertyImages(
-        photoUrls.filter((u) => !existingSet.has(norm(u)))
+        photoUrls.filter((u) => !existingSet.has(norm(u))),
+        { existingUrls: existing }
       );
       if (newUrls.length === 0) {
         toast({
@@ -123,7 +127,7 @@ export default function AiPhotoPullModal({
         return;
       }
 
-      const merged = [...(currentImages || []), ...newUrls];
+      const merged = [...existing, ...newUrls.map(norm)];
       if (onImagesChange) {
         await onImagesChange(merged);
       } else {

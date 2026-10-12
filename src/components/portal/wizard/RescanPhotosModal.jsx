@@ -107,9 +107,11 @@ export default function RescanPhotosModal({
         return;
       }
 
-      const existingSet = new Set((currentPhotos || []).map((u) => (u || "").trim()));
+      const existing = (currentPhotos || []).map((u) => (u || "").trim()).filter(Boolean);
+      const existingSet = new Set(existing);
       const newUrls = await ingestPropertyImages(
-        photoUrls.filter((u) => u && !existingSet.has(u.trim()))
+        photoUrls.filter((u) => u && !existingSet.has(u.trim())),
+        { existingUrls: existing }
       );
       if (newUrls.length === 0) {
         toast({
