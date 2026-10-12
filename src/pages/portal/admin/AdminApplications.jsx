@@ -315,7 +315,7 @@ function InterviewDialog({ app, onClose, onSuccess }) {
         created_at: invitedAt,
       };
 
-      await base44.entities.PartnerApplication.update(app.id, {
+      const invitePatch = {
         status: "interview_invited",
         admin_notes: adminMessage || app.admin_notes,
         interview_invited_at: invitedAt,
@@ -324,6 +324,36 @@ function InterviewDialog({ app, onClose, onSuccess }) {
         interview_invited_by_name: invitedByName,
         interview_invite_to: recipient,
         internal_comments: [...existingComments, auditComment],
+      };
+      const updated = await base44.entities.PartnerApplication.update(app.id, invitePatch);
+      const saved = updated?.data && typeof updated.data === "object" && !Array.isArray(updated.data)
+        ? updated.data
+        : updated;
+      // Re-stamp if the first write didn't persist invite metadata (older proxies / partial merges).
+      if (!saved?.interview_invited_at) {
+        await base44.entities.PartnerApplication.update(app.id, {
+          interview_invited_at: invitedAt,
+          interview_invited_by_user_id: user?.id || null,
+          interview_invited_by_email: invitedByEmail,
+          interview_invited_by_name: invitedByName,
+          interview_invite_to: recipient,
+          status: "interview_invited",
+        });
+      }
+      qc.setQueryData(["partner-applications"], (prev) => {
+        if (!Array.isArray(prev)) return prev;
+        return prev.map((row) =>
+          row.id === app.id
+            ? {
+                ...row,
+                ...invitePatch,
+                interview_invited_at: invitedAt,
+                interview_invited_by_name: invitedByName,
+                interview_invited_by_email: invitedByEmail,
+                interview_invite_to: recipient,
+              }
+            : row
+        );
       });
 
       await base44.entities.PortalNotification.create({
@@ -747,17 +777,20 @@ function ApplicationDetail({ app, onBack, onAction, onRestore, onDelete, onToggl
               </div>
               <div className="text-sm text-slate-500 mt-0.5">{app.email}</div>
               <div className="text-xs text-slate-400 mt-0.5">{new Date(app.created_date).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })}</div>
-              {app.interview_invited_at && (
+              {(app.interview_invited_at || app.status === "interview_invited") && (
                 <div className="mt-2 text-xs text-purple-700 bg-purple-50 border border-purple-100 rounded-lg px-2.5 py-1.5 inline-flex items-center gap-1.5">
                   <CalendarClock className="w-3.5 h-3.5 flex-shrink-0" />
                   <span>
                     Interview invite sent{" "}
-                    {new Date(app.interview_invited_at).toLocaleString("en-US", {
-                      dateStyle: "medium",
-                      timeStyle: "short",
-                    })}
-                    {" · "}
-                    by {app.interview_invited_by_name || app.interview_invited_by_email || "admin"}
+                    {app.interview_invited_at
+                      ? new Date(app.interview_invited_at).toLocaleString("en-US", {
+                          dateStyle: "medium",
+                          timeStyle: "short",
+                        })
+                      : "(time not recorded)"}
+                    {app.interview_invited_by_name || app.interview_invited_by_email
+                      ? ` · by ${app.interview_invited_by_name || app.interview_invited_by_email}`
+                      : ""}
                     {app.interview_invite_to ? ` → ${app.interview_invite_to}` : ""}
                   </span>
                 </div>
@@ -966,9 +999,44 @@ function ApplicationDetail({ app, onBack, onAction, onRestore, onDelete, onToggl
           </div>
         )}
 
+        {(app.interview_invited_at || app.status === "interview_invited") && (
+          <div className="px-6 pb-5">
+            <div className="text-[10px] font-semibold text-purple-600 uppercase tracking-wide mb-2 flex items-center gap-1.5">
+              <CalendarClock className="w-3.5 h-3.5" /> Interview invitation
+            </div>
+            <div className="bg-purple-50 border border-purple-100 rounded-xl p-4 text-sm text-slate-700 space-y-1.5">
+              <div>
+                <span className="text-slate-500">Sent: </span>
+                {app.interview_invited_at
+                  ? new Date(app.interview_invited_at).toLocaleString("en-US", {
+                      dateStyle: "full",
+                      timeStyle: "short",
+                    })
+                  : "Not recorded — re-send invite to stamp the date"}
+              </div>
+              {(app.interview_invited_by_name || app.interview_invited_by_email) && (
+                <div>
+                  <span className="text-slate-500">Sent by: </span>
+                  {app.interview_invited_by_name || app.interview_invited_by_email}
+                </div>
+              )}
+              {app.interview_invite_to && (
+                <div>
+                  <span className="text-slate-500">Sent to: </span>
+                  {app.interview_invite_to}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
         {app.admin_notes && (
           <div className="px-6 pb-5">
-            <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mb-2">Legacy admin notes</div>
+            <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mb-2">
+              {app.status === "interview_invited" || app.interview_invited_at
+                ? "Invite message / admin notes"
+                : "Legacy admin notes"}
+            </div>
             <div className="bg-amber-50 border border-amber-100 rounded-xl p-4 text-sm text-slate-600 leading-relaxed">{app.admin_notes}</div>
           </div>
         )}
@@ -987,7 +1055,17 @@ function ApplicationDetail({ app, onBack, onAction, onRestore, onDelete, onToggl
       )}
       {dialog === "reject" && <RejectDialog app={app} onClose={() => setDialog(null)} onSuccess={(msg) => { showToast(msg); onAction(); }} />}
       {dialog === "more_info" && <MoreInfoDialog app={app} onClose={() => setDialog(null)} onSuccess={(msg) => { showToast(msg); onAction(); }} />}
-      {dialog === "interview" && <InterviewDialog app={app} onClose={() => setDialog(null)} onSuccess={(msg) => { showToast(msg); onAction(); }} />}
+      {dialog === "interview" && (
+        <InterviewDialog
+          app={app}
+          onClose={() => setDialog(null)}
+          onSuccess={(msg) => {
+            showToast(msg);
+            // Keep detail open so admins see the stamped invite time immediately.
+            qc.invalidateQueries(["partner-applications"]);
+          }}
+        />
+      )}
       {dialog === "link_activation" && <LinkActivationModal app={app} onClose={() => setDialog(null)} onSuccess={(msg) => { showToast(msg); onAction(); }} />}
       {dialog === "create_new_partner" && <CreateNewPartnerDialog app={app} onClose={() => setDialog(null)} onSuccess={(msg) => { showToast(msg); onAction(); }} />}
     </div>
@@ -1299,13 +1377,15 @@ export default function AdminApplications({ embedded = false }) {
                             <MessageSquare className="w-2.5 h-2.5" /> {app.internal_comments.length}
                           </span>
                         )}
-                        {app.interview_invited_at && (
+                        {(app.interview_invited_at || app.status === "interview_invited") && (
                           <span
                             title={app.interview_invite_to ? `Sent to ${app.interview_invite_to}` : undefined}
                             className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-purple-50 text-purple-700 border border-purple-200 flex items-center gap-1"
                           >
                             <CalendarClock className="w-2.5 h-2.5" />
-                            Invited {new Date(app.interview_invited_at).toLocaleDateString()}
+                            {app.interview_invited_at
+                              ? `Invited ${new Date(app.interview_invited_at).toLocaleDateString()}`
+                              : "Interview invited"}
                             {app.interview_invited_by_name || app.interview_invited_by_email
                               ? ` · ${app.interview_invited_by_name || app.interview_invited_by_email}`
                               : ""}
