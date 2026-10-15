@@ -17,6 +17,7 @@ const BAD_PATTERNS = [
   'headshot', 'staff', 'team', 'award', 'seal', 'certif',
   'placeholder', 'noimage', 'no-image', 'blank.jpg', 'default.jpg',
   'person', 'woman', 'man', 'smile', 'portrait',
+  'marker-icon', 'leaflet', 'map-placeholder',
 ];
 
 const SMALL_SIZE_PATTERN = /-(\d{1,2})x(\d{1,2})\./;
@@ -37,7 +38,11 @@ function isSmallImageByUrl(lower) {
 
 // Strip query string and size suffix for canonical URL dedup
 function canonicalImageUrl(url) {
-  const base = url.split('?')[0].split('#')[0];
+  let base = url.split('?')[0].split('#')[0];
+  // Collapse Guesty transform variants (w_400 / w_600 / w_1200) to one key
+  if (/assets\.guesty\.com/i.test(base)) {
+    base = base.replace(/\/image\/upload\/w_[^/]+\//i, '/image/upload/');
+  }
   return base.replace(/-\d+x\d+(\.[a-z]+)$/i, '$1').toLowerCase();
 }
 
@@ -58,6 +63,8 @@ function deduplicateImages(urls) {
 const EXTENSIONLESS_IMAGE_HOSTS = [
   'img.trackhs.com',
   'track-pm.s3.amazonaws.com',
+  'assets.guesty.com',
+  'guesty.com',
 ];
 function isKnownExtensionlessImageHost(url) {
   try {
@@ -89,9 +96,10 @@ function isPropertyImage(url, sourceDomain = null) {
       'fastly.net', 'imagedelivery.net', 'storage.googleapis.com',
       'googleusercontent.com', 's3.amazonaws.com', 'amazonaws.com',
       'images.weserv.nl', 'cdn.shopify.com', 'imagebam.com',
+      'assets.guesty.com', 'guesty.com',
     ];
     const isSameDomain = urlHost === srcHost || urlHost.endsWith('.' + srcHost);
-    const isAllowedCdn = ALLOWED_CDNS.some(cdn => urlHost.endsWith(cdn));
+    const isAllowedCdn = ALLOWED_CDNS.some(cdn => urlHost === cdn || urlHost.endsWith('.' + cdn) || urlHost.endsWith(cdn));
     if (!isSameDomain && !isAllowedCdn) return false;
   }
 
@@ -113,9 +121,10 @@ function isAllowedImageHost(url, sourceDomain) {
       'fastly.net', 'imagedelivery.net', 'storage.googleapis.com',
       'googleusercontent.com', 's3.amazonaws.com', 'amazonaws.com',
       'images.weserv.nl', 'cdn.shopify.com', 'imagebam.com',
+      'assets.guesty.com', 'guesty.com',
     ];
     const isSameDomain = urlHost === srcHost || urlHost.endsWith('.' + srcHost);
-    const isAllowedCdn = ALLOWED_CDNS.some(cdn => urlHost.endsWith(cdn));
+    const isAllowedCdn = ALLOWED_CDNS.some(cdn => urlHost === cdn || urlHost.endsWith('.' + cdn) || urlHost.endsWith(cdn));
     return isSameDomain || isAllowedCdn;
   } catch {
     return false;
@@ -126,6 +135,17 @@ function cleanImageUrl(url) {
   if (url.includes('images.rezfusion.com/cdn-cgi/image/')) {
     const inner = url.replace(/^https:\/\/images\.rezfusion\.com\/cdn-cgi\/image\/[^/]+\//, '');
     if (inner.startsWith('http')) return inner.split('?')[0];
+  }
+  // Guesty: normalize to a large f_auto transform. Stripping transforms entirely
+  // yields application/octet-stream which browsers won't show in <img>.
+  if (/assets\.guesty\.com/i.test(url)) {
+    let next = url.split('?')[0];
+    if (/\/image\/upload\/w_[^/]+\//i.test(next)) {
+      next = next.replace(/\/image\/upload\/w_[^/]+\//i, '/image/upload/w_1600,c_limit,q_auto,f_auto/');
+    } else if (/\/image\/upload\//i.test(next) && !/\.(jpe?g|png|webp|gif|avif)(\?|$)/i.test(next)) {
+      next = next.replace(/\/image\/upload\//i, '/image/upload/w_1600,c_limit,q_auto,f_auto/');
+    }
+    return next;
   }
   return url;
 }
@@ -360,10 +380,7 @@ function extractJsonLdImages(html, sourceDomain, pageUrl) {
             if (typeof val === 'string') {
               const cleaned = cleanImageUrl(val.replace(/\\\//g, '/'));
               const resolved = resolveUrl(cleaned, pageUrl) || cleaned;
-              const lower = resolved.toLowerCase();
-              if (lower.startsWith('http') &&
-                  /\.(?:jpe?g|png|webp|avif|gif|bmp|tiff)(?:\?|#|&|$)/i.test(resolved) &&
-                  !BAD_PATTERNS.some(k => lower.includes(k.toLowerCase()))) {
+              if (isPropertyImage(resolved, sourceDomain) || isAllowedImageHost(resolved, sourceDomain)) {
                 images.add(resolved);
               }
             } else if (Array.isArray(val)) {
@@ -992,7 +1009,7 @@ function collectCandidatesTagged(html, ogImages, galleryPhotos, lmpmPhotos, rezf
     let am;
     while ((am = absoluteImgRegex.exec(cleanedHtml)) !== null) add(am[0], 'embedded');
     // Same sweep for extensionless image hosts (no .jpg suffix to anchor on).
-    const absoluteExtlessRegex = /https?:\\?\/\\?\/[^\s"'<>\\,\)\]]*?(?:img\.trackhs\.com|track-pm\.s3\.amazonaws\.com)[^\s"'<>\\,\)\]]*/gi;
+    const absoluteExtlessRegex = /https?:\\?\/\\?\/[^\s"'<>\\,\)\]]*?(?:img\.trackhs\.com|track-pm\.s3\.amazonaws\.com|assets\.guesty\.com)[^\s"'<>\\,\)\]]*/gi;
     let am2;
     while ((am2 = absoluteExtlessRegex.exec(cleanedHtml)) !== null) add(am2[0], 'embedded');
   }
@@ -1065,8 +1082,17 @@ Deno.serve(async (req) => {
       const targetSlug = extractPropertySlug(url);
       const siblingSlugs = html ? extractSiblingSlugs(html, targetSlug) : [];
       const galleryPhotos = html ? extractGalleryImages(html, sourceDomain, url) : [];
+      const jsonLdPhotos = html ? extractJsonLdImages(html, sourceDomain, url) : [];
 
-      const candidates = collectCandidatesTagged(html, ogImages, galleryPhotos, lmpmPhotos, rezfusionPhotos, sourceDomain, url)
+      const candidates = collectCandidatesTagged(
+        html,
+        ogImages,
+        [...galleryPhotos, ...jsonLdPhotos],
+        lmpmPhotos,
+        rezfusionPhotos,
+        sourceDomain,
+        url
+      )
         .filter(c => !isCompanyBrandedImage(c.url, companyToken))
         .filter(c => scorePhotoByUrl(c.url, targetSlug, siblingSlugs) !== 'reject')
         .map(c => {
@@ -1074,7 +1100,7 @@ Deno.serve(async (req) => {
           return { url: c.url, source: c.source, confidence: score === 'high' ? 'high' : 'low', slug_match: score === 'high' };
         });
 
-      console.log(`Discover mode: ${candidates.length} candidates for ${url}`);
+      console.log(`Discover mode: ${candidates.length} candidates for ${url} (jsonLd=${jsonLdPhotos.length})`);
       return Response.json({ success: true, data: { candidates } });
     }
 

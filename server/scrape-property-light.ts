@@ -2,7 +2,7 @@ import { json } from "./neon-db.js";
 
 const BROWSER_UA =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36";
-const MAX_PHOTOS = 40;
+const MAX_PHOTOS = 180;
 const FETCH_MS = 18000;
 
 const BAD_SUBSTRINGS = [
@@ -14,6 +14,10 @@ const BAD_SUBSTRINGS = [
   "avatar",
   "headshot",
   ".svg",
+  "marker-icon",
+  "leaflet",
+  "map-placeholder",
+  "search-history-icon",
 ];
 
 function hostOf(url: string) {
@@ -99,7 +103,8 @@ function looksLikePhoto(url: string) {
       host.includes("cloudfront.net") ||
       host.includes("rezfusion") ||
       host.includes("trackhs.com") ||
-      host.includes("imgix")
+      host.includes("imgix") ||
+      host.includes("guesty.com")
     ) {
       return true;
     }
@@ -110,7 +115,33 @@ function looksLikePhoto(url: string) {
 }
 
 function preferFullSize(url: string) {
-  return url.replace(/\/thumbnail_/gi, "/image_").replace(/[-_]thumb(nail)?(?=\.|$)/gi, "");
+  let next = url.replace(/\/thumbnail_/gi, "/image_").replace(/[-_]thumb(nail)?(?=\.|$)/gi, "");
+  // Guesty: keep a large f_auto transform so browsers get image/jpeg
+  // (raw paths often return application/octet-stream and won't render in <img>).
+  if (/assets\.guesty\.com/i.test(next)) {
+    next = next.split("?")[0];
+    if (/\/image\/upload\/w_[^/]+\//i.test(next)) {
+      next = next.replace(
+        /\/image\/upload\/w_[^/]+\//i,
+        "/image/upload/w_1600,c_limit,q_auto,f_auto/"
+      );
+    } else if (/\/image\/upload\//i.test(next) && !/\.(jpe?g|png|webp|gif|avif)(\?|$)/i.test(next)) {
+      next = next.replace(
+        /\/image\/upload\//i,
+        "/image/upload/w_1600,c_limit,q_auto,f_auto/"
+      );
+    }
+    return next;
+  }
+  return next;
+}
+
+function photoDedupeKey(url: string) {
+  let key = String(url || "").split("?")[0].toLowerCase();
+  if (/assets\.guesty\.com/i.test(key)) {
+    key = key.replace(/\/image\/upload\/(?:w_[^/]+\/)?/i, "/image/upload/");
+  }
+  return key.replace(/-\d+x\d+(\.[a-z0-9]+)$/i, "$1");
 }
 
 /** Decode entities, strip tags, and fix glued sentences from Streamline HTML. */
@@ -264,18 +295,30 @@ function extractListingDetails(html: string, jsonLd: any[]) {
   };
 }
 
-function extractPhotos(html: string, pageUrl: string) {
+function extractPhotos(html: string, pageUrl: string, jsonLd: any[] = []) {
   const found: string[] = [];
   const seen = new Set<string>();
   const add = (raw: string) => {
     const resolved = resolveUrl(raw, pageUrl);
     if (!resolved || !looksLikePhoto(resolved)) return;
     const preferred = preferFullSize(resolved);
-    const key = preferred.split("?")[0].toLowerCase();
+    const key = photoDedupeKey(preferred);
     if (seen.has(key)) return;
     seen.add(key);
     found.push(preferred);
   };
+
+  // JSON-LD images first (often full-size Guesty URLs without transforms)
+  for (const item of jsonLd) {
+    const images = item?.image;
+    if (!images) continue;
+    const list = Array.isArray(images) ? images : [images];
+    for (const img of list) {
+      if (typeof img === "string") add(img);
+      else if (img?.url) add(img.url);
+      else if (img?.contentUrl) add(img.contentUrl);
+    }
+  }
 
   for (const m of html.matchAll(/property=["']og:image["'][^>]*content=["']([^"']+)["']/gi)) add(m[1]);
   for (const m of html.matchAll(/content=["']([^"']+)["'][^>]*property=["']og:image["']/gi)) add(m[1]);
@@ -283,8 +326,14 @@ function extractPhotos(html: string, pageUrl: string) {
   for (const m of html.matchAll(/\bdata-src=["']([^"']+)["']/gi)) add(m[1]);
   for (const m of html.matchAll(/\bdata-lazy-src=["']([^"']+)["']/gi)) add(m[1]);
   for (const m of html.matchAll(/url\((['"]?)(https?:\/\/[^)'"]+)\1\)/gi)) add(m[2]);
-  // Absolute CDN image URLs embedded in JS/JSON
+  // Absolute CDN image URLs embedded in JS/JSON (with extension)
   for (const m of html.matchAll(/https?:\/\/[^\s"'\\<>]+\.(?:jpe?g|png|webp)/gi)) add(m[0]);
+  // Guesty / TrackHS extensionless CDN URLs (Homerunner / Guesty WordPress sites)
+  for (const m of html.matchAll(
+    /https?:\/\/[^\s"'\\<>]*(?:assets\.guesty\.com|img\.trackhs\.com)[^\s"'\\<>]*/gi
+  )) {
+    add(m[0]);
+  }
 
   return found.slice(0, MAX_PHOTOS);
 }
@@ -358,7 +407,7 @@ export async function handleScrapePropertyLight(req: any, res: any, body: any) {
   try {
     const { html, finalUrl, via } = await fetchHtml(url);
     const jsonLd = extractJsonLd(html);
-    const photo_urls = extractPhotos(html, finalUrl);
+    const photo_urls = extractPhotos(html, finalUrl, jsonLd);
     const host = hostOf(finalUrl) || hostOf(url);
     const slugName = nameFromUrlSlug(url);
     const title = extractTitle(html, jsonLd);

@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -12,6 +11,7 @@ import {
 import { Loader2, Sparkles, ImageIcon, Check } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 import { ingestPropertyImages } from "@/lib/propertyImagesBlob";
+import { commitListingPhotos, discoverListingPhotos } from "@/lib/discoverListingPhotos";
 
 const SOURCE_META = {
   img: { label: "img", color: "bg-blue-100 text-blue-700" },
@@ -21,6 +21,7 @@ const SOURCE_META = {
   api: { label: "API", color: "bg-slate-200 text-slate-700" },
   picture: { label: "picture", color: "bg-cyan-100 text-cyan-700" },
   embedded: { label: "embedded", color: "bg-gray-100 text-gray-600" },
+  light: { label: "page scan", color: "bg-teal-100 text-teal-700" },
 };
 
 /**
@@ -50,11 +51,7 @@ export default function RescanPhotosModal({
     setSelected(new Set());
     (async () => {
       try {
-        const res = await base44.functions.invoke("scrapePropertyUrl", {
-          url: listingUrl,
-          mode: "discover",
-        });
-        const cands = res?.data?.data?.candidates || [];
+        const cands = await discoverListingPhotos(listingUrl);
         if (cancelled) return;
         setCandidates(cands);
         setSelected(new Set(cands.map((c) => c.url)));
@@ -93,12 +90,7 @@ export default function RescanPhotosModal({
     if (selected.size === 0) return;
     setCommitting(true);
     try {
-      const commitRes = await base44.functions.invoke("scrapePropertyUrl", {
-        url: listingUrl,
-        mode: "commit",
-        selected_urls: Array.from(selected),
-      });
-      const photoUrls = commitRes?.data?.data?.photo_urls || [];
+      const photoUrls = await commitListingPhotos(listingUrl, Array.from(selected));
       if (photoUrls.length === 0) {
         toast({
           title: "No photos passed filters",
