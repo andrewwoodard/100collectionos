@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Loader2, Sparkles, Wand2, ImageOff } from "lucide-react";
 import { base44 } from "@/api/base44Client";
 import { useToast } from "@/components/ui/use-toast";
+import { cleanScrapedPlainText } from "@/lib/cleanScrapedText";
 
 // Property types accepted by the propertiesbase44 house_type column
 const VALID_TYPES = new Set(["villa", "apartment", "house", "condo", "estate", "cabin", "other"]);
@@ -57,6 +58,12 @@ function truncate(value, max) {
   const s = String(value || "");
   if (s.length <= max) return s || undefined;
   return s.slice(0, max);
+}
+
+function cleanTextField(value, max) {
+  const cleaned = cleanScrapedPlainText(value);
+  if (!cleaned) return undefined;
+  return max ? truncate(cleaned, max) : cleaned;
 }
 
 function friendlyNetError(err, fallback) {
@@ -118,8 +125,11 @@ export default function AddPropertyWithAiModal({ open, onOpenChange, partners = 
     }
     return {
       ...data,
-      property_name,
+      property_name: cleanScrapedPlainText(property_name) || property_name,
       photo_urls,
+      short_summary: cleanTextField(data.short_summary, 800),
+      description: cleanTextField(data.description, MAX_TEXT),
+      location_full: cleanTextField(data.location_full, 500),
       _discoverFallback: true,
     };
   };
@@ -229,10 +239,12 @@ export default function AddPropertyWithAiModal({ open, onOpenChange, partners = 
 
       // Slim create first — large photo_urls + long AI text in one request
       // was timing out for Coastal Carolina Vacations listings.
+      const summary = cleanTextField(scraped.short_summary, 800);
+      const description = cleanTextField(scraped.description, MAX_TEXT);
       const slimPayload = {
-        property_name: scraped.property_name || "Untitled Property",
+        property_name: cleanScrapedPlainText(scraped.property_name) || "Untitled Property",
         market: selectedPartner?.market || scraped.location_city || scraped.location_state || undefined,
-        address: truncate(scraped.location_full, 500),
+        address: cleanTextField(scraped.location_full, 500),
         listing_url: url,
         vrm_url: url,
         bedrooms: scraped.bedrooms,
@@ -242,8 +254,8 @@ export default function AddPropertyWithAiModal({ open, onOpenChange, partners = 
         partner_id: partnerId || undefined,
         partner_name: selectedPartner?.partner_name || undefined,
         status: "draft",
-        short_summary: truncate(scraped.short_summary, 800),
-        excerpt: truncate(scraped.short_summary, 800),
+        short_summary: summary,
+        excerpt: summary,
       };
 
       const created = await base44.entities.Property.create(slimPayload);
@@ -252,10 +264,10 @@ export default function AddPropertyWithAiModal({ open, onOpenChange, partners = 
       // hitting gateway timeouts on 40+ photo Coastal Carolina listings.
       void base44.entities.Property.update(created.id, {
         photo_urls: photos,
-        unique_feature: truncate(scraped.unique_features, 2000),
-        why_onehundred: truncate(scraped.why_100_collection, 2000),
-        text: truncate(scraped.description, MAX_TEXT),
-        description: truncate(scraped.description, MAX_TEXT),
+        unique_feature: cleanTextField(scraped.unique_features, 2000),
+        why_onehundred: cleanTextField(scraped.why_100_collection, 2000),
+        text: description,
+        description,
       }).catch((err) => {
         console.warn("[AddPropertyWithAi] detail update failed", err);
       });
@@ -282,7 +294,7 @@ export default function AddPropertyWithAiModal({ open, onOpenChange, partners = 
             active: false,
             images: sbImages,
             excerpt: slimPayload.excerpt,
-            text: truncate(scraped.description, 2000),
+            text: cleanTextField(scraped.description, 2000),
           },
         })
         .then(async (sbRes) => {
