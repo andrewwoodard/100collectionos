@@ -377,7 +377,7 @@ export default function SubmissionForm({ initialData = {}, onSubmit, onBack }) {
                 label="Full Description"
                 rows={5}
                 placeholder="Full property description"
-                rewritePrompt={(orig, d) => `Rewrite this vacation property description in The 100 Collection's editorial voice — luxury, evocative, warm, sophisticated, under 200 words. Property: ${d.property_name || ""}, ${d.location_full || ""}. Original:\n${orig}`}
+                rewritePrompt={(orig, d) => `Rewrite this vacation property description in The 100 Collection's editorial voice — luxury, evocative, warm, sophisticated. Return exactly 3 full paragraphs separated by blank lines. Base only on facts in the source — do not invent amenities. Property: ${d.property_name || ""}, ${d.location_full || ""}. Original:\n${orig}`}
               />
             ) : (
               <textarea value={data.description} onChange={e => set("description", e.target.value)} rows={5} className={`${inputClass} resize-none`} placeholder="Full property description" />

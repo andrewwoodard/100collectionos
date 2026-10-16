@@ -46,10 +46,12 @@ export function cleanScrapedPlainText(value) {
     .replace(/\n{3,}/g, "\n\n")
     .replace(/[^\S\n]{2,}/g, " ")
     .replace(/ ?([,.;:!?]) ?/g, "$1 ")
-    .replace(/\s+([,.;:!?])/g, "$1")
+    .replace(/[^\S\n]+([,.;:!?])/g, "$1")
     .replace(/\(\s+/g, "(")
     .replace(/\s+\)/g, ")")
-    .replace(/\s+/g, " ")
+    // Collapse runs of spaces/tabs only — keep paragraph newlines intact
+    .replace(/[^\S\n]+/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
     .trim();
 
   return text;

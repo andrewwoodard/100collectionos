@@ -111,7 +111,7 @@
 }
 
 /* Impersonation mutation lock — disables all form inputs and action buttons inside portal routes */
-body.impersonating input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]),
+body.impersonating input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]):not([type="file"]),
 body.impersonating textarea,
 body.impersonating select {
   pointer-events: none;
@@ -130,6 +130,26 @@ body.impersonating button[class*="bg-"]:not([class*="amber"]):not([class*="Exit"
   pointer-events: none;
   opacity: 0.55;
   cursor: not-allowed;
+}
+
+/*
+ * Opt-in writable regions for admin-assisted partner flows
+ * (Add Property, profile photo uploads, etc.) while impersonating.
+ */
+body.impersonating .impersonation-allow-writes input,
+body.impersonating .impersonation-allow-writes textarea,
+body.impersonating .impersonation-allow-writes select,
+body.impersonating .impersonation-allow-writes button,
+body.impersonating .impersonation-allow-writes label,
+body.impersonating .impersonation-allow-writes [role="button"] {
+  pointer-events: auto !important;
+  opacity: 1 !important;
+  cursor: auto;
+}
+
+body.impersonating .impersonation-allow-writes button:disabled {
+  opacity: 0.4 !important;
+  cursor: not-allowed !important;
 }
 
 /* Push portal content down when banner is visible */

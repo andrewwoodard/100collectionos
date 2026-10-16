@@ -66,7 +66,8 @@ export default function AddProperty() {
 
   return (
     <PortalLayout>
-      <div className="max-w-2xl mx-auto px-2 py-6 lg:py-10">
+      {/* Allow full add/import while admin is impersonating this partner */}
+      <div className="impersonation-allow-writes max-w-2xl mx-auto px-2 py-6 lg:py-10">
         <WizardStepIndicator currentStep={step} steps={STEPS} />
 
         {step === 1 && (

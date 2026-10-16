@@ -18,6 +18,8 @@ import MarketSelect from "@/components/shared/MarketSelect";
 import DestinationContentCard from "@/components/portal/DestinationContentCard";
 import BiometricEnrollmentCard from "@/components/auth/BiometricEnrollmentCard";
 import { usePortalPartnerRollup } from "@/hooks/usePortalPartnerRollup";
+import { uploadPropertyImage } from "@/lib/propertyImagesBlob";
+import { useImpersonation } from "@/lib/ImpersonationContext";
 
 // ── Preview Pane ────────────────────────────────────────────────────────────────
 function ProfilePreview({ form }) {
@@ -144,6 +146,7 @@ export default function PartnerProfile() {
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const [mobileTab, setMobileTab] = useState("edit"); // "edit" | "preview"
   const queryClient = useQueryClient();
+  const { isImpersonating } = useImpersonation();
 
   const { data: profiles = [], isLoading } = useQuery({
     queryKey: ["partner-profile", user?.email],
@@ -228,14 +231,54 @@ export default function PartnerProfile() {
   });
 
   const handleUpload = async (e, field) => {
-    const file = e.target.files[0];
+    const file = e.target?.files?.[0];
     if (!file) return;
-    if (field === "profile_photo_url") setUploadingPhoto(true);
-    else setUploadingLogo(true);
-    const { file_url } = await base44.integrations.Core.UploadFile({ file });
-    setForm(f => ({ ...f, [field]: file_url }));
-    if (field === "profile_photo_url") setUploadingPhoto(false);
-    else setUploadingLogo(false);
+    if (!String(file.type || "").startsWith("image/")) {
+      toast.error("Please choose an image file (JPG, PNG, WebP, or SVG).");
+      if (e.target) e.target.value = "";
+      return;
+    }
+    const setLoading = field === "profile_photo_url" ? setUploadingPhoto : setUploadingLogo;
+    setLoading(true);
+    try {
+      // Local Vercel Blob upload — Base44 UploadFile is unavailable on the Neon/auth host.
+      const file_url = await uploadPropertyImage(file);
+      if (!file_url) throw new Error("Upload returned no URL");
+
+      const next = {
+        ...form,
+        partner_email: form.partner_email || user?.email,
+        profile_status: form.profile_status || "draft",
+        [field]: file_url,
+      };
+      setForm(next);
+
+      // Persist immediately so admins impersonating don't need the locked Save button.
+      let saved;
+      if (profile?.id) {
+        saved = await base44.entities.PartnerProfile.update(profile.id, { [field]: file_url });
+      } else {
+        saved = await base44.entities.PartnerProfile.create(next);
+      }
+      const profileId = profile?.id || saved?.id;
+      syncToSupabase(profileId, next, profile?.supabase_profile_id || saved?.supabase_profile_id)
+        .catch((err) => console.warn("Supabase sync failed:", err?.message));
+      await queryClient.invalidateQueries(["partner-profile"]);
+
+      toast.success(
+        isImpersonating
+          ? `${field === "profile_photo_url" ? "Profile photo" : "Logo"} saved for this partner`
+          : field === "profile_photo_url"
+            ? "Profile photo uploaded"
+            : "Logo uploaded"
+      );
+    } catch (err) {
+      console.error("[PartnerProfile] upload failed", err);
+      toast.error(err?.message || "Upload failed. Please try again.");
+    } finally {
+      setLoading(false);
+      if (e.target) e.target.value = "";
+    }
   };
 
   const set = (field) => (e) => setForm(f => ({ ...f, [field]: e.target.value }));
@@ -580,30 +623,43 @@ function UploadField({ label, value, loading, onChange, hint }) {
   const handleDrop = (e) => {
     e.preventDefault();
     setDragging(false);
+    if (loading) return;
     const file = e.dataTransfer.files[0];
     if (!file) return;
     onChange({ target: { files: [file] } });
   };
 
   return (
-    <div>
+    <div data-impersonation-exempt>
       <Label className="text-sm text-slate-700 mb-1.5 block">{label}</Label>
       {value ? (
-        <div className="relative group">
+        <div className={`relative group ${loading ? "opacity-70" : ""}`}>
           <img src={value} alt={label} className="w-full h-32 object-cover rounded-lg border border-slate-200" />
-          <label className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity rounded-lg cursor-pointer">
-            <span className="text-white text-xs font-medium">Change</span>
-            <input type="file" accept="image/*" className="hidden" onChange={onChange} />
+          <label
+            data-impersonation-exempt
+            className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity rounded-lg cursor-pointer"
+          >
+            <span className="text-white text-xs font-medium">{loading ? "Uploading…" : "Change"}</span>
+            <input
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={onChange}
+              disabled={loading}
+              data-impersonation-exempt
+            />
           </label>
         </div>
       ) : (
         <div
-          onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
+          data-impersonation-exempt
+          onDragOver={(e) => { e.preventDefault(); if (!loading) setDragging(true); }}
           onDragLeave={() => setDragging(false)}
           onDrop={handleDrop}
-          onClick={() => inputRef.current?.click()}
-          className={`flex flex-col items-center justify-center h-32 border-2 border-dashed rounded-lg cursor-pointer transition-colors ${
-            dragging ? "border-[#C9A96E] bg-[#C9A96E]/5" : "border-slate-200 bg-slate-50 hover:border-slate-400"
+          onClick={() => { if (!loading) inputRef.current?.click(); }}
+          className={`flex flex-col items-center justify-center h-32 border-2 border-dashed rounded-lg transition-colors ${
+            loading ? "cursor-wait opacity-60 border-slate-200 bg-slate-50" :
+            dragging ? "cursor-pointer border-[#C9A96E] bg-[#C9A96E]/5" : "cursor-pointer border-slate-200 bg-slate-50 hover:border-slate-400"
           }`}
         >
           {loading ? (
@@ -614,7 +670,15 @@ function UploadField({ label, value, loading, onChange, hint }) {
               <span className="text-xs text-slate-500">Drop image here or <span className="underline">browse</span></span>
             </>
           )}
-          <input ref={inputRef} type="file" accept="image/*" className="hidden" onChange={onChange} disabled={loading} />
+          <input
+            ref={inputRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={onChange}
+            disabled={loading}
+            data-impersonation-exempt
+          />
         </div>
       )}
       {hint && <p className="text-xs text-slate-400 mt-1">{hint}</p>}

@@ -221,6 +221,8 @@ export default function Step1PasteUrl({ onContinue, onManualEntry }) {
         )}
 
         <button
+          type="button"
+          data-impersonation-exempt
           onClick={() => onContinue(url)}
           disabled={!canContinue}
           className="w-full flex items-center justify-center gap-2 bg-[#0D1B2A] text-white text-sm font-medium py-3 rounded-xl hover:bg-[#1a2e45] disabled:opacity-40 disabled:cursor-not-allowed transition-all"

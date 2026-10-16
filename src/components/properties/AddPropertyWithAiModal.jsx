@@ -16,9 +16,10 @@ const MAX_TEXT = 6000;
 function isHeavyScrapeHost(listingUrl) {
   try {
     const host = new URL(listingUrl).hostname.replace(/^www\./, "").toLowerCase();
-    // Coastal Carolina (OBX + Carolina Beach), Streamline VRS, LMPM hub links
+    // Coastal Carolina / Streamline / Guesty–Homerunner (Lakefront Luxury, etc.)
     if (host.includes("coastalcarolina")) return true;
     if (host.includes("streamlinevrs")) return true;
+    if (host.includes("lakefront") || host.includes("guesty") || host.endsWith(".luxury")) return true;
     if (/[?&]hub_property_id=/.test(listingUrl)) return true;
     return false;
   } catch {
@@ -294,7 +295,7 @@ export default function AddPropertyWithAiModal({ open, onOpenChange, partners = 
             active: false,
             images: sbImages,
             excerpt: slimPayload.excerpt,
-            text: cleanTextField(scraped.description, 2000),
+            text: cleanTextField(scraped.description, MAX_TEXT),
           },
         })
         .then(async (sbRes) => {

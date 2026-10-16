@@ -3,12 +3,28 @@ import { base44 } from "@/api/base44Client";
 /** Unwrap Base44 / LOCAL_FUNCTIONS function responses (SDK may or may not wrap). */
 export function unwrapFunctionPayload(res) {
   if (!res || typeof res !== "object") return res;
-  if (res.data?.data && typeof res.data.data === "object") return res.data.data;
-  if (res.data && typeof res.data === "object" && (res.data.candidates || res.data.photo_urls || res.data.success !== undefined)) {
+  if (res.data?.data && typeof res.data.data === "object" && !Array.isArray(res.data.data)) {
+    return res.data.data;
+  }
+  if (
+    res.data &&
+    typeof res.data === "object" &&
+    (res.data.candidates || res.data.photo_urls || res.data.success !== undefined)
+  ) {
     return res.data;
   }
   if (res.candidates || res.photo_urls || res.success !== undefined) return res;
   return res.data || res;
+}
+
+function extractPhotoUrls(payload) {
+  if (!payload || typeof payload !== "object") return [];
+  if (Array.isArray(payload.photo_urls)) return payload.photo_urls;
+  if (Array.isArray(payload.data?.photo_urls)) return payload.data.photo_urls;
+  if (Array.isArray(payload.candidates)) {
+    return payload.candidates.map((c) => c?.url || c).filter(Boolean);
+  }
+  return [];
 }
 
 const BAD_PHOTO_SUBSTRINGS = [
@@ -46,7 +62,10 @@ export function preferListingPhotoUrl(url) {
         /\/image\/upload\/w_[^/]+\//i,
         "/image/upload/w_1600,c_limit,q_auto,f_auto/"
       );
-    } else if (/\/image\/upload\//i.test(next) && !/\.(jpe?g|png|webp|gif|avif)(\?|$)/i.test(next)) {
+    } else if (
+      /\/image\/upload\//i.test(next) &&
+      !/\.(jpe?g|png|webp|gif|avif)(\?|$)/i.test(next)
+    ) {
       next = next.replace(
         /\/image\/upload\//i,
         "/image/upload/w_1600,c_limit,q_auto,f_auto/"
@@ -69,56 +88,109 @@ export function listingPhotoDedupeKey(url) {
   return key;
 }
 
+function prefersLightScrape(listingUrl) {
+  try {
+    const host = new URL(listingUrl).hostname.replace(/^www\./, "").toLowerCase();
+    return (
+      host.includes("lakefront") ||
+      host.includes("guesty") ||
+      host.includes("homerunner") ||
+      host.endsWith(".luxury")
+    );
+  } catch {
+    return false;
+  }
+}
+
+function withTimeout(promise, ms) {
+  let timer;
+  return Promise.race([
+    promise.finally(() => clearTimeout(timer)),
+    new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new Error("timeout")), ms);
+    }),
+  ]);
+}
+
+function normalizeCandidates(rawList) {
+  const seen = new Set();
+  const out = [];
+  for (const c of rawList || []) {
+    const url = preferListingPhotoUrl(c?.url || c);
+    if (!url || isJunkListingPhoto(url)) continue;
+    const key = listingPhotoDedupeKey(url);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({
+      ...(typeof c === "object" && c ? c : {}),
+      url,
+      source: c?.source || "light",
+      confidence: c?.confidence || "high",
+    });
+  }
+  return out;
+}
+
 /**
- * Discover listing photos. Tries scrapePropertyUrl discover first, then falls
- * back to scrapePropertyLight (Guesty / Homerunner / WAF-heavy hosts).
+ * Discover listing photos.
+ * Prefer scrapePropertyLight (local, Guesty-aware) — cloud scrapePropertyUrl
+ * often hangs or returns nothing on Homerunner / Guesty mega-pages.
  */
 export async function discoverListingPhotos(listingUrl) {
   let candidates = [];
 
-  try {
+  const runLight = async () => {
+    const light = await base44.functions.invoke("scrapePropertyLight", {
+      url: listingUrl,
+      photos_only: true,
+      mode: "photos",
+    });
+    const body = unwrapFunctionPayload(light);
+    const urls = extractPhotoUrls(body);
+    return urls.map((url) => ({ url, source: "light", confidence: "high" }));
+  };
+
+  const runCloudDiscover = async () => {
     const res = await base44.functions.invoke("scrapePropertyUrl", {
       url: listingUrl,
       mode: "discover",
     });
     const body = unwrapFunctionPayload(res);
-    candidates = Array.isArray(body?.candidates) ? body.candidates : [];
-  } catch {
-    /* fall through to light scrape */
-  }
+    return Array.isArray(body?.candidates) ? body.candidates : [];
+  };
 
-  try {
-    const light = await base44.functions.invoke("scrapePropertyLight", { url: listingUrl });
-    const body = unwrapFunctionPayload(light);
-    const urls = Array.isArray(body?.photo_urls)
-      ? body.photo_urls
-      : Array.isArray(body?.data?.photo_urls)
-        ? body.data.photo_urls
-        : [];
-    if (urls.length > candidates.length) {
-      candidates = urls.map((url) => ({
-        url,
-        source: "light",
-        confidence: "high",
-      }));
+  // Guesty / Homerunner: light scrape first (cloud discover is unreliable here).
+  if (prefersLightScrape(listingUrl)) {
+    try {
+      candidates = await runLight();
+    } catch {
+      /* try cloud below */
     }
-  } catch {
-    /* keep whatever we have */
+    if (candidates.length < 8) {
+      try {
+        const cloud = await withTimeout(runCloudDiscover(), 8000);
+        if (cloud.length > candidates.length) candidates = cloud;
+      } catch {
+        /* keep light */
+      }
+    }
+  } else {
+    try {
+      candidates = await withTimeout(runCloudDiscover(), 12000);
+    } catch {
+      /* fall through */
+    }
+    if (candidates.length < 8) {
+      try {
+        const light = await runLight();
+        if (light.length > candidates.length) candidates = light;
+      } catch {
+        /* keep cloud */
+      }
+    }
   }
 
-  // Dedupe by normalized URL (collapses Guesty w_400/w_600/w_1200 variants)
-  // and rewrite Guesty URLs so <img> gets a real image/* response.
-  const seen = new Set();
-  const out = [];
-  for (const c of candidates) {
-    const url = preferListingPhotoUrl(c.url || c);
-    if (!url || isJunkListingPhoto(url)) continue;
-    const key = listingPhotoDedupeKey(url);
-    if (seen.has(key)) continue;
-    seen.add(key);
-    out.push({ ...c, url });
-  }
-  return out;
+  return normalizeCandidates(candidates);
 }
 
 /**
@@ -127,41 +199,27 @@ export async function discoverListingPhotos(listingUrl) {
  * that the cloud commit path often drops.
  */
 export async function commitListingPhotos(listingUrl, selectedUrls) {
-  const seen = new Set();
-  const selected = [];
-  for (const raw of selectedUrls || []) {
-    const url = preferListingPhotoUrl(raw);
-    if (!url || isJunkListingPhoto(url)) continue;
-    const key = listingPhotoDedupeKey(url);
-    if (seen.has(key)) continue;
-    seen.add(key);
-    selected.push(url);
-  }
+  const selected = normalizeCandidates(
+    (selectedUrls || []).map((url) => ({ url, source: "selected" }))
+  ).map((c) => c.url);
   if (!selected.length) return [];
 
   try {
-    const commitRes = await base44.functions.invoke("scrapePropertyUrl", {
-      url: listingUrl,
-      mode: "commit",
-      selected_urls: selected,
-    });
+    const commitRes = await withTimeout(
+      base44.functions.invoke("scrapePropertyUrl", {
+        url: listingUrl,
+        mode: "commit",
+        selected_urls: selected,
+      }),
+      20000
+    );
     const body = unwrapFunctionPayload(commitRes);
-    const passed = Array.isArray(body?.photo_urls)
-      ? body.photo_urls.map(preferListingPhotoUrl).filter((u) => u && !isJunkListingPhoto(u))
-      : [];
+    const passed = extractPhotoUrls(body).map(preferListingPhotoUrl).filter((u) => u && !isJunkListingPhoto(u));
     if (passed.length > 0) {
-      const out = [];
-      const seenPass = new Set();
-      for (const u of passed) {
-        const key = listingPhotoDedupeKey(u);
-        if (seenPass.has(key)) continue;
-        seenPass.add(key);
-        out.push(u);
-      }
-      return out;
+      return normalizeCandidates(passed.map((url) => ({ url }))).map((c) => c.url);
     }
   } catch {
-    /* fall through */
+    /* fall through — ingest selections directly */
   }
 
   return selected;

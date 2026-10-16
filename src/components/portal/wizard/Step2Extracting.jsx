@@ -3,6 +3,7 @@ import { base44 } from "@/api/base44Client";
 import { Check, Loader2, AlertTriangle, ChevronLeft } from "lucide-react";
 import PhotoReviewGrid from "@/components/portal/wizard/PhotoReviewGrid";
 import { ingestPropertyImages } from "@/lib/propertyImagesBlob";
+import { scrapeListingForImport } from "@/lib/scrapeListingForImport";
 
 const SUBSTEPS = [
   { key: "validating", label: "Validating listing URL" },
@@ -57,16 +58,15 @@ export default function Step2Extracting({ url, onComplete, onBack }) {
     setSubstepIdx(0);
     await delay(600);
 
-    // Step 1 — reading
+    // Step 1 — reading (same light scrape + Guesty discovery as AI Photo Pull)
     setSubstepIdx(1);
     let scraped = {};
     try {
-      const res = await base44.functions.invoke("scrapePropertyUrl", { url });
-      scraped = res.data?.data || {};
+      scraped = await scrapeListingForImport(url);
       setPreview(scraped);
       setScrapedData(scraped);
     } catch (err) {
-      setFatalError("We couldn't read that listing. You can enter the details manually.");
+      setFatalError(err?.message || "We couldn't read that listing. You can enter the details manually.");
       return;
     }
 
@@ -74,34 +74,10 @@ export default function Step2Extracting({ url, onComplete, onBack }) {
     setSubstepIdx(2);
     await delay(300);
 
-    // Step 3 — photos
-    // Use the same discover + commit methodology as the rescan flow for better
-    // image discovery (gallery containers, JSON-LD, data-attrs, <a> hrefs, etc.).
-    // Fall back to LLM-scraped photos if discover finds nothing.
+    // Step 3 — photos (already discovered by scrapeListingForImport)
     setSubstepIdx(3);
-    let rawPhotos = [];
+    let rawPhotos = scraped.photo_urls || [];
     let photoConfidence = scraped.photo_confidence || [];
-    try {
-      const discoverRes = await base44.functions.invoke("scrapePropertyUrl", {
-        url,
-        mode: "discover",
-      });
-      const candidates = discoverRes?.data?.data?.candidates || [];
-      if (candidates.length > 0) {
-        const commitRes = await base44.functions.invoke("scrapePropertyUrl", {
-          url,
-          mode: "commit",
-          selected_urls: candidates.map((c) => c.url),
-        });
-        rawPhotos = commitRes?.data?.data?.photo_urls || [];
-      }
-    } catch {
-      // discover/commit failed — fall through to LLM photos
-    }
-    if (rawPhotos.length === 0) {
-      rawPhotos = scraped.photo_urls || [];
-      photoConfidence = scraped.photo_confidence || [];
-    }
     setPhotosTotal(rawPhotos.length);
     let hostedPhotos = [];
     try {
@@ -141,31 +117,47 @@ export default function Step2Extracting({ url, onComplete, onBack }) {
     editorialData._original_headline = originalHeadline;
     editorialData._original_summary = originalSummary;
 
-    // If the scraper already ran editorial rewrite, keep it; otherwise attempt a rewrite
+    // Scraped copy should already be ~3 paragraphs from the light scrape.
+    // Only rewrite when body text is thin (OG/JSON-LD blurbs).
+    const paraCount = originalDescription.split(/\n\s*\n/).filter((p) => p.trim().length > 40).length;
+    const alreadyRich = originalDescription.length >= 400 && paraCount >= 2;
+
     if (!scraped.ai_editorial_done && (originalDescription || originalHeadline)) {
-      try {
-        const result = await base44.integrations.Core.InvokeLLM({
-          prompt: `You are the editor for The 100 Collection — a curated portfolio of luxury vacation rentals. Rewrite the following property's text in an evocative, warm, sophisticated editorial voice. Return JSON with keys: headline (max 12 words), short_summary (2-3 sentences), description (max 200 words).
+      if (alreadyRich) {
+        // Keep scraped body; trim to 3 paragraphs if the source over-delivered
+        const paras = originalDescription.split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean);
+        editorialData.description =
+          paras.length <= 3
+            ? originalDescription
+            : [paras[0], paras.slice(1, -1).join(" "), paras[paras.length - 1]].join("\n\n");
+        if (!editorialData.short_summary && originalSummary) {
+          editorialData.short_summary = originalSummary;
+        }
+      } else {
+        try {
+          const result = await base44.integrations.Core.InvokeLLM({
+            prompt: `You are the editor for The 100 Collection — a curated portfolio of luxury vacation rentals. Rewrite the following property's text in an evocative, warm, sophisticated editorial voice. Return JSON with keys: headline (max 12 words), short_summary (2-3 sentences), description (exactly 3 full paragraphs, based only on facts in the source — do not invent amenities). Separate paragraphs with a blank line.
 
 Property name: ${scraped.property_name || "this property"}
 Location: ${scraped.location_full || ""}
 Original headline: ${originalHeadline}
 Original summary: ${originalSummary}
 Original description: ${originalDescription}`,
-          response_json_schema: {
-            type: "object",
-            properties: {
-              headline: { type: "string" },
-              short_summary: { type: "string" },
-              description: { type: "string" },
+            response_json_schema: {
+              type: "object",
+              properties: {
+                headline: { type: "string" },
+                short_summary: { type: "string" },
+                description: { type: "string" },
+              },
             },
-          },
-        });
-        if (result?.headline) editorialData.headline = result.headline;
-        if (result?.short_summary) editorialData.short_summary = result.short_summary;
-        if (result?.description) editorialData.description = result.description;
-      } catch {
-        setSubstepErrors(e => ({ ...e, editorial: "Editorial rewrite unavailable — original text kept." }));
+          });
+          if (result?.headline) editorialData.headline = result.headline;
+          if (result?.short_summary) editorialData.short_summary = result.short_summary;
+          if (result?.description) editorialData.description = result.description;
+        } catch {
+          setSubstepErrors(e => ({ ...e, editorial: "Editorial rewrite unavailable — original text kept." }));
+        }
       }
     }
 
