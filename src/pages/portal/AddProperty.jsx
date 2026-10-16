@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useToast } from "@/components/ui/use-toast";
 import { base44 } from "@/api/base44Client";
 import { useCurrentUser } from "@/lib/useCurrentUser";
+import { usePortalPartnerRollup } from "@/hooks/usePortalPartnerRollup";
 import PortalLayout from "@/components/portal/PortalLayout";
 import WizardStepIndicator from "@/components/portal/wizard/WizardStepIndicator";
 import Step1PasteUrl from "@/components/portal/wizard/Step1PasteUrl";
@@ -11,21 +12,22 @@ import SubmissionForm from "@/components/portal/SubmissionForm";
 
 const STEPS = ["Paste URL", "Extracting", "Review & Submit"];
 
+/** Partner's primary destination / market (e.g. "Lake Anna"). */
+function partnerDestination(partner) {
+  if (!partner) return "";
+  return String(partner.market || partner.region || "").trim();
+}
+
 export default function AddProperty() {
   const navigate = useNavigate();
   const { toast } = useToast();
   const { user } = useCurrentUser();
+  const { primaryPartner } = usePortalPartnerRollup(user);
   const [step, setStep] = useState(1);
   const [listingUrl, setListingUrl] = useState("");
   const [extractedData, setExtractedData] = useState(null);
-  const [partnerRecord, setPartnerRecord] = useState(null);
 
-  useEffect(() => {
-    if (!user?.id) return;
-    base44.entities.Partner.filter({ portal_user_ids: { $in: [user.id] } })
-      .then(rows => setPartnerRecord(rows[0] || null))
-      .catch(() => {});
-  }, [user?.id]);
+  const destination = partnerDestination(primaryPartner);
 
   const handleStep1Continue = (url) => {
     setListingUrl(url);
@@ -51,10 +53,10 @@ export default function AddProperty() {
     const payload = {
       ...data,
       listing_url: data.listing_url || listingUrl || "",
-      partner_id: partnerRecord?.id || "",
-      partner_name: partnerRecord?.partner_name || "",
+      partner_id: primaryPartner?.id || "",
+      partner_name: primaryPartner?.partner_name || "",
       partner_email: user?.email || "",
-      market: partnerRecord?.market || "",
+      market: destination || primaryPartner?.market || "",
       submission_type: "new",
       status,
       ...(status === "submitted" ? { submitted_date: new Date().toISOString() } : {}),
@@ -90,11 +92,11 @@ export default function AddProperty() {
             initialData={{
               ...extractedData,
               listing_url: extractedData?.listing_url || listingUrl || "",
-              // Prefer scrape location; fall back to partner market in the form
-              location_full: extractedData?.location_full || partnerRecord?.market || "",
+              // Partner destination is the Location default (e.g. Lake Anna for Lakefront Luxury)
+              location_full: destination || extractedData?.location_full || "",
               property_type: extractedData?.property_type || "house",
             }}
-            partnerMarket={partnerRecord?.market || ""}
+            partnerMarket={destination}
             onSubmit={handleSubmit}
             onBack={() => setStep(extractedData?.ai_imported === false ? 1 : 2)}
           />

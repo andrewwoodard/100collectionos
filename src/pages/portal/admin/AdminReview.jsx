@@ -486,10 +486,13 @@ export default function AdminReview() {
             <div className="border-t border-slate-50 pt-4">
               <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">Location</h4>
               <div className="grid grid-cols-2 gap-x-6 gap-y-4">
-                <EditableField label="Full Location" field="location_full" />
+                <EditableField label="Destination" field="location_full" />
+                <EditableField label="Street Address" field="address" />
                 <EditableField label="City" field="location_city" />
                 <EditableField label="State" field="location_state" />
                 <EditableField label="Country" field="location_country" />
+                <EditableField label="Latitude" field="latitude" />
+                <EditableField label="Longitude" field="longitude" />
               </div>
             </div>
             <div className="border-t border-slate-50 pt-4 space-y-4">

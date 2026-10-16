@@ -120,6 +120,8 @@ function buildPublicRecord(property: Record<string, any>, destination: string) {
     location_city: asString(property.location_city) || null,
     location_state: asString(property.location_state) || null,
     location_country: asString(property.location_country) || null,
+    latitude: property.latitude != null && property.latitude !== "" ? Number(property.latitude) : null,
+    longitude: property.longitude != null && property.longitude !== "" ? Number(property.longitude) : null,
     propdescription: asString(property.internal_notes) || null,
     excerpt: asString(property.excerpt || property.short_summary) || null,
     text: asString(property.text || property.description) || null,

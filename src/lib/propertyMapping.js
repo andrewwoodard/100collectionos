@@ -32,7 +32,9 @@ export function buildPropertyFromSubmission(s, { source = "approval" } = {}) {
     bathrooms: s.bathrooms ?? null,
     half_bathrooms: s.half_bathrooms ?? null,
     sleeps: s.sleeps ?? null,
-    address: s.location_full || null,
+    address: s.address || s.location_full || null,
+    latitude: s.latitude ?? null,
+    longitude: s.longitude ?? null,
     market: s.market || null,
     location_city: s.location_city || null,
     location_state: s.location_state || null,
@@ -78,7 +80,13 @@ export function buildPropertyEditPatch(s) {
   if (s.half_bathrooms != null) patch.half_bathrooms = s.half_bathrooms;
   if (s.sleeps != null) patch.sleeps = s.sleeps;
   if (s.market) patch.market = s.market;
-  if (s.location_full) { patch.address = s.location_full; patch.location_full = s.location_full; }
+  if (s.address) patch.address = s.address;
+  if (s.latitude != null) patch.latitude = s.latitude;
+  if (s.longitude != null) patch.longitude = s.longitude;
+  if (s.location_full) {
+    patch.location_full = s.location_full;
+    if (!s.address) patch.address = s.location_full;
+  }
   if (s.location_city) patch.location_city = s.location_city;
   if (s.location_state) patch.location_state = s.location_state;
   if (s.location_country) patch.location_country = s.location_country;

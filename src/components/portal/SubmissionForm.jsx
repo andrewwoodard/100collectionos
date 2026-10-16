@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
 import { useToast } from "@/components/ui/use-toast";
 import PhotoCurationGrid from "./wizard/PhotoCurationGrid";
@@ -185,6 +185,7 @@ export default function SubmissionForm({ initialData = {}, onSubmit, onBack, par
     const merged = {
       property_name: "", headline: "", short_summary: "", description: "",
       property_type: "house", location_full: "", location_city: "", location_state: "", location_country: "",
+      address: "", latitude: "", longitude: "",
       bedrooms: "", sleeps: "", amenities: [],
       design_style_notes: "", unique_features: "", why_100_collection: "",
       best_fit_guest: "", tags: [], notes_to_team: "", photo_urls: [],
@@ -194,21 +195,67 @@ export default function SubmissionForm({ initialData = {}, onSubmit, onBack, par
     };
     // Default property type to House when scrape didn't supply one
     merged.property_type = normalizePropertyType(merged.property_type) || "house";
-    // Default location to the partner's primary market when scrape didn't find one
-    if (!String(merged.location_full || "").trim() && partnerMarket) {
+    // Partner's primary destination (e.g. Lake Anna) wins over scrape guesses
+    if (partnerMarket) {
       merged.location_full = partnerMarket;
     }
     return merged;
   });
+
+  // Partner destination often loads after the form mounts (esp. while impersonating).
+  // Prefer it over scrape location guesses once available.
+  useEffect(() => {
+    if (!partnerMarket) return;
+    setData((d) =>
+      String(d.location_full || "").trim() === partnerMarket
+        ? d
+        : { ...d, location_full: partnerMarket }
+    );
+  }, [partnerMarket]);
 
   const set = (key, val) => setData(d => ({ ...d, [key]: val }));
   const { toast } = useToast();
   const [errors, setErrors] = useState({});
   const [submitting, setSubmitting] = useState(null); // null | "draft" | "submit"
   const [rescanOpen, setRescanOpen] = useState(false);
+  const [geocoding, setGeocoding] = useState(false);
+  const [geoStatus, setGeoStatus] = useState(""); // "", "ok", "miss", "error"
   const confidence = initialData.field_confidence || {};
   const aiImported = !!initialData.ai_imported;
   const rawSnippets = initialData.scraped_raw_data?.raw_snippets || null;
+
+  const geocodeAddress = async (rawAddress) => {
+    const address = String(rawAddress || "").trim();
+    if (!address) {
+      setData((d) => ({ ...d, address: "", latitude: "", longitude: "" }));
+      setGeoStatus("");
+      return;
+    }
+    setGeocoding(true);
+    setGeoStatus("");
+    try {
+      const res = await base44.functions.invoke("geocodeAddress", { address });
+      const body = res?.data || res;
+      if (body?.geocoded && body.latitude != null && body.longitude != null) {
+        setData((d) => ({
+          ...d,
+          address,
+          latitude: body.latitude,
+          longitude: body.longitude,
+        }));
+        setGeoStatus("ok");
+      } else {
+        setData((d) => ({ ...d, address, latitude: "", longitude: "" }));
+        setGeoStatus("miss");
+      }
+    } catch (err) {
+      console.warn("[SubmissionForm] geocode failed", err);
+      setData((d) => ({ ...d, address }));
+      setGeoStatus("error");
+    } finally {
+      setGeocoding(false);
+    }
+  };
 
   const REQUIRED_FIELDS = [
     { key: "property_name", label: "Property Name" },
@@ -238,7 +285,30 @@ export default function SubmissionForm({ initialData = {}, onSubmit, onBack, par
     setErrors({});
     setSubmitting(isDraft ? "draft" : "submit");
     try {
-      await onSubmit?.(data, isDraft);
+      let payload = { ...data };
+      // Geocode on submit if address is set but coords are missing
+      const addr = String(payload.address || "").trim();
+      if (addr && (payload.latitude === "" || payload.latitude == null || payload.longitude === "" || payload.longitude == null)) {
+        try {
+          const res = await base44.functions.invoke("geocodeAddress", { address: addr });
+          const body = res?.data || res;
+          if (body?.geocoded) {
+            payload = {
+              ...payload,
+              address: addr,
+              latitude: body.latitude,
+              longitude: body.longitude,
+            };
+            setData(payload);
+          }
+        } catch {
+          /* non-fatal — still submit address text */
+        }
+      }
+      // Normalize empty coords to null for storage
+      if (payload.latitude === "") payload.latitude = null;
+      if (payload.longitude === "") payload.longitude = null;
+      await onSubmit?.(payload, isDraft);
     } catch (err) {
       toast({ variant: "destructive", title: isDraft ? "Save failed" : "Submit failed", description: err?.message || "Please try again." });
     } finally {
@@ -305,10 +375,43 @@ export default function SubmissionForm({ initialData = {}, onSubmit, onBack, par
                 {PROPERTY_TYPES.map(t => <option key={t} value={t} className="capitalize">{t}</option>)}
               </select>
             </Field>
-            <Field label="Location" field="location_full" confidence={confidence} required aiImported={aiImported} rawSnippets={rawSnippets} error={errors.location_full}>
-              <input value={data.location_full} onChange={e => { set("location_full", e.target.value); if (errors.location_full) setErrors(p => ({ ...p, location_full: undefined })); }} className={`${inputClass} ${errors.location_full ? "border-red-300 focus:ring-red-200" : ""}`} placeholder="City, State, Country" />
+            <Field label="Location / Destination" field="location_full" confidence={confidence} required aiImported={aiImported} rawSnippets={rawSnippets} error={errors.location_full}>
+              <input value={data.location_full} onChange={e => { set("location_full", e.target.value); if (errors.location_full) setErrors(p => ({ ...p, location_full: undefined })); }} className={`${inputClass} ${errors.location_full ? "border-red-300 focus:ring-red-200" : ""}`} placeholder="e.g. Lake Anna" />
             </Field>
           </div>
+          <Field label="Street Address" field="address" confidence={confidence} aiImported={aiImported} rawSnippets={rawSnippets}>
+            <input
+              value={data.address || ""}
+              onChange={(e) => {
+                const value = e.target.value;
+                setGeoStatus("");
+                // Clear stale coords whenever the address text changes
+                setData((d) => ({ ...d, address: value, latitude: "", longitude: "" }));
+              }}
+              onBlur={(e) => geocodeAddress(e.target.value)}
+              className={inputClass}
+              placeholder="123 Lakefront Dr, Mineral, VA 23117"
+            />
+            <div className="mt-1.5 flex items-center gap-2 text-[11px]">
+              {geocoding && <span className="text-slate-400">Looking up coordinates…</span>}
+              {!geocoding && geoStatus === "ok" && data.latitude != null && data.latitude !== "" && (
+                <span className="text-emerald-600">
+                  Geocoded · {Number(data.latitude).toFixed(5)}, {Number(data.longitude).toFixed(5)}
+                </span>
+              )}
+              {!geocoding && geoStatus === "miss" && (
+                <span className="text-amber-600">Address saved, but no map match found — you can still submit.</span>
+              )}
+              {!geocoding && geoStatus === "error" && (
+                <span className="text-red-500">Geocode failed — address will still be saved.</span>
+              )}
+              {!geocoding && !geoStatus && data.latitude != null && data.latitude !== "" && (
+                <span className="text-slate-400">
+                  {Number(data.latitude).toFixed(5)}, {Number(data.longitude).toFixed(5)}
+                </span>
+              )}
+            </div>
+          </Field>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
             {[["Bedrooms", "bedrooms"], ["Bathrooms", "bathrooms"], ["Half Baths", "half_bathrooms"], ["Sleeps", "sleeps"]].map(([lbl, key]) => (
               <Field key={key} label={lbl} field={key} confidence={confidence} required aiImported={aiImported} rawSnippets={rawSnippets}>
