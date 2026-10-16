@@ -22,7 +22,10 @@ export default function PropertyEditForm({ property, user, onBack, onSubmitted }
     description: property.description || "",
     bedrooms: property.bedrooms ?? "",
     bathrooms: property.bathrooms ?? "",
+    half_bathrooms: property.half_bathrooms ?? "",
     sleeps: property.sleeps ?? "",
+    address: property.address || "",
+    location_full: property.location_full || property.market || "",
     amenities: property.amenities || [],
     design_style_notes: property.design_style_notes || "",
     unique_features: property.unique_features || "",
@@ -69,7 +72,10 @@ export default function PropertyEditForm({ property, user, onBack, onSubmitted }
       description: data.description,
       bedrooms: Number(data.bedrooms) || undefined,
       bathrooms: Number(data.bathrooms) || undefined,
+      half_bathrooms: Number(data.half_bathrooms) || undefined,
       sleeps: Number(data.sleeps) || undefined,
+      address: data.address || undefined,
+      location_full: data.location_full || undefined,
       amenities: data.amenities,
       design_style_notes: data.design_style_notes,
       unique_features: data.unique_features,
@@ -109,15 +115,25 @@ export default function PropertyEditForm({ property, user, onBack, onSubmitted }
         </p>
       </div>
 
-      {/* Read-only info */}
+      {/* Identity */}
       <div className="bg-white rounded-xl border border-slate-200 p-5 mb-5">
-        <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest mb-3">Property Info (read-only)</p>
-        <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
+        <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest mb-3">Property Info</p>
+        <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm mb-4">
           <div><span className="text-slate-400 text-xs">Name: </span><span className="text-[#0D1B2A] font-medium">{property.property_name}</span></div>
-          <div><span className="text-slate-400 text-xs">Market: </span><span className="text-[#0D1B2A]">{property.market || property.address || "—"}</span></div>
           <div><span className="text-slate-400 text-xs">Status: </span><span className="capitalize text-[#0D1B2A]">{property.status || "—"}</span></div>
         </div>
-        <p className="text-[10px] text-slate-400 mt-3">To change the property name, address, or location, contact your dedicated 100 Collection representative.</p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label className={LABEL}>Destination</label>
+            <input value={data.location_full} onChange={e => set("location_full", e.target.value)}
+              className={INPUT} placeholder="e.g. Lake Anna" />
+          </div>
+          <div>
+            <label className={LABEL}>Street Address</label>
+            <input value={data.address} onChange={e => set("address", e.target.value)}
+              className={INPUT} placeholder="123 Lakefront Dr, Mineral, VA" />
+          </div>
+        </div>
       </div>
 
       {/* Form sections */}
@@ -140,8 +156,8 @@ export default function PropertyEditForm({ property, user, onBack, onSubmitted }
 
         {/* Capacity */}
         <Section title="Capacity">
-          <div className="grid grid-cols-3 gap-4">
-            {[["Bedrooms", "bedrooms"], ["Bathrooms", "bathrooms"], ["Sleeps", "sleeps"]].map(([lbl, key]) => (
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            {[["Bedrooms", "bedrooms"], ["Bathrooms", "bathrooms"], ["Half Baths", "half_bathrooms"], ["Sleeps", "sleeps"]].map(([lbl, key]) => (
               <div key={key}>
                 <label className={LABEL}>{lbl}</label>
                 <input type="number" min="0" value={data[key]} onChange={e => set(key, e.target.value)}

@@ -1517,6 +1517,8 @@ export const LOCAL_FUNCTIONS = new Set([
   "syncPropertyToSupabase",
   "scrapePropertyLight",
   "geocodeAddress",
+  "geocodePropertyAddress",
+  "updatePropertyContent",
   ...STRIPE_FUNCTIONS,
 ]);
 
@@ -1552,6 +1554,12 @@ export async function handleNeonFunction(req: any, res: any, functionName: strin
     } else if (functionName === "geocodeAddress") {
       const { handleGeocodeAddress } = await import("./geocode-address.js");
       await handleGeocodeAddress(req, res, body);
+    } else if (functionName === "geocodePropertyAddress") {
+      const { handleGeocodePropertyAddress } = await import("./geocode-address.js");
+      await handleGeocodePropertyAddress(req, res, body);
+    } else if (functionName === "updatePropertyContent") {
+      const { handleUpdatePropertyContent } = await import("./update-property-content.js");
+      await handleUpdatePropertyContent(req, res, body);
     }
     return true;
   } catch (error: any) {

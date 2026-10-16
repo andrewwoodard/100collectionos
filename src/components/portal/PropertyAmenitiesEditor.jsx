@@ -56,11 +56,13 @@ export default function PropertyAmenitiesEditor({
   const displayAmenities = Array.isArray(property?.amenities) ? property.amenities : [];
 
   return (
-    <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6 mb-4">
+    <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6 mb-4 impersonation-allow-writes">
       <div className="flex items-center justify-between border-b border-slate-50 pb-3 mb-4">
         <h3 className="text-sm font-semibold text-[#0D1B2A]">Amenities</h3>
         {!editing && (
           <button
+            type="button"
+            data-impersonation-exempt
             onClick={startEdit}
             className="flex items-center gap-1.5 text-xs font-medium text-[#C9A96E] hover:text-[#A68B4B] transition-colors"
           >

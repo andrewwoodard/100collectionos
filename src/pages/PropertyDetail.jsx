@@ -355,7 +355,8 @@ export default function PropertyDetail() {
         address: value,
       });
       if (res.data?.geocoded) {
-        toast({ title: "Address saved", description: `Geocoded to ${res.data.latitude}, ${res.data.longitude}.` });
+        const via = res.data.provider ? ` (${res.data.provider})` : "";
+        toast({ title: "Address saved", description: `Geocoded${via} to ${res.data.latitude}, ${res.data.longitude}.` });
       } else {
         toast({ title: "Address saved", description: "No geocode match found for that address." });
       }

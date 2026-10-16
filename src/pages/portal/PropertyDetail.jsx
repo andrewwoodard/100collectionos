@@ -212,7 +212,7 @@ export default function PropertyDetail() {
 
   return (
     <PortalLayout>
-      <div className="max-w-4xl mx-auto pb-16">
+      <div className="impersonation-allow-writes max-w-4xl mx-auto pb-16">
         {/* Header */}
         <div className="flex items-start gap-4 mb-6">
           <Link to="/portal/properties" className="text-slate-400 hover:text-[#0D1B2A] mt-1">
@@ -260,7 +260,7 @@ export default function PropertyDetail() {
           <div className="mb-5 bg-amber-50 border border-amber-200 rounded-2xl px-5 py-4 flex items-start gap-3">
             <AlertCircle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
             <p className="text-xs text-amber-700 leading-relaxed">
-              This is a <strong>{status}</strong> property. Changes you submit will be reviewed by our team before going live.
+              This is a live <strong>{status}</strong> property. Use <strong>Edit Details</strong> / <strong>Edit Content</strong> below to update beds, baths, address, and listing copy — those save immediately. “Request Edit” is for larger change requests that need team review.
             </p>
           </div>
         )}

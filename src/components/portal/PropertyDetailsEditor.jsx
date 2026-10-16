@@ -14,11 +14,8 @@ const PROPERTY_TYPES = [
 ];
 
 /**
- * Inline editor for partner-editable property details:
- *  - Property type, bedrooms, bathrooms, half baths, sleeps, address
- *
- * Edits are saved directly to both Base44 (Property entity) and Supabase
- * (propertiesbase44 table) via the updatePropertyContent backend function.
+ * Inline editor for partner-editable property details on published properties:
+ * type, beds/baths/half baths/sleeps, destination, street address (geocoded).
  */
 export default function PropertyDetailsEditor({
   property,
@@ -37,9 +34,11 @@ export default function PropertyDetailsEditor({
   const [bathrooms, setBathrooms] = useState(property?.bathrooms ?? "");
   const [halfBathrooms, setHalfBathrooms] = useState(property?.half_bathrooms ?? "");
   const [sleeps, setSleeps] = useState(property?.sleeps ?? "");
-  const [address, setAddress] = useState(
-    property?.address || property?.location_full || ""
+  const [locationFull, setLocationFull] = useState(
+    property?.location_full || property?.market || ""
   );
+  const [address, setAddress] = useState(property?.address || "");
+  const [geoHint, setGeoHint] = useState("");
 
   const startEdit = () => {
     setPropertyType(property?.property_type || property?.house_type || "");
@@ -47,12 +46,15 @@ export default function PropertyDetailsEditor({
     setBathrooms(property?.bathrooms ?? "");
     setHalfBathrooms(property?.half_bathrooms ?? "");
     setSleeps(property?.sleeps ?? "");
-    setAddress(property?.address || property?.location_full || "");
+    setLocationFull(property?.location_full || property?.market || "");
+    setAddress(property?.address || "");
+    setGeoHint("");
     setEditing(true);
   };
 
   const handleSave = async () => {
     setSaving(true);
+    setGeoHint("");
     try {
       const res = await base44.functions.invoke("updatePropertyContent", {
         basePropertyId: basePropertyId || undefined,
@@ -64,16 +66,32 @@ export default function PropertyDetailsEditor({
           bathrooms: bathrooms === "" ? null : Number(bathrooms),
           half_bathrooms: halfBathrooms === "" ? null : Number(halfBathrooms),
           sleeps: sleeps === "" ? null : Number(sleeps),
+          location_full: locationFull,
           address,
         },
       });
 
-      if (res.data?.error) {
-        toast.error(res.data.error);
+      const body = res?.data || res;
+      if (body?.error) {
+        toast.error(body.error);
         return;
       }
 
-      toast.success("Details saved and synced.");
+      if (String(address || "").trim()) {
+        if (body?.results?.geocoded || (body?.latitude != null && body?.longitude != null)) {
+          const via = body?.results?.geocode_provider ? ` via ${body.results.geocode_provider}` : "";
+          setGeoHint(
+            `Geocoded${via} · ${Number(body.latitude).toFixed(5)}, ${Number(body.longitude).toFixed(5)}`
+          );
+          toast.success("Details saved — address geocoded and synced.");
+        } else {
+          setGeoHint("Address saved, but no map match was found.");
+          toast.success("Details saved and synced.");
+        }
+      } else {
+        toast.success("Details saved and synced.");
+      }
+
       setEditing(false);
       onUpdated?.();
     } catch (e) {
@@ -87,21 +105,24 @@ export default function PropertyDetailsEditor({
   const inputCls =
     "w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#C9A96E]/30";
 
-  // Display values
   const dPropertyType = property?.property_type || property?.house_type;
   const dBedrooms = property?.bedrooms;
   const dBathrooms = property?.bathrooms;
   const dHalfBaths = property?.half_bathrooms;
   const dSleeps = property?.sleeps;
-  const dAddress = property?.address || property?.location_full;
-  const dMarket = property?.market || property?.location_city;
+  const dAddress = property?.address;
+  const dLocation = property?.location_full || property?.market || property?.location_city;
+  const dLat = property?.latitude;
+  const dLon = property?.longitude;
 
   return (
-    <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6 mb-4">
+    <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6 mb-4 impersonation-allow-writes">
       <div className="flex items-center justify-between border-b border-slate-50 pb-3 mb-4">
         <h3 className="text-sm font-semibold text-[#0D1B2A]">Property Details</h3>
         {!editing && (
           <button
+            type="button"
+            data-impersonation-exempt
             onClick={startEdit}
             className="flex items-center gap-1.5 text-xs font-medium text-[#C9A96E] hover:text-[#A68B4B] transition-colors"
           >
@@ -130,16 +151,33 @@ export default function PropertyDetailsEditor({
             </div>
             <div>
               <label className="text-xs font-medium text-slate-600 uppercase tracking-wide block mb-1.5">
-                Address
+                Destination
               </label>
               <input
                 type="text"
-                value={address}
-                onChange={(e) => setAddress(e.target.value)}
+                value={locationFull}
+                onChange={(e) => setLocationFull(e.target.value)}
                 className={inputCls}
-                placeholder="Street address or descriptive location"
+                placeholder="e.g. Lake Anna"
               />
             </div>
+          </div>
+
+          <div>
+            <label className="text-xs font-medium text-slate-600 uppercase tracking-wide block mb-1.5">
+              Street Address
+            </label>
+            <input
+              type="text"
+              value={address}
+              onChange={(e) => { setAddress(e.target.value); setGeoHint(""); }}
+              className={inputCls}
+              placeholder="123 Lakefront Dr, Mineral, VA 23117"
+            />
+            <p className="text-[11px] text-slate-400 mt-1.5">
+              Saving will geocode this address and update map coordinates.
+              {geoHint ? <span className="block text-emerald-600 mt-0.5">{geoHint}</span> : null}
+            </p>
           </div>
 
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-5">
@@ -199,6 +237,8 @@ export default function PropertyDetailsEditor({
 
           <div className="flex items-center justify-end gap-2 pt-1">
             <button
+              type="button"
+              data-impersonation-exempt
               onClick={() => setEditing(false)}
               disabled={saving}
               className="flex items-center gap-1.5 border border-slate-200 text-slate-600 text-sm px-4 py-2 rounded-xl hover:bg-slate-50 disabled:opacity-50 transition-colors"
@@ -206,6 +246,8 @@ export default function PropertyDetailsEditor({
               <X className="w-3.5 h-3.5" /> Cancel
             </button>
             <button
+              type="button"
+              data-impersonation-exempt
               onClick={handleSave}
               disabled={saving}
               className="flex items-center gap-1.5 bg-[#0D1B2A] text-white text-sm font-medium px-5 py-2 rounded-xl hover:bg-[#1a2e45] disabled:opacity-50 transition-colors"
@@ -221,26 +263,30 @@ export default function PropertyDetailsEditor({
         </div>
       ) : (
         <div className="grid grid-cols-2 gap-x-6 gap-y-4">
-          {dAddress && (
-            <div>
-              <p className="text-xs text-slate-400 uppercase tracking-wide mb-0.5">Location</p>
-              <p className="text-sm text-[#0D1B2A] flex items-center gap-1">
-                <MapPin className="w-3.5 h-3.5 text-slate-300" /> {dAddress}
-              </p>
-            </div>
-          )}
+          <div>
+            <p className="text-xs text-slate-400 uppercase tracking-wide mb-0.5">Destination</p>
+            <p className="text-sm text-[#0D1B2A]">{dLocation || "—"}</p>
+          </div>
+          <div>
+            <p className="text-xs text-slate-400 uppercase tracking-wide mb-0.5">Street Address</p>
+            <p className="text-sm text-[#0D1B2A] flex items-start gap-1">
+              <MapPin className="w-3.5 h-3.5 text-slate-300 mt-0.5 flex-shrink-0" />
+              <span>
+                {dAddress || "—"}
+                {dLat != null && dLon != null && dLat !== "" && (
+                  <span className="block text-[11px] text-slate-400 mt-0.5">
+                    {Number(dLat).toFixed(5)}, {Number(dLon).toFixed(5)}
+                  </span>
+                )}
+              </span>
+            </p>
+          </div>
           {dPropertyType && (
             <div>
               <p className="text-xs text-slate-400 uppercase tracking-wide mb-0.5">Property Type</p>
               <p className="text-sm text-[#0D1B2A] capitalize flex items-center gap-1">
                 <HomeIcon className="w-3.5 h-3.5 text-slate-300" /> {dPropertyType}
               </p>
-            </div>
-          )}
-          {dMarket && (
-            <div>
-              <p className="text-xs text-slate-400 uppercase tracking-wide mb-0.5">Market</p>
-              <p className="text-sm text-[#0D1B2A]">{dMarket}</p>
             </div>
           )}
           <div className="flex gap-6 flex-wrap">
@@ -256,7 +302,7 @@ export default function PropertyDetailsEditor({
                 <p className="text-sm text-[#0D1B2A] flex items-center gap-1"><Bath className="w-3.5 h-3.5 text-slate-300" /> {dBathrooms}</p>
               </div>
             )}
-            {dHalfBaths != null && dHalfBaths > 0 && (
+            {dHalfBaths != null && Number(dHalfBaths) > 0 && (
               <div>
                 <p className="text-xs text-slate-400 uppercase tracking-wide mb-0.5">Half Baths</p>
                 <p className="text-sm text-[#0D1B2A]">{dHalfBaths}</p>
