@@ -8,6 +8,7 @@ import { Loader2, Sparkles, Wand2, ImageOff } from "lucide-react";
 import { base44 } from "@/api/base44Client";
 import { useToast } from "@/components/ui/use-toast";
 import { cleanScrapedPlainText } from "@/lib/cleanScrapedText";
+import { splitBathrooms } from "@/lib/splitBathrooms";
 
 // Property types accepted by the propertiesbase44 house_type column
 const VALID_TYPES = new Set(["villa", "apartment", "house", "condo", "estate", "cabin", "other"]);
@@ -242,16 +243,21 @@ export default function AddPropertyWithAiModal({ open, onOpenChange, partners = 
       // was timing out for Coastal Carolina Vacations listings.
       const summary = cleanTextField(scraped.short_summary, 800);
       const description = cleanTextField(scraped.description, MAX_TEXT);
+      const baths = splitBathrooms(scraped.bathrooms, scraped.half_bathrooms);
+      const propertyType = VALID_TYPES.has(scraped.property_type) ? scraped.property_type : "house";
+      const location =
+        cleanTextField(scraped.location_full, 500) || selectedPartner?.market || undefined;
       const slimPayload = {
         property_name: cleanScrapedPlainText(scraped.property_name) || "Untitled Property",
         market: selectedPartner?.market || scraped.location_city || scraped.location_state || undefined,
-        address: cleanTextField(scraped.location_full, 500),
+        address: location,
         listing_url: url,
         vrm_url: url,
         bedrooms: scraped.bedrooms,
-        bathrooms: scraped.bathrooms,
+        bathrooms: baths.bathrooms,
+        half_bathrooms: baths.half_bathrooms,
         sleeps: scraped.sleeps,
-        property_type: VALID_TYPES.has(scraped.property_type) ? scraped.property_type : undefined,
+        property_type: propertyType,
         partner_id: partnerId || undefined,
         partner_name: selectedPartner?.partner_name || undefined,
         status: "draft",
@@ -269,6 +275,7 @@ export default function AddPropertyWithAiModal({ open, onOpenChange, partners = 
         why_onehundred: cleanTextField(scraped.why_100_collection, 2000),
         text: description,
         description,
+        half_bathrooms: baths.half_bathrooms,
       }).catch((err) => {
         console.warn("[AddPropertyWithAi] detail update failed", err);
       });

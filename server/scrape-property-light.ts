@@ -446,6 +446,7 @@ function extractListingDetails(html: string, jsonLd: any[]) {
     toNum(plain.match(/\bbed(?:room)?s?\s*[:#]?\s*(\d+)/i)?.[1]);
 
   // Prefer "5-full and 2-half bath" style (common on Streamline / OBX sites).
+  // Keep full and half baths as separate fields (never store 4.5 — use 4 + 1 half).
   const fullHalf = plain.match(
     /(\d+)\s*[-]?\s*full(?:\s+bath(?:room)?s?)?(?:\s+and)?\s+(\d+)\s*[-]?\s*half\s*bath/i
   );
@@ -455,12 +456,18 @@ function extractListingDetails(html: string, jsonLd: any[]) {
     toNum(plain.match(/(\d+(?:\.\d+)?)\s*[-]?\s*bath(?:room)?s?\b/i)?.[1]) ||
     toNum(plain.match(/\bbath(?:room)?s?\s*[:#]?\s*(\d+(?:\.\d+)?)/i)?.[1]);
   let bathrooms: number | undefined;
+  let half_bathrooms: number | undefined;
   if (fullHalf) {
-    bathrooms = Number(fullHalf[1]) + Number(fullHalf[2]) * 0.5;
+    bathrooms = Number(fullHalf[1]);
+    half_bathrooms = Number(fullHalf[2]);
   } else if (fullOnly || halfOnly) {
-    bathrooms = (toNum(fullOnly?.[1]) || 0) + (toNum(halfOnly?.[1]) || 0) * 0.5;
+    bathrooms = toNum(fullOnly?.[1]);
+    half_bathrooms = toNum(halfOnly?.[1]);
   } else if (bathsSimple !== undefined) {
-    bathrooms = bathsSimple;
+    const full = Math.floor(bathsSimple);
+    const frac = Math.round((bathsSimple - full) * 2); // 0.5 → 1 half
+    bathrooms = full;
+    if (frac > 0) half_bathrooms = frac;
   }
 
   const sleeps =
@@ -484,6 +491,7 @@ function extractListingDetails(html: string, jsonLd: any[]) {
   return {
     bedrooms: Number.isFinite(bedrooms) ? bedrooms : undefined,
     bathrooms: Number.isFinite(bathrooms as number) ? bathrooms : undefined,
+    half_bathrooms: Number.isFinite(half_bathrooms as number) ? half_bathrooms : undefined,
     sleeps: Number.isFinite(sleeps) ? sleeps : undefined,
     location_full: location,
     short_summary,
@@ -771,6 +779,7 @@ export async function handleScrapePropertyLight(req: any, res: any, body: any) {
             location_full: undefined,
             bedrooms: undefined,
             bathrooms: undefined,
+            half_bathrooms: undefined,
             sleeps: undefined,
             short_summary: undefined,
             description: undefined,
@@ -785,8 +794,9 @@ export async function handleScrapePropertyLight(req: any, res: any, body: any) {
         location_full: details.location_full,
         bedrooms: details.bedrooms,
         bathrooms: details.bathrooms,
+        half_bathrooms: details.half_bathrooms,
         sleeps: details.sleeps,
-        property_type: undefined,
+        property_type: "house",
         short_summary: details.short_summary,
         description: details.description,
         unique_features: undefined,

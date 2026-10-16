@@ -5,6 +5,7 @@ import {
   preferListingPhotoUrl,
   unwrapFunctionPayload,
 } from "@/lib/discoverListingPhotos";
+import { splitBathrooms } from "@/lib/splitBathrooms";
 
 export function isHeavyScrapeHost(listingUrl) {
   try {
@@ -72,14 +73,17 @@ export async function scrapeListingForImport(listingUrl) {
       : body;
     const success = body?.success !== false && (data?.property_name || data?.photo_urls?.length);
     if (success && data) {
+      const baths = splitBathrooms(data.bathrooms, data.half_bathrooms);
       scraped = {
         property_name: cleanScrapedPlainText(data.property_name) || data.property_name,
         short_summary: cleanScrapedPlainText(data.short_summary) || data.short_summary,
         description: cleanScrapedPlainText(data.description) || data.description,
         location_full: cleanScrapedPlainText(data.location_full) || data.location_full,
         bedrooms: data.bedrooms,
-        bathrooms: data.bathrooms,
+        bathrooms: baths.bathrooms,
+        half_bathrooms: baths.half_bathrooms,
         sleeps: data.sleeps,
+        property_type: data.property_type || "house",
         photo_urls: Array.isArray(data.photo_urls) ? data.photo_urls : [],
         source: data.source || "light_html",
       };
@@ -96,7 +100,13 @@ export async function scrapeListingForImport(listingUrl) {
       const body = unwrapFunctionPayload(res);
       const data = body?.data && typeof body.data === "object" ? body.data : body;
       if (data && (data.property_name || data.photo_urls?.length)) {
-        scraped = { ...data };
+        const baths = splitBathrooms(data.bathrooms, data.half_bathrooms);
+        scraped = {
+          ...data,
+          bathrooms: baths.bathrooms,
+          half_bathrooms: baths.half_bathrooms,
+          property_type: data.property_type || "house",
+        };
       }
     } catch {
       /* fall through */
@@ -131,8 +141,12 @@ export async function scrapeListingForImport(listingUrl) {
     throw new Error("We couldn't read that listing. You can enter the details manually.");
   }
 
+  const baths = splitBathrooms(scraped.bathrooms, scraped.half_bathrooms);
   return {
     ...scraped,
+    bathrooms: baths.bathrooms,
+    half_bathrooms: baths.half_bathrooms,
+    property_type: scraped.property_type || "house",
     listing_url: url,
     ai_imported: true,
   };

@@ -87,7 +87,14 @@ export default function AddProperty() {
 
         {step === 3 && (
           <SubmissionForm
-            initialData={{ ...extractedData, listing_url: extractedData?.listing_url || listingUrl || "" }}
+            initialData={{
+              ...extractedData,
+              listing_url: extractedData?.listing_url || listingUrl || "",
+              // Prefer scrape location; fall back to partner market in the form
+              location_full: extractedData?.location_full || partnerRecord?.market || "",
+              property_type: extractedData?.property_type || "house",
+            }}
+            partnerMarket={partnerRecord?.market || ""}
             onSubmit={handleSubmit}
             onBack={() => setStep(extractedData?.ai_imported === false ? 1 : 2)}
           />

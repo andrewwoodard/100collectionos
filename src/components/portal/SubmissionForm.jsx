@@ -5,6 +5,7 @@ import PhotoCurationGrid from "./wizard/PhotoCurationGrid";
 import RescanPhotosModal from "./wizard/RescanPhotosModal";
 import { ChevronLeft, Save, Send, Sparkles, RotateCcw, Eye, ScanSearch } from "lucide-react";
 import AmenitiesEditor from "@/components/properties/AmenitiesEditor";
+import { splitBathrooms } from "@/lib/splitBathrooms";
 
 const PROPERTY_TYPES = ["villa", "house", "condo", "estate", "cabin", "penthouse", "chalet", "farmhouse", "other"];
 
@@ -177,19 +178,25 @@ function Field({ label, field, confidence, required, children, aiImported, rawSn
   );
 }
 
-export default function SubmissionForm({ initialData = {}, onSubmit, onBack }) {
+export default function SubmissionForm({ initialData = {}, onSubmit, onBack, partnerMarket = "" }) {
   const [data, setData] = useState(() => {
+    const { bathrooms: rawBaths, half_bathrooms: rawHalfBaths, ...restInitial } = initialData;
+    const baths = splitBathrooms(rawBaths, rawHalfBaths);
     const merged = {
       property_name: "", headline: "", short_summary: "", description: "",
-      property_type: "", location_full: "", location_city: "", location_state: "", location_country: "",
-      bedrooms: "", bathrooms: "", half_bathrooms: "", sleeps: "", amenities: [],
+      property_type: "house", location_full: "", location_city: "", location_state: "", location_country: "",
+      bedrooms: "", sleeps: "", amenities: [],
       design_style_notes: "", unique_features: "", why_100_collection: "",
       best_fit_guest: "", tags: [], notes_to_team: "", photo_urls: [],
-      ...initialData,
+      ...restInitial,
+      bathrooms: baths.bathrooms ?? "",
+      half_bathrooms: baths.half_bathrooms ?? "",
     };
-    // Safety net: normalize property_type so the dropdown always matches
-    if (merged.property_type) {
-      merged.property_type = normalizePropertyType(merged.property_type);
+    // Default property type to House when scrape didn't supply one
+    merged.property_type = normalizePropertyType(merged.property_type) || "house";
+    // Default location to the partner's primary market when scrape didn't find one
+    if (!String(merged.location_full || "").trim() && partnerMarket) {
+      merged.location_full = partnerMarket;
     }
     return merged;
   });
