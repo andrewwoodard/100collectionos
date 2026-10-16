@@ -3,9 +3,21 @@ import { Building2, FileText, CreditCard, CheckSquare, ClipboardCheck, Pencil, C
 import StatusBadge from "../shared/StatusBadge";
 import StatCard from "../shared/StatCard";
 import VrmContentCard from "./VrmContentCard";
+import PartnerProfileAdminCard from "./PartnerProfileAdminCard";
 import { format } from "date-fns";
 
-export default function PartnerOverviewTab({ partner, properties, documents, billing, tasks, onboarding, isHomeowner, memberSince, onUpdateMemberSince }) {
+export default function PartnerOverviewTab({
+  partner,
+  partnerId,
+  properties,
+  documents,
+  billing,
+  tasks,
+  onboarding,
+  isHomeowner,
+  memberSince,
+  onUpdateMemberSince,
+}) {
   const [editingSince, setEditingSince] = useState(false);
   const [sinceValue, setSinceValue] = useState("");
   const completedOnboarding = onboarding.filter(i => i.completed).length;
@@ -139,6 +151,9 @@ export default function PartnerOverviewTab({ partner, properties, documents, bil
           </div>
         )}
       </div>
+
+      {/* Public profile / branding — defaults from primary owner */}
+      <PartnerProfileAdminCard partner={partner} partnerId={partnerId} />
 
       {/* Destination Page Content (vrms table) */}
       <VrmContentCard partnerName={partner.partner_name} />

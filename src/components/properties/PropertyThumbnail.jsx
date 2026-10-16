@@ -13,6 +13,7 @@ export default function PropertyThumbnail({
   listingUrl,
   fallbackUrl,
   propertyName = "Property",
+  alt,
   className = "",
   icon: Icon = Building2,
   size = "thumb",
@@ -23,7 +24,7 @@ export default function PropertyThumbnail({
   return (
     <div className={`${className} overflow-hidden flex-shrink-0 bg-slate-100 flex items-center justify-center`}>
       {src ? (
-        <img src={getImageUrl(src, size)} className="w-full h-full object-cover" alt={propertyName} />
+        <img src={getImageUrl(src, size)} className="w-full h-full object-cover" alt={alt || propertyName} />
       ) : isLoading ? (
         <div className="w-full h-full animate-pulse bg-slate-100" />
       ) : (

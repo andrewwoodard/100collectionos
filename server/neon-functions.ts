@@ -1519,6 +1519,8 @@ export const LOCAL_FUNCTIONS = new Set([
   "geocodeAddress",
   "geocodePropertyAddress",
   "updatePropertyContent",
+  "approvePropertySubmission",
+  "generatePropertyAltText",
   ...STRIPE_FUNCTIONS,
 ]);
 
@@ -1560,6 +1562,12 @@ export async function handleNeonFunction(req: any, res: any, functionName: strin
     } else if (functionName === "updatePropertyContent") {
       const { handleUpdatePropertyContent } = await import("./update-property-content.js");
       await handleUpdatePropertyContent(req, res, body);
+    } else if (functionName === "approvePropertySubmission") {
+      const { handleApprovePropertySubmission } = await import("./approve-property-submission.js");
+      await handleApprovePropertySubmission(req, res, body);
+    } else if (functionName === "generatePropertyAltText") {
+      const { handleGeneratePropertyAltText } = await import("./generate-property-alt-text.js");
+      await handleGeneratePropertyAltText(req, res, body);
     }
     return true;
   } catch (error: any) {

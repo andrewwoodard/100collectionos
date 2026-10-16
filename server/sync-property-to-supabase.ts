@@ -95,7 +95,11 @@ function buildPublicRecord(property: Record<string, any>, destination: string) {
 
   let status = asString(property.status) || "draft";
   let active = status === "active";
-  let portalVisible = property.portal_visible === true || property.portal_visible === "true";
+  // Default published properties to visible unless explicitly hidden.
+  // Previously null/undefined portal_visible became false and hid live pages.
+  const explicitHide =
+    property.portal_visible === false || property.portal_visible === "false";
+  let portalVisible = explicitHide ? false : active ? true : property.portal_visible === true || property.portal_visible === "true";
   if (
     property.offboarding_status === "temporary_offline" ||
     property.offboarding_status === "terminated"

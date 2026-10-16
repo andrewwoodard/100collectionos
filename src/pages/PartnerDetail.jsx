@@ -498,6 +498,13 @@ export default function PartnerDetail() {
         <Button variant="ghost" size="icon" onClick={() => navigate(createPageUrl("Partners"))}>
           <ArrowLeft className="w-4 h-4" />
         </Button>
+        {partner.logo_url ? (
+          <img
+            src={partner.logo_url}
+            alt=""
+            className="w-12 h-12 rounded-lg object-contain bg-white border border-gray-100 shrink-0"
+          />
+        ) : null}
         <div className="flex-1">
           <div className="flex items-center gap-3">
             <h2 className="text-xl font-bold text-gray-900">{partner.partner_name}</h2>
@@ -792,6 +799,7 @@ export default function PartnerDetail() {
         <TabsContent value="overview">
           <PartnerOverviewTab
             partner={partner}
+            partnerId={base44PartnerId || base44Partner?.id || partnerId}
             properties={properties}
             documents={documents}
             billing={billing}

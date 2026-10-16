@@ -26,6 +26,95 @@ import EditableSleepingArrangements from "../components/properties/EditableSleep
 import { format } from "date-fns";
 import { useMemo } from "react";
 
+/** Street address editor with geocode status — used on admin Property Detail. */
+function AddressGeocodeField({ value, latitude, longitude, saving, onSave }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value ?? "");
+
+  const start = () => {
+    setDraft(value ?? "");
+    setEditing(true);
+  };
+
+  const cancel = () => setEditing(false);
+
+  const commit = async () => {
+    try {
+      await onSave(draft === "" ? null : draft.trim());
+      setEditing(false);
+    } catch {
+      /* toast handled by caller; keep editing open */
+    }
+  };
+
+  const hasCoords = latitude != null && longitude != null && latitude !== "" && longitude !== "";
+
+  if (editing) {
+    return (
+      <div className="rounded-lg border border-[#C9A96E]/40 bg-[#C9A96E]/5 p-3">
+        <p className="text-xs font-medium text-gray-600 mb-1.5 flex items-center gap-1.5">
+          <MapPin className="w-3.5 h-3.5 text-[#C9A96E]" />
+          Street address
+        </p>
+        <Input
+          autoFocus
+          value={draft}
+          disabled={saving}
+          placeholder="e.g. 144 Anderson Way, Mineral, VA 23117"
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") commit();
+            if (e.key === "Escape") cancel();
+          }}
+          className="text-sm"
+        />
+        <div className="flex items-center gap-2 mt-2">
+          <button
+            type="button"
+            disabled={saving}
+            onClick={commit}
+            className="flex items-center gap-1 text-xs font-medium text-white bg-[#0D1B2A] hover:bg-[#1a2d42] disabled:opacity-60 px-3 py-1.5 rounded-md"
+          >
+            {saving ? "Geocoding…" : "Save & geocode"}
+          </button>
+          <button
+            type="button"
+            disabled={saving}
+            onClick={cancel}
+            className="text-xs text-gray-500 hover:text-gray-700 px-2 py-1.5"
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className="group cursor-pointer rounded-lg border border-transparent hover:border-dashed hover:border-gray-300 p-2 -m-2 transition-all"
+      onClick={start}
+    >
+      <p className="text-xs text-gray-500 mb-0.5 flex items-center gap-1.5">
+        <MapPin className="w-3.5 h-3.5" />
+        Street address
+      </p>
+      <p className={`text-sm font-medium ${value ? "text-gray-900" : "text-[#C9A96E] italic"}`}>
+        {value || "Click to add street address…"}
+      </p>
+      <p className="text-[11px] text-gray-400 mt-0.5">
+        {saving
+          ? "Geocoding…"
+          : hasCoords
+            ? `Map · ${Number(latitude).toFixed(5)}, ${Number(longitude).toFixed(5)}`
+            : value
+              ? "Saved — no map match yet (will retry Mapbox on next save)"
+              : "Address is geocoded on save for maps"}
+      </p>
+    </div>
+  );
+}
+
 // Inline editable field component
 function EditableField({ label, value, onSave, type = "text", options = null, multiline = false, rows = 6, className = "" }) {
   const [editing, setEditing] = useState(false);
@@ -344,37 +433,82 @@ export default function PropertyDetail() {
     }
   }, [hasSbId, sbId, sbQueryKey, supabaseProperty, lookupUrl, propertyId, queryClient, baseProperty, isLoadingSb]);
 
-  // Save the address: persist to Base44 + Supabase (via the geocode function),
-  // which also geocodes to latitude/longitude and writes those to both stores.
+  // Save address + geocode (Nominatim → Mapbox) onto Base44 Property and propertiesbase44.
   const [isGeocoding, setIsGeocoding] = useState(false);
   const saveAddress = useCallback(async (value) => {
     setIsGeocoding(true);
     try {
-      const res = await base44.functions.invoke("geocodePropertyAddress", {
-        property_id: propertyId,
-        address: value,
-      });
-      if (res.data?.geocoded) {
-        const via = res.data.provider ? ` (${res.data.provider})` : "";
-        toast({ title: "Address saved", description: `Geocoded${via} to ${res.data.latitude}, ${res.data.longitude}.` });
+      let body = null;
+
+      if (baseProperty?.id) {
+        const res = await base44.functions.invoke("geocodePropertyAddress", {
+          property_id: baseProperty.id || propertyId,
+          address: value,
+        });
+        body = res?.data || res;
+        if (body?.error) throw new Error(body.error);
       } else {
-        toast({ title: "Address saved", description: "No geocode match found for that address." });
+        // Supabase-only property (URL id is not a Base44 Property) — update via content API.
+        const res = await base44.functions.invoke("updatePropertyContent", {
+          supabaseRowId: hasSbId ? sbId : supabaseProperty?.id || propertyId,
+          supabaseUrl: lookupUrl || undefined,
+          fields: { address: value || null },
+        });
+        body = res?.data || res;
+        if (body?.error) throw new Error(body.error);
       }
+
+      const lat = body?.latitude ?? null;
+      const lng = body?.longitude ?? null;
+      const geocoded = !!(body?.geocoded || body?.results?.geocoded || (lat != null && lng != null));
+      const via = body?.provider || body?.results?.geocode_provider;
+
+      // Optimistic cache so coords show immediately
+      queryClient.setQueryData(["property", propertyId], (prev) =>
+        prev ? { ...prev, address: value || null, latitude: lat, longitude: lng } : prev
+      );
+      queryClient.setQueryData(["supabase-property", sbQueryKey], (prev) =>
+        prev ? { ...prev, address: value || null, latitude: lat, longitude: lng } : prev
+      );
+
+      if (geocoded) {
+        toast({
+          title: "Address saved",
+          description: `Geocoded${via ? ` via ${via}` : ""} to ${lat}, ${lng}.`,
+        });
+      } else if (value) {
+        toast({ title: "Address saved", description: "No geocode match found for that address." });
+      } else {
+        toast({ title: "Address cleared" });
+      }
+
       queryClient.invalidateQueries({ queryKey: ["property", propertyId] });
       queryClient.invalidateQueries({ queryKey: ["supabase-property"] });
       queryClient.invalidateQueries({ queryKey: ["propertiesbase44"] });
       queryClient.invalidateQueries({ queryKey: ["partner-properties"] });
     } catch (err) {
-      toast({ variant: "destructive", title: "Address save failed", description: err?.message });
+      toast({
+        variant: "destructive",
+        title: "Address save failed",
+        description: err?.response?.data?.error || err?.message || "Please try again.",
+      });
+      throw err;
     } finally {
       setIsGeocoding(false);
     }
-  }, [propertyId, queryClient, toast]);
+  }, [baseProperty?.id, propertyId, hasSbId, sbId, supabaseProperty?.id, lookupUrl, sbQueryKey, queryClient, toast]);
 
   useEffect(() => { base44.auth.me().then(setCurrentUser).catch(() => {}); }, []);
   useEffect(() => { setAmenitiesDraft(property?.amenities || []); }, [property?.amenities]);
 
-  const { generate: generateAltText, isGenerating: isGeneratingAltText } = usePropertyAltTexts(baseProperty?.id);
+  const { generate: generateAltText, isGenerating: isGeneratingAltText } = usePropertyAltTexts(
+    baseProperty?.id,
+    {
+      autoEnsure: true,
+      photoUrls: baseProperty?.photo_urls,
+      photoAltTexts: baseProperty?.photo_alt_texts,
+    }
+  );
   const altTextMap = useMemo(
     () => buildAltTextMap(baseProperty?.photo_urls, baseProperty?.photo_alt_texts),
     [baseProperty?.photo_urls, baseProperty?.photo_alt_texts]
@@ -382,8 +516,13 @@ export default function PropertyDetail() {
 
   const handleGenerateAltText = async () => {
     try {
-      await generateAltText();
-      toast({ title: "Alt text generated", description: "AI-generated alt text saved for property photos." });
+      const body = await generateAltText({ useVision: true });
+      toast({
+        title: "Alt text generated",
+        description: body?.vision_count
+          ? `Updated ${body.filled || 0} of ${body.total || 0} photos (${body.vision_count} via vision).`
+          : `Ensured alt text on ${body?.total || 0} photos.`,
+      });
     } catch (err) {
       toast({ variant: "destructive", title: "Generation failed", description: err?.message });
     }
@@ -761,13 +900,14 @@ export default function PropertyDetail() {
         )}
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-y-4 gap-x-6">
-          <div className="col-span-2">
-            <EditableField label="Address / Location" value={property.address} onSave={saveAddress} />
-            {(property.latitude != null || property.longitude != null) && (
-              <p className="text-[11px] text-gray-400 mt-0.5">
-                {isGeocoding ? "Geocoding…" : `${property.latitude ?? "—"}, ${property.longitude ?? "—"}`}
-              </p>
-            )}
+          <div className="col-span-2 md:col-span-4">
+            <AddressGeocodeField
+              value={property.address}
+              latitude={property.latitude}
+              longitude={property.longitude}
+              saving={isGeocoding}
+              onSave={saveAddress}
+            />
           </div>
           <EditableField label="Market" value={property.market} onSave={save("market")} options={marketOptions} />
           <EditableField
@@ -928,6 +1068,8 @@ export default function PropertyDetail() {
             listingUrl={property.vrm_url || property.listing_url}
             propertyImages={propertyImagesArr}
             photoUrls={baseProperty?.photo_urls || []}
+            photoAltTexts={baseProperty?.photo_alt_texts || []}
+            propertyName={property.property_name || "Property"}
             supabasePropertyId={hasSbId ? sbId : supabaseProperty?.id}
             propertyId={baseProperty?.id || propertyId}
             seedProperty={baseProperty || property}

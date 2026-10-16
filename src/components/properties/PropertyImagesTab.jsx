@@ -13,6 +13,8 @@ export default function PropertyImagesTab({
   listingUrl,
   propertyImages = [],
   photoUrls = [],
+  photoAltTexts = [],
+  propertyName = "Property",
   supabasePropertyId,
   propertyId,
   seedProperty,
@@ -53,6 +55,9 @@ export default function PropertyImagesTab({
   return (
     <SupabaseImagesGallery
       images={galleryImages}
+      photoUrls={photoUrls}
+      photoAltTexts={photoAltTexts}
+      propertyName={propertyName}
       supabasePropertyId={supabasePropertyId}
       propertyId={propertyId}
       seedProperty={seedProperty}

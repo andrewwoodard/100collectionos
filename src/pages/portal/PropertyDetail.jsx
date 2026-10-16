@@ -13,7 +13,7 @@ import { normalizeStorageUrl, imageUrlFromMetadata } from "@/lib/supabase";
 import { getImageUrl } from "@/lib/imageUrl";
 import { useCurrentUser } from "@/lib/useCurrentUser";
 import { usePropertyImages } from "@/hooks/usePropertyImages";
-import { buildAltTextMap, getGalleryAlt } from "@/hooks/usePropertyAltTexts";
+import { buildAltTextMap, getGalleryAlt, usePropertyAltTexts } from "@/hooks/usePropertyAltTexts";
 import {
   ChevronLeft, MapPin, Bed, Bath, Users, ExternalLink, Pencil,
   AlertCircle, ImageIcon, X, Home as HomeIcon, Tag, Settings,
@@ -132,9 +132,19 @@ export default function PropertyDetail() {
     return urls;
   }, [property, metadataImages]);
 
+  // Fill any missing photo alt texts when the partner opens the property
+  usePropertyAltTexts(baseProperty?.id, {
+    autoEnsure: !!baseProperty?.id,
+    photoUrls: property?.photo_urls || baseProperty?.photo_urls,
+    photoAltTexts: property?.photo_alt_texts || baseProperty?.photo_alt_texts,
+  });
+
   const altTextMap = useMemo(
-    () => buildAltTextMap(property?.photo_urls, property?.photo_alt_texts),
-    [property?.photo_urls, property?.photo_alt_texts]
+    () => buildAltTextMap(
+      property?.photo_urls || baseProperty?.photo_urls,
+      property?.photo_alt_texts || baseProperty?.photo_alt_texts
+    ),
+    [property?.photo_urls, property?.photo_alt_texts, baseProperty?.photo_urls, baseProperty?.photo_alt_texts]
   );
 
   const isLoading = isLoadingBase || isLoadingSub || isLoadingSb;

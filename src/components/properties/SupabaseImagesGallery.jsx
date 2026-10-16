@@ -17,6 +17,7 @@ import {
 import AiPhotoPullButton from "./AiPhotoPullButton";
 import PasteHtmlButton from "./PasteHtmlButton";
 import { syncPropertyGalleryImages } from "@/lib/syncPropertyGalleryImages";
+import { buildAltTextMap, getGalleryAlt } from "@/hooks/usePropertyAltTexts";
 
 /**
  * Editable image gallery backed by the `propertiesbase44.images` column.
@@ -25,6 +26,9 @@ import { syncPropertyGalleryImages } from "@/lib/syncPropertyGalleryImages";
  */
 export default function SupabaseImagesGallery({
   images: propImages = [],
+  photoUrls = [],
+  photoAltTexts = [],
+  propertyName = "Property",
   supabasePropertyId,
   propertyId,
   seedProperty,
@@ -32,6 +36,10 @@ export default function SupabaseImagesGallery({
   listingUrl,
   onSupabaseId,
 }) {
+  const altTextMap = buildAltTextMap(
+    Array.isArray(photoUrls) && photoUrls.length ? photoUrls : propImages,
+    photoAltTexts
+  );
   const queryClient = useQueryClient();
   const [localImages, setLocalImages] = useState(propImages);
   const [linkedSbId, setLinkedSbId] = useState(supabasePropertyId || null);
@@ -258,7 +266,7 @@ export default function SupabaseImagesGallery({
               >
                 <img
                   src={getImageUrl(normalizeStorageUrl(url) || url, "small")}
-                  alt={`Property image ${index + 1}`}
+                  alt={getGalleryAlt(altTextMap, url, index, propertyName)}
                   className="w-full h-full object-cover pointer-events-none"
                   onError={(e) => { e.target.style.display = "none"; }}
                 />

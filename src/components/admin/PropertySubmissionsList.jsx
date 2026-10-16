@@ -80,19 +80,41 @@ export default function PropertySubmissionsList() {
         await base44.entities.PropertySubmission.update(s.id, { supabase_property_id: String(sbId) });
       }
 
-      // License + partner notification (may no-op if already active)
-      try {
-        await base44.functions.invoke("approvePropertySubmission", { submissionId: s.id });
-      } catch (e) {
-        // If the helper already marked the submission active elsewhere, still keep the publish.
-        if (!/already published/i.test(e?.response?.data?.error || e?.message || "")) {
-          console.warn("[approve] license/notification helper:", e?.message);
-        }
-        await base44.entities.PropertySubmission.update(s.id, {
-          status: "active",
-          reviewed_by: user.email,
-          approved_date: today,
+      // Mark published. Licenses are applied separately — do not auto-create one.
+      await base44.entities.PropertySubmission.update(s.id, {
+        status: "active",
+        reviewed_by: user.email,
+        approved_date: today,
+      });
+
+      const dedupKey = `${s.id}__approved`;
+      const existing = await base44.entities.PortalNotification.filter({ dedup_key: dedupKey });
+      if (!existing?.length) {
+        await base44.entities.PortalNotification.create({
+          recipient_email: s.partner_email,
+          recipient_role: "partner",
+          type: "approved",
+          title: "Your Property Has Been Published! 🎉",
+          message: `Congratulations! "${s.property_name}" has been approved and published to The 100 Collection. Our licensing team will be in touch shortly.`,
+          submission_id: s.id,
+          property_name: s.property_name,
+          is_read: false,
+          dedup_key: dedupKey,
+          link: `/admin/hub?tab=submissions&submissionId=${s.id}`,
         });
+        base44.functions.invoke("sendPropertyEmail", {
+          type: "status_change",
+          submissionId: s.id,
+          newStatus: "active",
+          propertyId,
+        }).catch((e) => console.warn("[approve] email failed:", e?.message));
+      }
+
+      if (s.partner_id) {
+        base44.functions.invoke("syncPartnerToSupabase", {
+          partnerId: s.partner_id,
+          partnerEmail: s.partner_email || "",
+        }).catch((e) => console.warn("[approve] partner sync failed:", e?.message));
       }
 
       showToast(`"${s.property_name}" published to the public site.`);

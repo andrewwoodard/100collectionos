@@ -121,10 +121,34 @@ export async function syncPropertyGalleryImages({
   }
 
   // Mirror onto Base44 Property so portal gallery + public images stay aligned.
+  // Remap photo_alt_texts by URL so reorder/delete keeps alts attached to the right image.
   if (propertyId) {
-    const patch = { photo_urls: urls };
+    let existingUrls = [];
+    let existingAlts = [];
+    try {
+      const prop = await base44.entities.Property.get(propertyId);
+      existingUrls = Array.isArray(prop?.photo_urls) ? prop.photo_urls : [];
+      existingAlts = Array.isArray(prop?.photo_alt_texts) ? prop.photo_alt_texts : [];
+    } catch {
+      /* new / missing entity */
+    }
+    const altByUrl = new Map();
+    existingUrls.forEach((u, i) => {
+      const alt = String(existingAlts[i] || "").trim();
+      if (u && alt) altByUrl.set(u, alt);
+    });
+    const remappedAlts = urls.map((u) => altByUrl.get(u) || "");
+
+    const patch = { photo_urls: urls, photo_alt_texts: remappedAlts };
     if (sbId) patch.supabase_property_id = String(sbId);
     await base44.entities.Property.update(propertyId, patch);
+
+    // Fill any empty alt slots (new uploads, etc.)
+    if (remappedAlts.some((a) => !String(a || "").trim()) && urls.length) {
+      base44.functions
+        .invoke("generatePropertyAltText", { property_id: propertyId, use_vision: false })
+        .catch((e) => console.warn("[syncPropertyGalleryImages] alt ensure failed", e?.message || e));
+    }
   }
 
   return {

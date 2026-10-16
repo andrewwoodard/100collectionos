@@ -118,7 +118,8 @@ export default function AdminReview() {
       }).catch(e => console.warn("Supabase sync failed (non-fatal):", e?.message));
     }
 
-    // If published (active), create Property record, license record + sync partner to Supabase
+    // If published (active), create Property record + sync partner to Supabase.
+    // Licenses are applied separately by admins — do not auto-create on approve.
     if (newStatus === "active" && submission) {
       // Create Property record from submission (skip if already linked — e.g. edit submissions)
       if (!propertyId) {
@@ -176,48 +177,6 @@ export default function AdminReview() {
         }
       }
 
-      const BASE_FEE = 495.00;
-      // Generate license number: 100C-{YYYY}-{6-char-random}
-      const year = new Date().getFullYear();
-      const rand = Math.random().toString(36).toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 6).padEnd(6, "0");
-      const licNum = `100C-${year}-${rand}`;
-
-      // Fetch partner to get discount info
-      let discountPercent = 0;
-      let discountLabel = null;
-      if (submission.partner_id) {
-        try {
-          const partners = await base44.entities.Partner.filter({ id: submission.partner_id });
-          const p = partners[0];
-          if (p) { discountPercent = p.discount_percent || 0; discountLabel = p.discount_label || null; }
-        } catch (_) {}
-      }
-
-      const annualFee = Math.round(BASE_FEE * (1 - discountPercent / 100) * 100) / 100;
-      const isDeal = !!(discountLabel && discountLabel !== "No Discount");
-      const today = new Date().toISOString().slice(0, 10);
-      const endDate = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-
-      await base44.entities.LicenseRecord.create({
-        submission_id: id,
-        partner_id: submission.partner_id,
-        partner_name: submission.partner_name,
-        property_name: submission.property_name,
-        property_id: propertyId,
-        license_number: licNum,
-        license_status: "active",
-        payment_status: "invoiced",
-        base_fee: BASE_FEE,
-        discount_applied_percent: discountPercent,
-        discount_applied_label: discountLabel,
-        annual_fee: annualFee,
-        is_deal: isDeal,
-        deal_notes: isDeal ? discountLabel : null,
-        license_start_date: today,
-        license_end_date: endDate,
-        invoice_date: today,
-      });
-
       // Sync partner to Supabase partners table (only if not already there)
       if (submission.partner_id) {
         const partners = await base44.entities.Partner.filter({ id: submission.partner_id });
@@ -248,7 +207,7 @@ export default function AdminReview() {
     qc.invalidateQueries(["submission", id]);
 
     const toastMessages = {
-      active: { title: "Property Published", description: `"${submission?.property_name}" has been published and a license record has been created.` },
+      active: { title: "Property Published", description: `"${submission?.property_name}" has been published. Apply a license separately when ready.` },
       rejected: { title: "Property Rejected", description: `"${submission?.property_name}" has been marked as rejected.` },
       needs_revision: { title: "Revisions Requested", description: `Revision request sent to ${submission?.partner_name}.` },
       under_review: { title: "Marked In Review", description: `"${submission?.property_name}" is now under review.` },
