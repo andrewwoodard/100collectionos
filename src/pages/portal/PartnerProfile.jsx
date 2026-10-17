@@ -203,7 +203,17 @@ export default function PartnerProfile() {
       } else {
         saved = await base44.entities.PartnerProfile.create(data);
       }
-      syncToSupabase(profile?.id || saved?.id, data, profile?.supabase_profile_id).catch(e => console.warn("Supabase sync failed:", e?.message));
+      const profileId = profile?.id || saved?.id;
+      syncToSupabase(profileId, data, profile?.supabase_profile_id).catch(e => console.warn("Supabase sync failed:", e?.message));
+      if (profileId) {
+        base44.functions
+          .invoke("syncPartnerProfileToVrms", {
+            profileId,
+            partnerEmail: data.partner_email,
+            data: { ...data, id: profileId },
+          })
+          .catch((e) => console.warn("VRM sync failed:", e?.message));
+      }
       return saved;
     },
     onSuccess: () => {
@@ -221,7 +231,17 @@ export default function PartnerProfile() {
       } else {
         saved = await base44.entities.PartnerProfile.create(data);
       }
-      syncToSupabase(profile?.id || saved?.id, data, profile?.supabase_profile_id).catch(e => console.warn("Supabase sync failed:", e?.message));
+      const profileId = profile?.id || saved?.id;
+      syncToSupabase(profileId, data, profile?.supabase_profile_id).catch(e => console.warn("Supabase sync failed:", e?.message));
+      if (profileId) {
+        base44.functions
+          .invoke("syncPartnerProfileToVrms", {
+            profileId,
+            partnerEmail: data.partner_email,
+            data: { ...data, id: profileId },
+          })
+          .catch((e) => console.warn("VRM sync failed:", e?.message));
+      }
       return saved;
     },
     onSuccess: () => {

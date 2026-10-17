@@ -1521,6 +1521,7 @@ export const LOCAL_FUNCTIONS = new Set([
   "updatePropertyContent",
   "approvePropertySubmission",
   "generatePropertyAltText",
+  "syncPartnerProfileToVrms",
   ...STRIPE_FUNCTIONS,
 ]);
 
@@ -1568,6 +1569,9 @@ export async function handleNeonFunction(req: any, res: any, functionName: strin
     } else if (functionName === "generatePropertyAltText") {
       const { handleGeneratePropertyAltText } = await import("./generate-property-alt-text.js");
       await handleGeneratePropertyAltText(req, res, body);
+    } else if (functionName === "syncPartnerProfileToVrms") {
+      const { handleSyncPartnerProfileToVrms } = await import("./sync-partner-profile-to-vrms.js");
+      await handleSyncPartnerProfileToVrms(req, res, body);
     }
     return true;
   } catch (error: any) {

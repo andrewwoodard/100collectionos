@@ -24,7 +24,7 @@ function buildVrmsPayload(profile, partner) {
   const phone = profile.reservation_phone || profile.personal_phone || partner?.primary_contact_phone || '';
   const bio = profile.about_bio || profile.company_bio || '';
 
-  // Owner favorites — stored as a single JSON blob on the vrms row
+  // Owner favorites — object shape consumed by the public destination page
   const favorites_json = {
     restaurants: profile.favorite_restaurants || null,
     breweries: profile.favorite_breweries || null,
@@ -32,9 +32,12 @@ function buildVrmsPayload(profile, partner) {
     shops: profile.favorite_shops || null,
     things_to_do: profile.favorite_things_to_do || null,
   };
+  const hasFavorites = Object.values(favorites_json).some((v) => String(v || '').trim());
+  const market = partner?.market || profile.market || '';
+  const destinationSlug = slugify(market);
 
   return {
-    favorites_json,
+    favorites_json: hasFavorites ? favorites_json : null,
     name: partnerName,
     partner_name: partnerName,
     title: partnerName,
@@ -51,6 +54,12 @@ function buildVrmsPayload(profile, partner) {
     vrm_phone: phone,
     phone,
     website: profile.website_url || null,
+    vrm_url: profile.website_url || null,
+    first_destination_slug: destinationSlug || null,
+    destination_slugs: destinationSlug ? JSON.stringify([destinationSlug]) : null,
+    showproperties: true,
+    onboarded: true,
+    is_onboarded: true,
     updated_at: new Date().toISOString(),
   };
 }

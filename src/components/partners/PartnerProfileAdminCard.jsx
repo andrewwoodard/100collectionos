@@ -250,10 +250,14 @@ export default function PartnerProfileAdminCard({ partner, partnerId }) {
         }
       }
 
-      // Push to public destination (vrms) when possible
+      // Push branding + owner favorites to public destination (vrms)
       if (profileId) {
         base44.functions
-          .invoke("syncPartnerProfileToVrms", { profileId, partnerEmail: payload.partner_email })
+          .invoke("syncPartnerProfileToVrms", {
+            profileId,
+            partnerId,
+            partnerEmail: payload.partner_email,
+          })
           .catch((e) => console.warn("[PartnerProfileAdminCard] vrms sync", e?.message));
       }
 
