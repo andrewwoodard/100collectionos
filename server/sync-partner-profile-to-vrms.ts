@@ -176,22 +176,29 @@ async function upsertNeonVrms(payload: Record<string, any>) {
     "updated_at",
   ];
 
-  const values = cols.map((col) => {
-    if (col === "destination_slugs" || col === "favorites_json") {
-      return payload[col] == null ? null : JSON.stringify(payload[col]);
-    }
-    return payload[col] ?? null;
-  });
+  // Skip main_image_url on update when unset so Destination About hero isn't wiped.
+  const updateCols = cols.filter(
+    (col) => col !== "main_image_url" || Object.prototype.hasOwnProperty.call(payload, "main_image_url")
+  );
+
+  const valuesFor = (useCols: string[]) =>
+    useCols.map((col) => {
+      if (col === "destination_slugs" || col === "favorites_json") {
+        return payload[col] == null ? null : JSON.stringify(payload[col]);
+      }
+      return payload[col] ?? null;
+    });
 
   if (existing[0]?.id) {
-    const sets = cols.map((col, i) => {
+    const values = valuesFor(updateCols);
+    const sets = updateCols.map((col, i) => {
       if (col === "destination_slugs" || col === "favorites_json") {
         return `${col} = $${i + 1}::jsonb`;
       }
       return `${col} = $${i + 1}`;
     });
     const { rows } = await pool.query(
-      `UPDATE supabase.vrms SET ${sets.join(", ")} WHERE id = $${cols.length + 1}
+      `UPDATE supabase.vrms SET ${sets.join(", ")} WHERE id = $${updateCols.length + 1}
        RETURNING id`,
       [...values, existing[0].id]
     );
@@ -202,14 +209,16 @@ async function upsertNeonVrms(payload: Record<string, any>) {
     `SELECT COALESCE(MAX(id::bigint), 0)::bigint + 1 AS next_id FROM supabase.vrms`
   );
   const nextId = String(maxRows[0]?.next_id || Date.now());
-  const placeholders = cols.map((col, i) =>
+  const insertCols = updateCols;
+  const insertValues = valuesFor(insertCols);
+  const placeholders = insertCols.map((col, i) =>
     col === "destination_slugs" || col === "favorites_json" ? `$${i + 2}::jsonb` : `$${i + 2}`
   );
   const { rows } = await pool.query(
-    `INSERT INTO supabase.vrms (id, ${cols.join(", ")}, created_at, imported_at)
+    `INSERT INTO supabase.vrms (id, ${insertCols.join(", ")}, created_at, imported_at)
      VALUES ($1, ${placeholders.join(", ")}, NOW(), NOW())
      RETURNING id`,
-    [nextId, ...values]
+    [nextId, ...insertValues]
   );
   return { action: "created" as const, vrms_id: rows[0]?.id };
 }
