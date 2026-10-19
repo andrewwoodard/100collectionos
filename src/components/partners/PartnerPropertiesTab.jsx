@@ -1,11 +1,11 @@
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { Link } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import StatusBadge from "../shared/StatusBadge";
 import EmptyState from "../shared/EmptyState";
-import { Building2, CheckCircle2, Gift, Pencil, Plus, Sparkles, X, Trash2 } from "lucide-react";
+import { Building2, CheckCircle2, Gift, GripVertical, Pencil, Plus, Sparkles, X, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/use-toast";
 import { useAuth } from "@/lib/AuthContext";
@@ -66,6 +66,19 @@ function LicenceSelector({ prop, lic, isChanging, isSaving, unusedLicenseRecords
   );
 }
 
+function sortPartnerProperties(list) {
+  return [...list].sort((a, b) => {
+    const ao = a.partner_sort_order;
+    const bo = b.partner_sort_order;
+    const aHas = ao != null && ao !== "" && !Number.isNaN(Number(ao));
+    const bHas = bo != null && bo !== "" && !Number.isNaN(Number(bo));
+    if (aHas && bHas && Number(ao) !== Number(bo)) return Number(ao) - Number(bo);
+    if (aHas && !bHas) return -1;
+    if (!aHas && bHas) return 1;
+    return String(a.property_name || "").localeCompare(String(b.property_name || ""));
+  });
+}
+
 export default function PartnerPropertiesTab({ properties, partnerId, partner, stripeData, base44PartnerId }) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -77,6 +90,15 @@ export default function PartnerPropertiesTab({ properties, partnerId, partner, s
   const [statusSaving, setStatusSaving] = useState(new Set());
   const [addModalOpen, setAddModalOpen] = useState(false);
   const [aiModalOpen, setAiModalOpen] = useState(false);
+  const [orderedProperties, setOrderedProperties] = useState(() => sortPartnerProperties(properties || []));
+  const [reordering, setReordering] = useState(false);
+  const [dragOverId, setDragOverId] = useState(null);
+  const [dragSourceId, setDragSourceId] = useState(null);
+  const dragSourceIdRef = useRef(null);
+
+  useEffect(() => {
+    setOrderedProperties(sortPartnerProperties(properties || []));
+  }, [properties]);
 
   const handleStatusChange = async (prop, nextStatus) => {
     if (!prop?.id || prop._isDraftSubmission || prop.status === nextStatus) return;
@@ -223,7 +245,53 @@ export default function PartnerPropertiesTab({ properties, partnerId, partner, s
     status: s.status,
     _isDraftSubmission: true,
   }));
-  const allRows = [...draftRows, ...properties];
+  // Drafts stay pinned above; only real properties are reorderable.
+  const allRows = [...draftRows, ...orderedProperties];
+
+  const persistPropertyOrder = async (nextList) => {
+    setReordering(true);
+    try {
+      const updates = nextList
+        .map((prop, index) => ({ prop, index }))
+        .filter(({ prop, index }) => Number(prop.partner_sort_order) !== index);
+      await Promise.all(
+        updates.map(({ prop, index }) =>
+          base44.entities.Property.update(prop.id, { partner_sort_order: index })
+        )
+      );
+      queryClient.invalidateQueries({ queryKey: ["partner-properties"] });
+    } catch (err) {
+      setOrderedProperties(sortPartnerProperties(properties || []));
+      toast({
+        variant: "destructive",
+        title: "Could not save order",
+        description: err?.message || "Try again",
+      });
+    } finally {
+      setReordering(false);
+    }
+  };
+
+  const clearDragState = () => {
+    dragSourceIdRef.current = null;
+    setDragSourceId(null);
+    setDragOverId(null);
+  };
+
+  const handlePropertyDrop = (dropPropId) => {
+    const sourceId = dragSourceIdRef.current;
+    clearDragState();
+    if (!sourceId || sourceId === dropPropId) return;
+    const from = orderedProperties.findIndex((p) => String(p.id) === String(sourceId));
+    const to = orderedProperties.findIndex((p) => String(p.id) === String(dropPropId));
+    if (from < 0 || to < 0 || from === to) return;
+    const next = Array.from(orderedProperties);
+    const [moved] = next.splice(from, 1);
+    next.splice(to, 0, moved);
+    const withOrder = next.map((p, index) => ({ ...p, partner_sort_order: index }));
+    setOrderedProperties(withOrder);
+    persistPropertyOrder(withOrder);
+  };
 
   // All stripe-backed licences (assigned or not)
   const stripeLicenses = licenses.filter(l => l.stripe_invoice_id);
@@ -348,9 +416,15 @@ export default function PartnerPropertiesTab({ properties, partnerId, partner, s
       )}
 
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+        {reordering && (
+          <div className="px-5 py-2 text-xs text-slate-500 bg-slate-50 border-b border-gray-100">
+            Saving property order…
+          </div>
+        )}
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-gray-100 bg-gray-50">
+              <th className="w-10 px-2 py-3" aria-label="Reorder" />
               <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Property</th>
               <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Market</th>
               <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Type</th>
@@ -367,9 +441,64 @@ export default function PartnerPropertiesTab({ properties, partnerId, partner, s
               const isSaving = saving.has(prop.id);
               const isRemoving = removing.has(prop.id);
               const isChanging = changing[prop.id];
+              const isDragging = !isDraft && String(dragSourceId) === String(prop.id);
+              const isDragOver = !isDraft && String(dragOverId) === String(prop.id);
 
               return (
-                <tr key={prop.id} className={`hover:bg-gray-50 transition-colors ${isDraft || prop.status === "draft" ? "bg-amber-50/40" : ""}`}>
+                <tr
+                  key={prop.id}
+                  draggable={!isDraft && !reordering}
+                  onDragStart={(e) => {
+                    if (isDraft) return;
+                    // Don't start a reorder drag from interactive controls.
+                    const tag = e.target?.closest?.("a,button,select,input,textarea,label");
+                    if (tag && !tag.dataset?.reorderHandle) {
+                      e.preventDefault();
+                      return;
+                    }
+                    dragSourceIdRef.current = prop.id;
+                    setDragSourceId(prop.id);
+                    e.dataTransfer.effectAllowed = "move";
+                    try {
+                      e.dataTransfer.setData("text/plain", String(prop.id));
+                    } catch {
+                      /* some browsers require setData for drag to work */
+                    }
+                  }}
+                  onDragEnd={clearDragState}
+                  className={`hover:bg-gray-50 transition-colors ${
+                    isDraft || prop.status === "draft" ? "bg-amber-50/40" : ""
+                  } ${!isDraft ? "cursor-grab active:cursor-grabbing" : ""} ${
+                    isDragging ? "opacity-40" : ""
+                  } ${isDragOver ? "ring-2 ring-inset ring-[#C9A96E]/60 bg-[#FAF6EE]" : ""}`}
+                  onDragOver={(e) => {
+                    if (isDraft) return;
+                    e.preventDefault();
+                    setDragOverId(prop.id);
+                  }}
+                  onDragLeave={() => {
+                    if (String(dragOverId) === String(prop.id)) setDragOverId(null);
+                  }}
+                  onDrop={(e) => {
+                    if (isDraft) return;
+                    e.preventDefault();
+                    handlePropertyDrop(prop.id);
+                  }}
+                >
+                  <td className="px-2 py-3 text-gray-300">
+                    {isDraft ? (
+                      <span className="inline-block w-4" />
+                    ) : (
+                      <span
+                        data-reorder-handle="true"
+                        className="inline-flex p-1 rounded text-gray-400"
+                        title="Drag to reorder"
+                        aria-label={`Reorder ${prop.property_name || "property"}`}
+                      >
+                        <GripVertical className="w-4 h-4" />
+                      </span>
+                    )}
+                  </td>
                   <td className="px-5 py-3 font-medium text-gray-900">
                     {isDraft ? (
                       <Link

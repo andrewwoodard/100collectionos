@@ -264,7 +264,18 @@ export default function PartnerDetail() {
         }
       }
 
-      return [...mergedRows, ...createdRows];
+      const combined = [...mergedRows, ...createdRows];
+      // Prefer explicit partner list order; fall back to name for unsorted rows.
+      return combined.sort((a, b) => {
+        const ao = a.partner_sort_order;
+        const bo = b.partner_sort_order;
+        const aHas = ao != null && ao !== "" && !Number.isNaN(Number(ao));
+        const bHas = bo != null && bo !== "" && !Number.isNaN(Number(bo));
+        if (aHas && bHas && Number(ao) !== Number(bo)) return Number(ao) - Number(bo);
+        if (aHas && !bHas) return -1;
+        if (!aHas && bHas) return 1;
+        return String(a.property_name || "").localeCompare(String(b.property_name || ""));
+      });
     },
     enabled: !!partnerId && (!!confirmedBase44Id || !!partnerName),
   });

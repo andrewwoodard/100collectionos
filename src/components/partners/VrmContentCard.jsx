@@ -1,14 +1,12 @@
 import React, { useState, useEffect } from "react";
 import { sb } from "@/lib/supabase";
-import { base44 } from "@/api/base44Client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Loader2, Save, FileText, ExternalLink } from "lucide-react";
+import { Loader2, Save, FileText, ExternalLink, Upload, ImagePlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/components/ui/use-toast";
-import ImageUploadField from "./VrmImageUploadField";
+import { uploadPropertyImage } from "@/lib/propertyImagesBlob";
 
 // ── Sanity Portable Text helpers ────────────────────────────────────────────
 
@@ -18,13 +16,13 @@ function portableTextToPlainText(json) {
     const blocks = typeof json === "string" ? JSON.parse(json) : json;
     if (!Array.isArray(blocks)) return "";
     return blocks
-      .map(block => {
+      .map((block) => {
         if (block._type === "block" && Array.isArray(block.children)) {
-          return block.children.map(child => child.text || "").join("");
+          return block.children.map((child) => child.text || "").join("");
         }
         return "";
       })
-      .filter(t => t !== "")
+      .filter((t) => t !== "")
       .join("\n\n");
   } catch {
     return "";
@@ -39,8 +37,8 @@ function plainTextToPortableText(text) {
   if (!text || !text.trim()) return [];
   return text
     .split(/\n\n+/)
-    .filter(p => p.trim())
-    .map(para => ({
+    .filter((p) => p.trim())
+    .map((para) => ({
       _key: genKey(),
       _type: "block",
       style: "normal",
@@ -50,6 +48,9 @@ function plainTextToPortableText(text) {
 }
 
 // ── Component ────────────────────────────────────────────────────────────────
+// Branding (name, title, logo, headshot, bio) is edited in PartnerProfileAdminCard
+// and synced to vrms. This card only covers destination-page copy that is unique
+// to the public destination About section.
 
 export default function VrmContentCard({ partnerName }) {
   const { toast } = useToast();
@@ -64,45 +65,14 @@ export default function VrmContentCard({ partnerName }) {
     enabled: !!partnerName,
   });
 
-  const [form, setForm] = useState({
-    doyen_name: "",
-    doyen_title: "",
-    doyen_short_description: "",
-    doyen_text: "",
-    body_text: "",
-    doyen_image_url: "",
-    logo_image_url: "",
-  });
-  const [uploading, setUploading] = useState({ doyen: false, logo: false });
-
-  const handleImageUpload = async (field, file) => {
-    if (!file) return;
-    const key = field === "doyen_image_url" ? "doyen" : "logo";
-    setUploading(s => ({ ...s, [key]: true }));
-    try {
-      const { file_url } = await base44.integrations.Core.UploadFile({ file });
-      setForm(f => ({ ...f, [field]: file_url }));
-      if (field === "doyen_image_url") {
-        doyenImageMutation.mutate(file_url);
-      }
-    } catch (e) {
-      toast({ title: "Image upload failed", description: e?.message, variant: "destructive" });
-    } finally {
-      setUploading(s => ({ ...s, [key]: false }));
-    }
-  };
+  const [bodyText, setBodyText] = useState("");
+  const [heroUrl, setHeroUrl] = useState("");
+  const [uploadingHero, setUploadingHero] = useState(false);
 
   useEffect(() => {
     if (vrm) {
-      setForm({
-        doyen_name: vrm.doyen_name || "",
-        doyen_title: vrm.doyen_title || "",
-        doyen_short_description: vrm.doyen_short_description || "",
-        doyen_text: vrm.doyen_text || "",
-        body_text: portableTextToPlainText(vrm.body_json),
-        doyen_image_url: vrm.doyen_image_url || "",
-        logo_image_url: vrm.logo_image_url || "",
-      });
+      setBodyText(portableTextToPlainText(vrm.body_json));
+      setHeroUrl(vrm.main_image_url || "");
     }
   }, [vrm]);
 
@@ -119,38 +89,31 @@ export default function VrmContentCard({ partnerName }) {
     },
   });
 
-  // Persist doyen image changes to the vrms table immediately on upload/clear,
-  // so the live destination page reflects the new photo without a separate Save.
-  const doyenImageMutation = useMutation({
-    mutationFn: async (doyen_image_url) => {
-      await sb.update("vrms", vrm.id, { doyen_image_url });
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["vrm-content", partnerName] });
-    },
-    onError: () => {
-      toast({ title: "Failed to update doyen image.", variant: "destructive" });
-    },
-  });
+  const handleHeroUpload = async (e) => {
+    const file = e.target?.files?.[0];
+    if (!file) return;
+    if (!String(file.type || "").startsWith("image/")) {
+      toast({ variant: "destructive", title: "Please choose an image file" });
+      return;
+    }
+    setUploadingHero(true);
+    try {
+      const file_url = await uploadPropertyImage(file);
+      setHeroUrl(file_url);
+      toast({ title: "Destination hero uploaded" });
+    } catch (err) {
+      toast({ variant: "destructive", title: "Upload failed", description: err?.message });
+    } finally {
+      setUploadingHero(false);
+      if (e.target) e.target.value = "";
+    }
+  };
 
   const handleSave = () => {
-    const payload = {
-      doyen_name: form.doyen_name || null,
-      doyen_title: form.doyen_title || null,
-      doyen_short_description: form.doyen_short_description || null,
-      doyen_text: form.doyen_text || null,
-      doyentext_json: JSON.stringify(plainTextToPortableText(form.doyen_text)),
-      body_json: JSON.stringify(plainTextToPortableText(form.body_text)),
-    };
-    // Only write image fields when they changed from the loaded value,
-    // so an untouched doyen/logo keeps its current value in the database.
-    if ((form.doyen_image_url || null) !== (vrm.doyen_image_url || null)) {
-      payload.doyen_image_url = form.doyen_image_url || null;
-    }
-    if ((form.logo_image_url || null) !== (vrm.logo_image_url || null)) {
-      payload.logo_image_url = form.logo_image_url || null;
-    }
-    updateMutation.mutate(payload);
+    updateMutation.mutate({
+      body_json: JSON.stringify(plainTextToPortableText(bodyText)),
+      main_image_url: heroUrl || null,
+    });
   };
 
   if (isLoading) {
@@ -163,15 +126,15 @@ export default function VrmContentCard({ partnerName }) {
 
   if (!vrm) return null;
 
-  const destinationUrl = vrm.slug
-    ? `https://theonehundredcollection.com/destinations/${vrm.first_destination_slug || ""}/${vrm.slug}`
+  const destinationUrl = vrm.first_destination_slug
+    ? `https://the100collection.com/destinations/${vrm.first_destination_slug}`
     : null;
 
   return (
     <div className="bg-white rounded-xl border border-gray-100 p-5">
       <div className="flex items-center justify-between mb-1">
         <h4 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
-          <FileText className="w-4 h-4 text-gray-400" /> Destination Page Content
+          <FileText className="w-4 h-4 text-gray-400" /> Destination About Text
         </h4>
         <div className="flex items-center gap-2">
           {destinationUrl && (
@@ -195,80 +158,56 @@ export default function VrmContentCard({ partnerName }) {
         </div>
       </div>
       <p className="text-xs text-gray-500 mb-4">
-        This content appears on the website destination pages. Changes here update the live site.
+        Hero image and market description for the public destination page. Partner name, title, logo,
+        and bio are edited above in Partner Profile & Branding.
       </p>
 
-      <div className="space-y-4">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <Label className="text-xs text-gray-500">Representative Name</Label>
-            <Input
-              value={form.doyen_name}
-              onChange={e => setForm({ ...form, doyen_name: e.target.value })}
-              placeholder="e.g. Buck Cumbo"
-              className="mt-1"
-            />
-          </div>
-          <div>
-            <Label className="text-xs text-gray-500">Title</Label>
-            <Input
-              value={form.doyen_title}
-              onChange={e => setForm({ ...form, doyen_title: e.target.value })}
-              placeholder="e.g. Founder & CEO"
-              className="mt-1"
-            />
-          </div>
-        </div>
-
+      <div className="space-y-5">
         <div>
-          <Label className="text-xs text-gray-500">Short Description</Label>
-          <Input
-            value={form.doyen_short_description}
-            onChange={e => setForm({ ...form, doyen_short_description: e.target.value })}
-            placeholder="One-line tagline shown on the destination page"
-            className="mt-1"
-          />
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <ImageUploadField
-            label="Doyen Image"
-            hint="Representative photo shown on the destination page"
-            value={form.doyen_image_url}
-            uploading={uploading.doyen || doyenImageMutation.isPending}
-            onUpload={(f) => handleImageUpload("doyen_image_url", f)}
-            onClear={() => {
-              setForm(f => ({ ...f, doyen_image_url: "" }));
-              doyenImageMutation.mutate(null);
-            }}
-          />
-          <ImageUploadField
-            label="Logo Image"
-            hint="Company logo shown on the destination page"
-            value={form.logo_image_url}
-            uploading={uploading.logo}
-            onUpload={(f) => handleImageUpload("logo_image_url", f)}
-            onClear={() => setForm(f => ({ ...f, logo_image_url: "" }))}
-          />
-        </div>
-
-        <div>
-          <Label className="text-xs text-gray-500">Partner Bio Text</Label>
-          <Textarea
-            value={form.doyen_text}
-            onChange={e => setForm({ ...form, doyen_text: e.target.value })}
-            rows={7}
-            placeholder="Full partner bio shown at the bottom of the destination page"
-            className="mt-1"
-          />
-          <p className="text-xs text-gray-400 mt-1">Separate paragraphs with a blank line.</p>
+          <Label className="text-xs text-gray-500 mb-1.5 block">Destination Hero Image</Label>
+          <div className="flex items-start gap-3">
+            {heroUrl ? (
+              <img
+                src={heroUrl}
+                alt=""
+                className="w-full max-w-md max-h-40 object-cover rounded-lg border border-gray-100"
+              />
+            ) : (
+              <div className="w-full max-w-md h-28 rounded-lg border border-dashed border-gray-200 bg-gray-50 flex items-center justify-center text-gray-300">
+                <ImagePlus className="w-6 h-6" />
+              </div>
+            )}
+            <div className="flex flex-col gap-1 shrink-0 pt-1">
+              <label className="inline-flex items-center gap-1.5 text-xs font-medium text-[#C9A96E] hover:underline cursor-pointer">
+                {uploadingHero ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
+                {heroUrl ? "Replace" : "Upload"}
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  disabled={uploadingHero}
+                  onChange={handleHeroUpload}
+                />
+              </label>
+              {heroUrl && (
+                <button
+                  type="button"
+                  onClick={() => setHeroUrl("")}
+                  className="text-[11px] text-gray-400 hover:text-red-500 text-left"
+                >
+                  Remove
+                </button>
+              )}
+              <p className="text-[10px] text-gray-400">Wide hero at the top of the destination page (16:9 recommended)</p>
+            </div>
+          </div>
         </div>
 
         <div>
           <Label className="text-xs text-gray-500">Destination Text</Label>
           <Textarea
-            value={form.body_text}
-            onChange={e => setForm({ ...form, body_text: e.target.value })}
+            value={bodyText}
+            onChange={(e) => setBodyText(e.target.value)}
             rows={7}
             placeholder="Destination description shown on the destination page"
             className="mt-1"

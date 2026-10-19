@@ -60,7 +60,11 @@ function buildVrmsPayload(profile: Record<string, any>, partner: Record<string, 
     doyen_text: bio,
     doyen_image_url: profile.profile_photo_url || null,
     logo_image_url: profile.company_logo_url || null,
-    main_image_url: profile.profile_photo_url || profile.company_logo_url || null,
+    // Destination hero is edited on the Destination About card (vrms.main_image_url).
+    // Only push when the profile still has an explicit hero so we don't wipe it.
+    ...(profile.destination_hero_image_url
+      ? { main_image_url: profile.destination_hero_image_url }
+      : {}),
     vrm_email: email,
     email,
     vrm_phone: phone,

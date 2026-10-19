@@ -48,7 +48,11 @@ function buildVrmsPayload(profile, partner) {
     doyen_text: bio,
     doyen_image_url: profile.profile_photo_url || null,
     logo_image_url: profile.company_logo_url || null,
-    main_image_url: profile.profile_photo_url || profile.company_logo_url || null,
+    main_image_url:
+      profile.destination_hero_image_url ||
+      profile.profile_photo_url ||
+      profile.company_logo_url ||
+      null,
     vrm_email: email,
     email,
     vrm_phone: phone,
