@@ -66,6 +66,7 @@ function defaultsFromPartner(partner, owner) {
 }
 
 async function syncPartnerProfileToSupabase(profileId, data, sbProfileId) {
+  // Only columns that exist on remote Supabase partner_profiles (no company_bio / phones).
   const payload = {
     partner_email: data.partner_email,
     partner_name: data.partner_name || data.display_name || data.company_name,
@@ -75,10 +76,6 @@ async function syncPartnerProfileToSupabase(profileId, data, sbProfileId) {
     market: data.market,
     website_url: data.website_url,
     about_bio: data.about_bio,
-    company_bio: data.company_bio,
-    personal_phone: data.personal_phone,
-    reservation_phone: data.reservation_phone,
-    reservation_email: data.reservation_email,
     profile_photo_url: data.profile_photo_url,
     company_logo_url: data.company_logo_url,
     favorite_restaurants: data.favorite_restaurants,
