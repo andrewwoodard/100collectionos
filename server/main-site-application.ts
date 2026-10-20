@@ -151,8 +151,12 @@ export function mapMainSiteApplication(rawBody: any) {
     "Market",
     "property_locations",
     "propertyLocations",
+    "rentalPropertyState",
+    "rental_property_state",
+    "markets",
     "location",
-    "city"
+    "city",
+    "state"
   );
   const howHeard = pickField(
     payload,
@@ -170,12 +174,15 @@ export function mapMainSiteApplication(rawBody: any) {
     "company_name",
     "company",
     "businessName",
+    "business_name",
     "Company Name",
     "Company"
   );
   const website = pickField(
     payload,
     "website",
+    "websiteUrl",
+    "website_url",
     "companyWebsite",
     "company_website",
     "url",
