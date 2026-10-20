@@ -19,7 +19,7 @@ export default function SendSubscriptionInvoiceModal({ open, onClose, partner, p
   const licensePrice = Number(partner?.license_unit_price) > 0 ? Number(partner.license_unit_price) : 1200;
   const activeProperties = (properties || []).filter(p => p?.status === "active");
   const propertyCount = activeProperties.length;
-  const canMonthly = propertyCount >= 5;
+  const canMonthly = propertyCount >= 4;
 
   const [interval, setInterval] = useState("year");
   const [billingMode, setBillingMode] = useState("subscription");
@@ -135,7 +135,7 @@ export default function SendSubscriptionInvoiceModal({ open, onClose, partner, p
                     <p className="text-xs text-gray-500">{fmt(totalMonthly)}{billingMode === "subscription" ? "/mo for 12 months" : " once"}</p>
                   </div>
                 </div>
-                {!canMonthly && <span className="text-[10px] text-gray-400 italic">Requires 5+ properties</span>}
+                {!canMonthly && <span className="text-[10px] text-gray-400 italic">Requires 4+ properties</span>}
               </label>
             </div>
           </div>

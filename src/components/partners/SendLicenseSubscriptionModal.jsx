@@ -24,7 +24,7 @@ export default function SendLicenseSubscriptionModal({ open, onClose, partner, s
   const [error, setError] = useState("");
 
   const count = Math.max(1, Math.min(100, Number(licenseCount) || 1));
-  const canMonthly = count >= 5;
+  const canMonthly = count >= 4;
   const totalAnnual = licensePrice * count;
   const totalMonthly = totalAnnual / 12;
   const chargeAmount = interval === "year" ? totalAnnual : totalMonthly;
@@ -141,7 +141,7 @@ export default function SendLicenseSubscriptionModal({ open, onClose, partner, s
                     <p className="text-xs text-gray-500">{fmt(totalMonthly)}{billingMode === "subscription" ? "/mo for 12 months" : " once"}</p>
                   </div>
                 </div>
-                {!canMonthly && <span className="text-[10px] text-gray-400 italic">Requires 5+ licenses</span>}
+                {!canMonthly && <span className="text-[10px] text-gray-400 italic">Requires 4+ licenses</span>}
               </label>
             </div>
           </div>
