@@ -43,7 +43,7 @@ const VRMS_COLUMNS = new Set([
 
 const PROP_COLUMNS = new Set([
   "row_id", "source_id", "name", "url", "vrm_url", "destination", "partner_name",
-  "partner_id", "address", "bedrooms", "bathrooms", "occupancy", "house_type", "status",
+  "partner_id", "address", "bedrooms", "bathrooms", "half_bathrooms", "occupancy", "house_type", "status",
   "active", "portal_visible", "onboarding_status", "photography_status", "launch_date",
   "removal_date", "last_scan", "latitude", "longitude", "pet_friendly", "unique_feature",
   "why_onehundred", "excerpt", "text", "headline", "property_image", "video_url",
@@ -155,6 +155,7 @@ function fromSupabase(row: any) {
     listing_url: source.url,
     bedrooms: source.bedrooms,
     bathrooms: source.bathrooms,
+    half_bathrooms: source.half_bathrooms,
     sleeps: source.sleeps ?? source.occupancy,
     property_type: source.house_type,
     partner_name: source.partner_name,

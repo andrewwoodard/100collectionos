@@ -287,8 +287,50 @@ export default function PartnerProfileAdminCard({ partner, partnerId }) {
     setLoading(true);
     try {
       const file_url = await uploadPropertyImage(file);
-      setForm((f) => ({ ...f, [field]: file_url }));
-      toast({ title: field === "profile_photo_url" ? "Profile photo uploaded" : "Logo uploaded" });
+      const next = { ...form, [field]: file_url };
+      setForm(next);
+
+      // Persist immediately + push to public destination (vrms), same as partner portal upload.
+      const payload = {
+        ...next,
+        partner_email: next.partner_email || ownerEmail,
+        partner_name: next.partner_name || partner?.partner_name || next.company_name,
+        profile_status: next.profile_status || profile?.profile_status || "draft",
+      };
+      let saved;
+      if (profile?.id) {
+        saved = await base44.entities.PartnerProfile.update(profile.id, { [field]: file_url });
+      } else {
+        saved = await base44.entities.PartnerProfile.create(payload);
+      }
+      const profileId = profile?.id || saved?.id;
+      await syncPartnerProfileToSupabase(
+        profileId,
+        payload,
+        profile?.supabase_profile_id || saved?.supabase_profile_id
+      ).catch((err) => console.warn("[PartnerProfileAdminCard] supabase sync", err?.message));
+
+      if (partnerId && field === "company_logo_url") {
+        await base44.entities.Partner.update(partnerId, { logo_url: file_url }).catch(() => {});
+      }
+      if (profileId) {
+        base44.functions
+          .invoke("syncPartnerProfileToVrms", {
+            profileId,
+            partnerId,
+            partnerEmail: payload.partner_email,
+          })
+          .catch((err) => console.warn("[PartnerProfileAdminCard] vrms sync", err?.message));
+      }
+
+      queryClient.invalidateQueries({ queryKey: ["admin-partner-profile", ownerEmail.toLowerCase()] });
+      queryClient.invalidateQueries({ queryKey: ["partner-entity", partnerId] });
+      queryClient.invalidateQueries({ queryKey: ["partner", partnerId] });
+      queryClient.invalidateQueries({ queryKey: ["vrm-content", partner?.partner_name] });
+      toast({
+        title: field === "profile_photo_url" ? "Profile photo saved" : "Company logo saved",
+        description: "Public destination branding will update shortly.",
+      });
     } catch (err) {
       toast({ variant: "destructive", title: "Upload failed", description: err?.message });
     } finally {

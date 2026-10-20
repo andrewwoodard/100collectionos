@@ -7,6 +7,7 @@ const FIELD_LABELS = {
   description: "Description",
   bedrooms: "Bedrooms",
   bathrooms: "Bathrooms",
+  half_bathrooms: "Half Bathrooms",
   sleeps: "Sleeps",
   amenities: "Amenities",
   design_style_notes: "Design Style Notes",
@@ -17,7 +18,7 @@ const FIELD_LABELS = {
 };
 
 const ARRAY_FIELDS = new Set(["amenities", "photo_urls"]);
-const NUMBER_FIELDS = new Set(["bedrooms", "bathrooms", "sleeps"]);
+const NUMBER_FIELDS = new Set(["bedrooms", "bathrooms", "half_bathrooms", "sleeps"]);
 const LONG_TEXT_FIELDS = new Set(["description", "short_summary", "design_style_notes", "unique_features", "why_100_collection", "best_fit_guest"]);
 
 function isEmpty(v) {

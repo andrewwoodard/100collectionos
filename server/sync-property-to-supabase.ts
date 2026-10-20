@@ -116,6 +116,7 @@ function buildPublicRecord(property: Record<string, any>, destination: string) {
     vrm_url: listingUrl || siteUrl,
     bedrooms: property.bedrooms != null ? Number(property.bedrooms) : null,
     bathrooms: property.bathrooms != null ? String(property.bathrooms) : null,
+    half_bathrooms: property.half_bathrooms != null ? String(property.half_bathrooms) : null,
     occupancy: property.sleeps != null ? Number(property.sleeps) : null,
     house_type: asString(property.property_type) || null,
     partner_name: asString(property.partner_name) || null,

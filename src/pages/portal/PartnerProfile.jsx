@@ -280,6 +280,16 @@ export default function PartnerProfile() {
       const profileId = profile?.id || saved?.id;
       syncToSupabase(profileId, next, profile?.supabase_profile_id || saved?.supabase_profile_id)
         .catch((err) => console.warn("Supabase sync failed:", err?.message));
+      // Push logo/photo to public destination page (vrms) immediately on upload.
+      if (profileId) {
+        base44.functions
+          .invoke("syncPartnerProfileToVrms", {
+            profileId,
+            partnerEmail: next.partner_email,
+            data: { ...next, id: profileId },
+          })
+          .catch((err) => console.warn("VRM sync failed:", err?.message));
+      }
       await queryClient.invalidateQueries(["partner-profile"]);
 
       toast.success(

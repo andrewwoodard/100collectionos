@@ -131,6 +131,10 @@ export async function handleUpdatePropertyContent(req: any, res: any, body: any 
   if (bathrooms !== undefined) {
     sbClean.bathrooms = bathrooms === "" || bathrooms == null ? null : String(bathrooms);
   }
+  if (half_bathrooms !== undefined) {
+    sbClean.half_bathrooms =
+      half_bathrooms === "" || half_bathrooms == null ? null : String(half_bathrooms);
+  }
   if (sleeps !== undefined) {
     sbClean.occupancy = sleeps === "" || sleeps == null ? null : String(sleeps);
   }

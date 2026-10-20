@@ -12,6 +12,7 @@ function toSupabase(data) {
   }
   if (data.bedrooms !== undefined) mapped.bedrooms = data.bedrooms;
   if (data.bathrooms !== undefined) mapped.bathrooms = data.bathrooms;
+  if (data.half_bathrooms !== undefined) mapped.half_bathrooms = data.half_bathrooms;
   if (data.status !== undefined) {
     mapped.status = data.status;
     mapped.active = data.status === 'active';
@@ -49,6 +50,7 @@ function fromSupabase(row) {
     listing_url: row.url,
     bedrooms: row.bedrooms,
     bathrooms: row.bathrooms,
+    half_bathrooms: row.half_bathrooms,
     sleeps: row.sleeps ?? row.occupancy,
     property_type: row.house_type,
     partner_name: row.partner_name,

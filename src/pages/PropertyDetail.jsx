@@ -280,7 +280,7 @@ function SyncSingleToSupabaseButton({ propertyId, propertyName }) {
 // in sync instead of showing a stale market/value after a save.
 const MIRROR_FIELDS = new Set([
   "property_name", "market", "address", "property_type", "bedrooms",
-  "bathrooms", "sleeps", "status", "onboarding_status", "photography_status",
+  "bathrooms", "half_bathrooms", "sleeps", "status", "onboarding_status", "photography_status",
   "launch_date", "vrm_url", "portal_visible", "excerpt", "text",
   "unique_feature", "internal_notes", "partner_name", "partner_id",
 ]);
@@ -370,6 +370,7 @@ export default function PropertyDetail() {
         address: baseProperty?.address,
         bedrooms: baseProperty?.bedrooms,
         bathrooms: baseProperty?.bathrooms,
+        half_bathrooms: baseProperty?.half_bathrooms,
         sleeps: baseProperty?.sleeps,
         property_type: baseProperty?.property_type,
         status: baseProperty?.status || "draft",
@@ -918,6 +919,12 @@ export default function PropertyDetail() {
           />
           <EditableField label="Bedrooms" value={property.bedrooms != null ? String(property.bedrooms) : (scrapedBedrooms ? String(scrapedBedrooms) : null)} onSave={(v) => save("bedrooms")(v ? Number(v) : null)} type="number" />
           <EditableField label="Bathrooms" value={property.bathrooms != null ? String(property.bathrooms) : (scrapedBathrooms ? String(scrapedBathrooms) : null)} onSave={(v) => save("bathrooms")(v ? Number(v) : null)} type="number" />
+          <EditableField
+            label="Half Bathrooms"
+            value={property.half_bathrooms != null && property.half_bathrooms !== "" ? String(property.half_bathrooms) : null}
+            onSave={(v) => save("half_bathrooms")(v === "" || v == null ? null : Number(v))}
+            type="number"
+          />
           <EditableField label="Sleeps" value={property.sleeps != null ? String(property.sleeps) : (scrapedSleeps ? String(scrapedSleeps) : null)} onSave={(v) => save("sleeps")(v ? Number(v) : null)} type="number" />
           <EditableField
             label="Photography Status"

@@ -10,7 +10,7 @@ import { ingestPropertyImages } from "@/lib/propertyImagesBlob";
 
 // Fields to copy from the edit submission onto the source Property when approved
 const EDITABLE_FIELDS = [
-  "headline", "short_summary", "description", "bedrooms", "bathrooms",
+  "headline", "short_summary", "description", "bedrooms", "bathrooms", "half_bathrooms",
   "sleeps", "amenities", "design_style_notes", "unique_features",
   "why_100_collection", "best_fit_guest", "photo_urls",
 ];

@@ -519,8 +519,10 @@ export default function PartnerPropertiesTab({ properties, partnerId, partner, s
                   <td className="px-5 py-3 text-gray-500">{prop.market || "—"}</td>
                   <td className="px-5 py-3 text-gray-500 capitalize">{prop.property_type?.replace(/_/g, " ") || "—"}</td>
                   <td className="px-5 py-3 text-gray-500">
-                    {prop.bedrooms || prop.bathrooms
-                      ? `${prop.bedrooms ?? "—"} BD / ${prop.bathrooms ?? "—"} BA`
+                    {prop.bedrooms || prop.bathrooms || prop.half_bathrooms
+                      ? `${prop.bedrooms ?? "—"} BD / ${prop.bathrooms ?? "—"} BA${
+                          prop.half_bathrooms ? ` / ${prop.half_bathrooms} ½` : ""
+                        }`
                       : "—"}
                   </td>
                   <td className="px-5 py-3">
