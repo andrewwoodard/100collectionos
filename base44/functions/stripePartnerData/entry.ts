@@ -144,9 +144,17 @@ Deno.serve(async (req) => {
           // recent occurrence (invoices are sorted most-recent-first by Stripe).
           // Without this, a partner on their 3rd annual cycle would show 3x
           // their actual license count.
+          // When an active subscription already defines seats, prior annual
+          // one-time invoices (same qty, named line items) must not double-count.
+          const hasSubscriptionCredits = credit_slots.some((s) => s.subscription_id);
           const seenDescriptions = new Set();
           for (const inv of invoices.data) {
-            if (inv.subscription) continue; // skip subscription invoices
+            // Skip subscription-linked invoices. Stripe may omit `subscription`
+            // on list/retrieve even when billing_reason is subscription_*; those
+            // seats are already counted from the Subscription object above.
+            const billingReason = String(inv.billing_reason || "");
+            if (inv.subscription || billingReason.startsWith("subscription")) continue;
+            if (hasSubscriptionCredits) continue;
             try {
               const allLines = [];
               for await (const line of stripe.invoices.listLineItems(inv.id, { limit: 100 })) {
@@ -156,6 +164,8 @@ Deno.serve(async (req) => {
                 const qty = line.quantity || 0;
                 if (qty <= 0) continue;
                 const desc = line.description || "";
+                // Onboarding / setup fees are not property licenses.
+                if (/\b(onboarding|setup|initiation|joining)\b/i.test(desc)) continue;
                 // Skip line items we've already seen in a more recent invoice
                 // (annual renewal of the same property license)
                 if (desc && seenDescriptions.has(desc)) continue;

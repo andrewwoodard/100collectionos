@@ -23,6 +23,7 @@ import { usePropertyImages } from "@/hooks/usePropertyImages";
 import ArchiveConfirmModal from "../components/properties/ArchiveConfirmModal";
 import AmenitiesEditor from "../components/properties/AmenitiesEditor";
 import EditableSleepingArrangements from "../components/properties/EditableSleepingArrangements";
+import RewritePropertyTextDialog from "../components/properties/RewritePropertyTextDialog";
 import { format } from "date-fns";
 import { useMemo } from "react";
 
@@ -292,6 +293,7 @@ export default function PropertyDetail() {
   const navigate = useNavigate();
   const { toast } = useToast();
   const [archiveModal, setArchiveModal] = useState(null);
+  const [rewriteTextOpen, setRewriteTextOpen] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
   const [amenitiesDraft, setAmenitiesDraft] = useState([]);
   const marketOptions = useExistingMarkets().map(m => ({ value: m, label: m }));
@@ -972,7 +974,20 @@ export default function PropertyDetail() {
             <EditableField label="Why 100 Collection" value={whyOnehundredValue} onSave={save("why_onehundred")} />
           </div>
           <div className="col-span-3">
-            <EditableField label="Text" value={textValue} onSave={save("text")} multiline rows={6} />
+            <div className="flex items-center justify-between gap-3 mb-1">
+              <p className="text-xs text-gray-500">Text</p>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setRewriteTextOpen(true)}
+                className="h-7 px-2.5 text-xs border-[#0F172A] text-[#0F172A] hover:bg-[#0F172A]/5"
+              >
+                <Sparkles className="w-3.5 h-3.5 mr-1.5" />
+                AI write text
+              </Button>
+            </div>
+            <EditableField label="" value={textValue} onSave={save("text")} multiline rows={6} />
           </div>
           <div className="col-span-3">
             <EditableSlug
@@ -1102,6 +1117,16 @@ export default function PropertyDetail() {
           onConfirm={() => handleArchiveRestore(archiveModal.isRestore)}
         />
       )}
+
+      <RewritePropertyTextDialog
+        open={rewriteTextOpen}
+        onOpenChange={setRewriteTextOpen}
+        property={property}
+        currentText={textValue || ""}
+        onReplace={async (next) => {
+          await save("text")(next);
+        }}
+      />
     </div>
   );
 }

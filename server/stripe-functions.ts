@@ -118,15 +118,25 @@ async function handleStripePartnerData(res: any, body: any) {
           }
         }
 
+        // When an active subscription already defines seats, prior annual
+        // one-time invoices (same qty, named line items) must not double-count.
+        const hasSubscriptionCredits = credit_slots.some((s) => s.subscription_id);
         const seenDescriptions = new Set<string>();
         for (const inv of invoices.data) {
-          if (inv.subscription) continue;
+          // Skip subscription-linked invoices. Stripe may omit `subscription`
+          // on list/retrieve even when billing_reason is subscription_*; those
+          // seats are already counted from the Subscription object above.
+          const billingReason = String(inv.billing_reason || "");
+          if (inv.subscription || billingReason.startsWith("subscription")) continue;
+          if (hasSubscriptionCredits) continue;
           try {
             const allLines = await stripe.invoices.listLineItems(inv.id, { limit: 100 }).autoPagingToArray({ limit: 100 });
             for (const line of allLines) {
               const qty = line.quantity || 0;
               if (qty <= 0) continue;
               const desc = line.description || "";
+              // Onboarding / setup fees are not property licenses.
+              if (/\b(onboarding|setup|initiation|joining)\b/i.test(desc)) continue;
               if (desc && seenDescriptions.has(desc)) continue;
               if (desc) seenDescriptions.add(desc);
               const unitAmount = line.amount && qty ? line.amount / qty / 100 : 0;
