@@ -4,7 +4,7 @@ import { base44 } from "@/api/base44Client";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/components/ui/use-toast";
 import { useExistingMarkets } from "@/components/shared/MarketSelect";
-import { MapPin, ExternalLink, Loader2, RefreshCw, X, Link2 } from "lucide-react";
+import { MapPin, ExternalLink, Loader2, RefreshCw, X, Link2, LocateFixed } from "lucide-react";
 
 const PUBLIC_SITE = "https://theonehundredcollection.com";
 
@@ -16,6 +16,81 @@ const slugify = (name) =>
     .replace(/^-+|-+$/g, "");
 
 const norm = (s) => (s || "").toLowerCase().trim();
+
+function DestinationGeocodeSection({ destination, geocoding, clearing, onGeocode, onClear }) {
+  const hasCoords =
+    destination?.latitude != null &&
+    destination?.longitude != null &&
+    destination.latitude !== "" &&
+    destination.longitude !== "";
+  const [query, setQuery] = useState(
+    () => destination?.geocode_query || destination?.name || ""
+  );
+
+  useEffect(() => {
+    setQuery(destination?.geocode_query || destination?.name || "");
+  }, [destination?.id, destination?.geocode_query, destination?.name]);
+
+  return (
+    <div className="border border-slate-200 rounded-lg bg-white p-3 mb-1">
+      <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2 flex items-center gap-1.5">
+        <LocateFixed className="w-3.5 h-3.5" />
+        Map coordinates
+      </div>
+      <p className="text-xs text-slate-400 mb-2">
+        Geocode an address or place name to store latitude and longitude for this destination.
+      </p>
+      <div className="flex flex-col sm:flex-row gap-2">
+        <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") onGeocode(query);
+          }}
+          placeholder={`e.g. ${destination?.name || "Hilton Head Island, SC"}`}
+          disabled={geocoding || clearing}
+          className="text-sm border border-slate-200 rounded-md px-3 py-2 bg-white focus:outline-none focus:ring-1 focus:ring-[#C9A96E] flex-1 min-w-0"
+        />
+        <button
+          type="button"
+          onClick={() => onGeocode(query)}
+          disabled={geocoding || clearing || !String(query || "").trim()}
+          className="inline-flex items-center justify-center gap-1.5 text-sm font-medium text-white bg-[#0D1B2A] hover:bg-[#1a2d42] disabled:opacity-50 rounded-md px-3 py-2 shrink-0"
+        >
+          {geocoding ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <LocateFixed className="w-3.5 h-3.5" />}
+          {geocoding ? "Geocoding…" : "Geocode & save"}
+        </button>
+      </div>
+      <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+        {hasCoords ? (
+          <>
+            <span className="font-mono text-slate-700">
+              {Number(destination.latitude).toFixed(6)}, {Number(destination.longitude).toFixed(6)}
+            </span>
+            <a
+              href={`https://www.openstreetmap.org/?mlat=${destination.latitude}&mlon=${destination.longitude}#map=10/${destination.latitude}/${destination.longitude}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-[#A68B4B] hover:underline inline-flex items-center gap-1"
+            >
+              View on map <ExternalLink className="w-3 h-3" />
+            </a>
+            <button
+              type="button"
+              onClick={onClear}
+              disabled={clearing || geocoding}
+              className="text-slate-400 hover:text-red-600 disabled:opacity-50"
+            >
+              {clearing ? "Clearing…" : "Clear"}
+            </button>
+          </>
+        ) : (
+          <span className="text-slate-400 italic">No coordinates stored yet.</span>
+        )}
+      </div>
+    </div>
+  );
+}
 
 export default function AdminDestinations() {
   const { toast } = useToast();
@@ -121,6 +196,74 @@ export default function AdminDestinations() {
     onError: (e) => toast({ variant: "destructive", title: "Unlink failed", description: e?.message || "Try again." }),
   });
 
+  const geocodeMutation = useMutation({
+    mutationFn: async ({ id, query, destination }) => {
+      const q = String(query || "").trim();
+      if (!q) throw new Error("Enter an address or place name to geocode.");
+      const res = await base44.functions.invoke("geocodeAddress", {
+        address: q,
+        scope: "destination",
+        country: null,
+      });
+      const body = res?.data || res;
+      if (!body?.geocoded || body.latitude == null || body.longitude == null) {
+        throw new Error("No match found for that address or place name.");
+      }
+      const patch = {
+        geocode_query: q,
+        latitude: Number(body.latitude),
+        longitude: Number(body.longitude),
+      };
+      await base44.entities.Destination.update(id, patch);
+      try {
+        await base44.functions.invoke("syncDestinationToSupabase", {
+          action: "sync",
+          destinationId: id,
+          data: {
+            id,
+            name: destination?.name,
+            slug: destination?.slug,
+            is_exclusive: destination?.is_exclusive,
+            ...patch,
+          },
+        });
+      } catch (syncErr) {
+        console.warn("[AdminDestinations] syncDestinationToSupabase failed:", syncErr?.message || syncErr);
+      }
+      return { ...patch, display_name: body.display_name, provider: body.provider };
+    },
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ["destinations"] });
+      const via = result?.provider ? ` via ${result.provider}` : "";
+      toast({
+        title: "Coordinates saved",
+        description: `${Number(result.latitude).toFixed(5)}, ${Number(result.longitude).toFixed(5)}${via}`,
+      });
+    },
+    onError: (e) =>
+      toast({ variant: "destructive", title: "Geocode failed", description: e?.message || "Try again." }),
+  });
+
+  const clearCoordsMutation = useMutation({
+    mutationFn: async ({ id }) => {
+      const patch = { geocode_query: null, latitude: null, longitude: null };
+      await base44.entities.Destination.update(id, patch);
+      try {
+        await base44.functions.invoke("syncDestinationToSupabase", {
+          action: "sync",
+          destinationId: id,
+          data: { id, ...patch },
+        });
+      } catch (_) { /* non-fatal */ }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["destinations"] });
+      toast({ title: "Coordinates cleared" });
+    },
+    onError: (e) =>
+      toast({ variant: "destructive", title: "Clear failed", description: e?.message || "Try again." }),
+  });
+
   const partnerSummary = (row) => {
     const linked = partnersByDestination[norm(row.name)] || [];
     const live = linked.filter((p) => p.status === "live").length;
@@ -175,8 +318,15 @@ export default function AdminDestinations() {
                     <tr className="border-b border-slate-50 last:border-0 hover:bg-slate-50/50">
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-2">
-                          <MapPin className="w-3.5 h-3.5 text-slate-400" />
-                          <span className="font-medium text-slate-800">{d.name}</span>
+                          <MapPin className={`w-3.5 h-3.5 ${d.latitude != null && d.longitude != null ? "text-emerald-500" : "text-slate-400"}`} />
+                          <div>
+                            <span className="font-medium text-slate-800">{d.name}</span>
+                            {d.latitude != null && d.longitude != null && (
+                              <div className="text-[10px] font-mono text-slate-400 mt-0.5">
+                                {Number(d.latitude).toFixed(4)}, {Number(d.longitude).toFixed(4)}
+                              </div>
+                            )}
+                          </div>
                         </div>
                       </td>
                       <td className="px-4 py-3">
@@ -207,7 +357,8 @@ export default function AdminDestinations() {
                             onClick={() => setExpanded(isExpanded ? null : d.id)}
                             className="text-xs text-slate-400 hover:text-[#C9A96E] inline-flex items-center gap-1"
                           >
-                            <Link2 className="w-3 h-3" /> No partner linked — assign
+                            <Link2 className="w-3 h-3" /> {isExpanded ? "Hide" : "Manage"}
+                            <span className="text-slate-300">·</span> no partner linked
                           </button>
                         ) : (
                           <div className="flex flex-wrap items-center gap-1.5">
@@ -253,6 +404,14 @@ export default function AdminDestinations() {
                       <tr className="bg-slate-50/40">
                         <td colSpan={5} className="px-6 py-4">
                           <div className="flex flex-col gap-3">
+                            <DestinationGeocodeSection
+                              destination={d}
+                              geocoding={geocodeMutation.isPending && geocodeMutation.variables?.id === d.id}
+                              clearing={clearCoordsMutation.isPending && clearCoordsMutation.variables?.id === d.id}
+                              onGeocode={(query) => geocodeMutation.mutate({ id: d.id, query, destination: d })}
+                              onClear={() => clearCoordsMutation.mutate({ id: d.id })}
+                            />
+
                             <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
                               Linked partner{linked.length !== 1 ? "s" : ""} ({linked.length})
                             </div>

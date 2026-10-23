@@ -875,10 +875,13 @@ async function handleSyncPartnerToSupabase(res: any, body: any) {
 
   const row = await getPartnerRow(String(partnerId));
   const stored = row ? partnerRecord(row) : null;
-  const partner = body?.data?.partner_name ? { ...stored, ...body.data, id: stored?.id || partnerId } : stored;
+  const partner = body?.data?.partner_name || body?.data?.status
+    ? { ...stored, ...body.data, id: stored?.id || partnerId }
+    : stored;
   if (!partner?.partner_name) return json(res, 404, { error: "Partner not found" });
 
   const email = String(partner.primary_contact_email || partnerEmail || "").trim();
+  const base44Id = String(partner.id || partnerId);
   const payload = {
     partner_name: partner.partner_name,
     company_name: partner.company_name || partner.partner_name,
@@ -901,36 +904,104 @@ async function handleSyncPartnerToSupabase(res: any, body: any) {
     billing_status: partner.billing_status || null,
     automated_billing: !!partner.automated_billing,
     tags: Array.isArray(partner.tags) ? partner.tags : [],
-    base44_partner_id: String(partner.id || partnerId),
+    base44_partner_id: base44Id,
   };
 
   const pool = getNeonPool();
   const { rows: existing } = await pool.query(
     `SELECT id, data FROM supabase.partners
      WHERE data->>'base44_partner_id' = $1
+        OR id = $1
         OR ($2 <> '' AND lower(coalesce(data->>'primary_contact_email', '')) = lower($2))
         OR ($3 <> '' AND data->>'partner_name' = $3)
-     ORDER BY CASE WHEN data->>'base44_partner_id' = $1 THEN 0 ELSE 1 END
+     ORDER BY CASE
+       WHEN data->>'base44_partner_id' = $1 OR id = $1 THEN 0
+       ELSE 1
+     END
      LIMIT 1`,
-    [String(partner.id || partnerId), email, String(partner.partner_name || "")]
+    [base44Id, email, String(partner.partner_name || "")]
   );
 
+  let neonAction: "updated" | "created" = "created";
+  let supabaseId = "";
   if (existing[0]) {
     const merged = { ...(existing[0].data || {}), ...payload, id: existing[0].data?.id || existing[0].id };
     await pool.query(
       `UPDATE supabase.partners SET data = $2::jsonb, imported_at = now() WHERE id = $1`,
       [existing[0].id, JSON.stringify(merged)]
     );
-    return json(res, 200, { action: "updated", supabase_id: existing[0].id });
+    neonAction = "updated";
+    supabaseId = existing[0].id;
+  } else {
+    const id = base44Id || newId();
+    const record = { ...payload, id, created_at: new Date().toISOString() };
+    await pool.query(
+      `INSERT INTO supabase.partners (id, data) VALUES ($1, $2::jsonb)`,
+      [id, JSON.stringify(record)]
+    );
+    neonAction = "created";
+    supabaseId = id;
   }
 
-  const id = newId();
-  const record = { ...payload, id, created_at: new Date().toISOString() };
-  await pool.query(
-    `INSERT INTO supabase.partners (id, data) VALUES ($1, $2::jsonb)`,
-    [id, JSON.stringify(record)]
-  );
-  return json(res, 200, { action: "created", supabase_id: id });
+  // Public site reads classic Supabase partners.status (not Neon jsonb mirror).
+  let remotePartner: any = { skipped: true };
+  try {
+    const { mirrorPartnerToRemote } = await import("./supabase-remote.js");
+    remotePartner = await mirrorPartnerToRemote(payload, base44Id);
+  } catch (error: any) {
+    console.warn("[syncPartnerToSupabase] remote partners mirror failed:", error?.message || error);
+    remotePartner = { skipped: false, error: error?.message || String(error) };
+  }
+
+  const status = String(payload.status || "").toLowerCase();
+  const shouldHide = status === "inactive" || status === "paused" || status === "churned";
+  let hideResult: any = null;
+  if (shouldHide && payload.partner_name) {
+    const name = String(payload.partner_name);
+    try {
+      const altName = name.replace(/\s+vacation\s+rentals$/i, "").trim();
+      const nameVariants = [...new Set([name, altName, `${altName} Vacation Rentals`].filter(Boolean))];
+      const { rows: neonProps } = await pool.query(
+        `UPDATE supabase.propertiesbase44
+         SET status = 'inactive', active = false, portal_visible = false
+         WHERE partner_name = ANY($1::text[])
+            OR ($2 <> '' AND partner_id = $2)
+         RETURNING id`,
+        [nameVariants, base44Id]
+      );
+      await pool.query(
+        `UPDATE supabase.vrms
+         SET showproperties = false, onboarded = false, is_onboarded = false
+         WHERE partner_name = ANY($1::text[]) OR name = ANY($1::text[])`,
+        [nameVariants]
+      );
+
+      const {
+        deactivatePartnerPropertiesOnRemote,
+        hidePartnerVrmsOnRemote,
+      } = await import("./supabase-remote.js");
+      const remoteProps = await deactivatePartnerPropertiesOnRemote(name);
+      const remoteVrms = [];
+      for (const variant of nameVariants) {
+        remoteVrms.push(await hidePartnerVrmsOnRemote(variant));
+      }
+      hideResult = {
+        neon_properties: neonProps.length,
+        remote_properties: remoteProps,
+        remote_vrms: remoteVrms,
+      };
+    } catch (error: any) {
+      console.warn("[syncPartnerToSupabase] inactive hide failed:", error?.message || error);
+      hideResult = { error: error?.message || String(error) };
+    }
+  }
+
+  return json(res, 200, {
+    action: neonAction,
+    supabase_id: supabaseId,
+    remote_partner: remotePartner,
+    hide: hideResult,
+  });
 }
 
 const PORTAL_ORIGIN = (process.env.BETTER_AUTH_URL || "https://portal.the100collection.com").replace(/\/$/, "");
@@ -1524,6 +1595,7 @@ export const LOCAL_FUNCTIONS = new Set([
   "generatePropertyAltText",
   "rewritePropertyText",
   "syncPartnerProfileToVrms",
+  "syncDestinationToSupabase",
   ...STRIPE_FUNCTIONS,
 ]);
 
@@ -1577,6 +1649,9 @@ export async function handleNeonFunction(req: any, res: any, functionName: strin
     } else if (functionName === "syncPartnerProfileToVrms") {
       const { handleSyncPartnerProfileToVrms } = await import("./sync-partner-profile-to-vrms.js");
       await handleSyncPartnerProfileToVrms(req, res, body);
+    } else if (functionName === "syncDestinationToSupabase") {
+      const { handleSyncDestinationToSupabase } = await import("./sync-destination-to-supabase.js");
+      await handleSyncDestinationToSupabase(req, res, body);
     }
     return true;
   } catch (error: any) {

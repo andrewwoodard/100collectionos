@@ -49,7 +49,10 @@ async function geocodeWithNominatim(q: string): Promise<GeocodeResult | null> {
   }
 }
 
-async function geocodeWithMapbox(q: string): Promise<GeocodeResult | null> {
+async function geocodeWithMapbox(
+  q: string,
+  opts: { country?: string | null } = {}
+): Promise<GeocodeResult | null> {
   const token = mapboxToken();
   if (!token) {
     console.warn("[geocodeAddress] Mapbox fallback skipped — MAPBOX_ACCESS_TOKEN not set");
@@ -64,9 +67,9 @@ async function geocodeWithMapbox(q: string): Promise<GeocodeResult | null> {
   url.searchParams.set("access_token", token);
   url.searchParams.set("limit", "1");
   url.searchParams.set("autocomplete", "false");
-  url.searchParams.set("types", "address,place,locality,neighborhood,poi");
-  // Properties are primarily US — bias without hard-failing international listings
-  url.searchParams.set("country", "us");
+  url.searchParams.set("types", "address,place,locality,neighborhood,poi,region,country");
+  // Properties default to US bias; destination place names pass country: null.
+  if (opts.country) url.searchParams.set("country", opts.country);
 
   try {
     const res = await fetch(url.toString(), { signal: AbortSignal.timeout(10000) });
@@ -95,22 +98,35 @@ async function geocodeWithMapbox(q: string): Promise<GeocodeResult | null> {
 
 /**
  * Geocode an address: Nominatim first, Mapbox if that returns no match.
+ * Pass country: null for worldwide place/destination lookups (no US bias).
  */
-export async function geocodeAddressString(address: string): Promise<GeocodeResult | null> {
+export async function geocodeAddressString(
+  address: string,
+  opts: { country?: string | null } = { country: "us" }
+): Promise<GeocodeResult | null> {
   const q = String(address || "").trim();
   if (!q) return null;
   const primary = await geocodeWithNominatim(q);
   if (primary) return primary;
-  return geocodeWithMapbox(q);
+  return geocodeWithMapbox(q, opts);
 }
 
 export async function handleGeocodeAddress(req: any, res: any, body: any = {}) {
   if (req.method !== "POST") return json(res, 405, { error: "Method not allowed" });
-  const address = String(body?.address || "").trim();
+  const address = String(body?.address || body?.query || "").trim();
   if (!address) {
     return json(res, 200, { geocoded: false, latitude: null, longitude: null, cleared: true });
   }
-  const coords = await geocodeAddressString(address);
+  // body.country === null | "" → worldwide; omit → US property bias; string → that country
+  const country =
+    body?.country === null || body?.country === ""
+      ? null
+      : body?.country != null
+        ? String(body.country)
+        : body?.worldwide || body?.scope === "destination"
+          ? null
+          : "us";
+  const coords = await geocodeAddressString(address, { country });
   return json(res, 200, {
     geocoded: !!coords,
     latitude: coords?.latitude ?? null,

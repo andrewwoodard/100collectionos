@@ -467,9 +467,49 @@ export default function PartnerDetail() {
 
   const markInactive = async () => {
     if (!confirm(`Mark "${partner.partner_name}" and all their properties as inactive?`)) return;
-    await sb.update("partners", partnerId, { status: "inactive" });
-    await Promise.all(properties.map(p => base44.functions.invoke("supabaseProperties", { action: "update", id: p.id, data: { status: "inactive" } })));
+    const syncId = base44PartnerId || partnerId;
+    try {
+      // Base44 Partner is the portal source of truth.
+      if (syncId) {
+        await base44.entities.Partner.update(syncId, { status: "inactive" });
+      }
+      // Neon partners mirror + classic Supabase partners/vrms/properties for the public site.
+      await base44.functions.invoke("syncPartnerToSupabase", {
+        partnerId: syncId,
+        partnerEmail: partner?.primary_contact_email || "",
+        data: {
+          partner_name: partner.partner_name,
+          company_name: partner.company_name || partner.partner_name,
+          primary_contact_email: partner.primary_contact_email || "",
+          status: "inactive",
+        },
+      });
+      // Keep Neon jsonb partners in sync when the URL id differs from Base44 id.
+      try {
+        await sb.update("partners", partnerId, { status: "inactive" });
+      } catch (_) { /* row may not exist yet; syncPartnerToSupabase creates it */ }
+      await Promise.all(
+        (properties || []).map((p) =>
+          base44.functions.invoke("supabaseProperties", {
+            action: "update",
+            id: p.id,
+            data: { status: "inactive", active: false, portal_visible: false },
+          })
+        )
+      );
+      toast({
+        title: "Partner marked inactive",
+        description: "Status synced to Supabase so the public site can hide this partner.",
+      });
+    } catch (e) {
+      toast({
+        variant: "destructive",
+        title: "Failed to mark inactive",
+        description: e?.message || "Try again.",
+      });
+    }
     queryClient.invalidateQueries({ queryKey: ["partner", partnerId] });
+    queryClient.invalidateQueries({ queryKey: ["partner-entity", partnerId] });
     queryClient.invalidateQueries({ queryKey: ["partner-properties", partnerId] });
     queryClient.invalidateQueries({ queryKey: ["properties"] });
   };

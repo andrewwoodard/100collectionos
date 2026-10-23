@@ -14,6 +14,18 @@
       "type": "boolean",
       "default": false,
       "description": "Whether this destination is flagged as exclusive. Toggled by admins from the Destinations tab."
+    },
+    "geocode_query": {
+      "type": "string",
+      "description": "Address or place name used to geocode this destination (e.g. \"Hilton Head Island, SC\" or \"Nags Head, NC\")."
+    },
+    "latitude": {
+      "type": "number",
+      "description": "Geocoded latitude for the destination map pin."
+    },
+    "longitude": {
+      "type": "number",
+      "description": "Geocoded longitude for the destination map pin."
     }
   },
   "required": [

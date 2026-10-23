@@ -215,3 +215,125 @@ export async function mirrorPropertiesbase44ToRemote(row: Record<string, any>) {
   });
   return { skipped: false as const, action: "created" as const, row: Array.isArray(created) ? created[0] : created };
 }
+
+/** Flat partners row for classic Supabase (public site inactive filter). */
+export function partnerToRemotePayload(partner: Record<string, any>, partnerId: string) {
+  return {
+    id: String(partnerId),
+    partner_name: partner.partner_name || null,
+    company_name: partner.company_name || partner.partner_name || null,
+    primary_contact_name: partner.primary_contact_name || "",
+    primary_contact_email: partner.primary_contact_email || "",
+    primary_contact_phone: partner.primary_contact_phone || null,
+    market: partner.market || null,
+    region: partner.region || null,
+    partner_type: partner.partner_type || null,
+    status: partner.status || null,
+    onboarding_stage: partner.onboarding_stage || null,
+    contract_status: partner.contract_status || null,
+    billing_status: partner.billing_status || null,
+    assigned_internal_owner: partner.assigned_internal_owner || null,
+    start_date: partner.start_date || null,
+    go_live_date: partner.go_live_date || null,
+    renewal_date: partner.renewal_date || null,
+    notes: partner.notes || null,
+    tags: Array.isArray(partner.tags) ? partner.tags : [],
+    updated_at: new Date().toISOString(),
+  };
+}
+
+/**
+ * Upsert partners onto classic Supabase so the100collection.com can hide
+ * inactive partners via partners.status. Non-fatal when credentials missing.
+ */
+export async function mirrorPartnerToRemote(partner: Record<string, any>, partnerId: string) {
+  if (!hasRemoteSupabase()) {
+    return { skipped: true as const, reason: "Supabase credentials missing" };
+  }
+  const payload = partnerToRemotePayload(partner, partnerId);
+  if (!payload.partner_name) {
+    return { skipped: true as const, reason: "No partner_name" };
+  }
+
+  const byId = await supabaseRest(
+    `partners?id=eq.${encodeURIComponent(payload.id)}&select=id&limit=1`
+  );
+  if (Array.isArray(byId) && byId[0]?.id) {
+    const { id: _id, ...fields } = payload;
+    const patched = await supabaseRest(`partners?id=eq.${encodeURIComponent(String(byId[0].id))}`, {
+      method: "PATCH",
+      body: JSON.stringify(fields),
+    });
+    return { skipped: false as const, action: "updated" as const, row: Array.isArray(patched) ? patched[0] : patched };
+  }
+
+  const byName = await supabaseRest(
+    `partners?partner_name=eq.${encodeURIComponent(String(payload.partner_name))}&select=id&limit=1`
+  );
+  if (Array.isArray(byName) && byName[0]?.id) {
+    const { id: _id, ...fields } = payload;
+    const patched = await supabaseRest(`partners?id=eq.${encodeURIComponent(String(byName[0].id))}`, {
+      method: "PATCH",
+      body: JSON.stringify(fields),
+    });
+    return { skipped: false as const, action: "updated" as const, row: Array.isArray(patched) ? patched[0] : patched };
+  }
+
+  const created = await supabaseRest("partners", {
+    method: "POST",
+    body: JSON.stringify({ ...payload, created_at: new Date().toISOString() }),
+  });
+  return { skipped: false as const, action: "created" as const, row: Array.isArray(created) ? created[0] : created };
+}
+
+/**
+ * Hide a partner's VRM card(s) on classic Supabase (showproperties / onboarded).
+ */
+export async function hidePartnerVrmsOnRemote(partnerName: string) {
+  if (!hasRemoteSupabase() || !partnerName) {
+    return { skipped: true as const, reason: "missing credentials or name" };
+  }
+  const patched = await supabaseRest(
+    `vrms?or=(partner_name.eq.${encodeURIComponent(partnerName)},name.eq.${encodeURIComponent(partnerName)})`,
+    {
+      method: "PATCH",
+      body: JSON.stringify({
+        showproperties: false,
+        onboarded: false,
+        is_onboarded: false,
+      }),
+    }
+  );
+  return {
+    skipped: false as const,
+    action: "updated" as const,
+    count: Array.isArray(patched) ? patched.length : patched ? 1 : 0,
+  };
+}
+
+/**
+ * Bulk-set properties inactive on classic Supabase by partner_name.
+ * Matches exact name and common "… Vacation Rentals" / prefix variants.
+ */
+export async function deactivatePartnerPropertiesOnRemote(partnerName: string) {
+  if (!hasRemoteSupabase() || !partnerName) {
+    return { skipped: true as const, reason: "missing credentials or name" };
+  }
+  const name = String(partnerName).trim();
+  const alt = name.replace(/\s+vacation\s+rentals$/i, "").trim();
+  const names = [...new Set([name, alt, `${alt} Vacation Rentals`].filter(Boolean))];
+  const or = names.map((n) => `partner_name.eq.${encodeURIComponent(n)}`).join(",");
+  const patched = await supabaseRest(`propertiesbase44?or=(${or})`, {
+    method: "PATCH",
+    body: JSON.stringify({
+      status: "inactive",
+      active: false,
+      portal_visible: false,
+    }),
+  });
+  return {
+    skipped: false as const,
+    action: "updated" as const,
+    count: Array.isArray(patched) ? patched.length : patched ? 1 : 0,
+  };
+}

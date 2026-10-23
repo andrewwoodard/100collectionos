@@ -20,11 +20,17 @@ CREATE TABLE IF NOT EXISTS public.destinations (
   name TEXT NOT NULL,
   slug TEXT NOT NULL UNIQUE,
   is_exclusive BOOLEAN NOT NULL DEFAULT FALSE,
+  geocode_query TEXT,
+  latitude DOUBLE PRECISION,
+  longitude DOUBLE PRECISION,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_destinations_base44_id ON public.destinations (base44_destination_id);
 CREATE INDEX IF NOT EXISTS idx_destinations_slug ON public.destinations (slug);
+ALTER TABLE public.destinations ADD COLUMN IF NOT EXISTS geocode_query TEXT;
+ALTER TABLE public.destinations ADD COLUMN IF NOT EXISTS latitude DOUBLE PRECISION;
+ALTER TABLE public.destinations ADD COLUMN IF NOT EXISTS longitude DOUBLE PRECISION;
 `;
 
 async function ensureTable() {
@@ -48,11 +54,16 @@ async function ensureTable() {
 }
 
 async function upsertDestination(supabase, dest) {
+  const lat = dest.latitude != null && dest.latitude !== "" ? Number(dest.latitude) : null;
+  const lng = dest.longitude != null && dest.longitude !== "" ? Number(dest.longitude) : null;
   const payload = {
     base44_destination_id: dest.id,
     name: dest.name,
     slug: dest.slug || slugify(dest.name),
     is_exclusive: !!dest.is_exclusive,
+    geocode_query: dest.geocode_query || null,
+    latitude: Number.isFinite(lat) ? lat : null,
+    longitude: Number.isFinite(lng) ? lng : null,
     updated_at: new Date().toISOString(),
   };
 
