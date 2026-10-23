@@ -67,23 +67,48 @@ export async function handleCheckPropertyLinks(req: any, res: any, body: any) {
     .map((id: unknown) => String(id || "").trim())
     .filter(Boolean)
     .slice(0, 20);
-  if (!ids.length) {
-    return json(res, 200, { ok: true, checked: 0, remaining: 0, total: 0, results: [] });
-  }
 
-  const { rows } = await pool.query(
-    `SELECT id, name, vrm_url
-     FROM supabase.propertiesbase44
-     WHERE id = ANY($1::text[])
-       AND vrm_url ~* '^https?://'`,
-    [ids]
-  );
+  // Optional: check every active property with an http(s) listing URL in pages.
+  const checkAllActive = body?.all_active === true;
+  let rows: Array<{ id: string; name: string; vrm_url: string }> = [];
+
+  if (checkAllActive) {
+    const offset = Math.max(0, Number(body?.offset) || 0);
+    const limit = Math.min(20, Math.max(1, Number(body?.limit) || 12));
+    const result = await pool.query(
+      `SELECT id, name, COALESCE(NULLIF(vrm_url, ''), NULLIF(url, '')) AS vrm_url
+       FROM supabase.propertiesbase44
+       WHERE (coalesce(status, '') = 'active' OR active IS TRUE)
+         AND COALESCE(NULLIF(vrm_url, ''), NULLIF(url, '')) ~* '^https?://'
+       ORDER BY id
+       LIMIT $1 OFFSET $2`,
+      [limit, offset]
+    );
+    rows = result.rows;
+  } else {
+    if (!ids.length) {
+      return json(res, 200, { ok: true, checked: 0, remaining: 0, total: 0, results: [] });
+    }
+    const result = await pool.query(
+      `SELECT id, name, COALESCE(NULLIF(vrm_url, ''), NULLIF(url, '')) AS vrm_url
+       FROM supabase.propertiesbase44
+       WHERE id = ANY($1::text[])
+         AND COALESCE(NULLIF(vrm_url, ''), NULLIF(url, '')) ~* '^https?://'`,
+      [ids]
+    );
+    rows = result.rows;
+  }
 
   const checkedAt = new Date().toISOString();
   const results = await mapPool(rows, 4, async (row) => {
     const probe = await probeVrmUrl(String(row.vrm_url));
     const status = probe.status == null ? "error" : String(probe.status);
-    const ok = status === "200" || status === "201" || status === "204" || (probe.status != null && probe.status >= 300 && probe.status < 400);
+    // Available = page responds with success (not 404 / error).
+    const ok =
+      probe.status != null &&
+      probe.status >= 200 &&
+      probe.status < 400 &&
+      probe.status !== 404;
     await pool.query(
       `UPDATE supabase.propertiesbase44
        SET last_page_check_status = $2,
@@ -100,6 +125,8 @@ export async function handleCheckPropertyLinks(req: any, res: any, body: any) {
       vrm_url: row.vrm_url,
       status,
       ok,
+      available: ok,
+      is_404: status === "404",
       checked_at: checkedAt,
       final_url: probe.finalUrl,
       error: probe.error,

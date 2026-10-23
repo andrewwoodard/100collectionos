@@ -294,6 +294,7 @@ export default function PropertyDetail() {
   const { toast } = useToast();
   const [archiveModal, setArchiveModal] = useState(null);
   const [rewriteTextOpen, setRewriteTextOpen] = useState(false);
+  const [checkingListingUrl, setCheckingListingUrl] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
   const [amenitiesDraft, setAmenitiesDraft] = useState([]);
   const marketOptions = useExistingMarkets().map(m => ({ value: m, label: m }));
@@ -528,6 +529,58 @@ export default function PropertyDetail() {
       });
     } catch (err) {
       toast({ variant: "destructive", title: "Generation failed", description: err?.message });
+    }
+  };
+
+  const handleCheckListingUrl = async () => {
+    const targetId = hasSbId ? String(sbId) : String(supabaseProperty?.id || "");
+    const url = property?.vrm_url || property?.listing_url || "";
+    if (!targetId) {
+      toast({ variant: "destructive", title: "No Supabase property id", description: "Cannot check listing URL." });
+      return;
+    }
+    if (!/^https?:\/\//i.test(url)) {
+      toast({ variant: "destructive", title: "No listing URL", description: "Add an http(s) Listing URL first." });
+      return;
+    }
+    setCheckingListingUrl(true);
+    try {
+      const res = await base44.functions.invoke("checkPropertyLinks", { ids: [targetId] });
+      const body = res?.data || res;
+      if (body?.error) throw new Error(body.error);
+      const hit = Array.isArray(body?.results) ? body.results[0] : null;
+      if (!hit) throw new Error("No check result returned");
+      queryClient.setQueryData(["supabase-property", sbQueryKey], (prev) =>
+        prev
+          ? {
+              ...prev,
+              last_page_check_status: String(hit.status ?? ""),
+              last_page_check_ok: hit.ok ? "true" : "false",
+              last_page_check_at: hit.checked_at,
+              last_page_check_final_url: hit.final_url,
+              last_page_check_error: hit.error || null,
+            }
+          : prev
+      );
+      queryClient.invalidateQueries({ queryKey: ["propertiesbase44"] });
+      const is404 = String(hit.status) === "404";
+      toast({
+        title: is404 ? "Listing URL is 404" : hit.ok ? "Listing URL available" : "Listing URL check finished",
+        description: is404
+          ? "Partner page returned 404."
+          : hit.ok
+            ? "Partner page is responding."
+            : `Status: ${hit.status}${hit.error ? ` (${hit.error})` : ""}`,
+        variant: is404 || !hit.ok ? "destructive" : undefined,
+      });
+    } catch (err) {
+      toast({
+        variant: "destructive",
+        title: "Listing URL check failed",
+        description: err?.message || "Try again",
+      });
+    } finally {
+      setCheckingListingUrl(false);
     }
   };
 
@@ -947,6 +1000,54 @@ export default function PropertyDetail() {
               <a href={property.vrm_url} target="_blank" rel="noopener noreferrer" className="text-xs text-[#C9A96E] hover:underline flex items-center gap-1 mt-1">
                 View listing <ExternalLink className="w-3 h-3" />
               </a>
+            )}
+          </div>
+          <div>
+            <p className="text-xs text-gray-500 mb-1">Listing URL status</p>
+            {(() => {
+              const status = String(property.last_page_check_status || "");
+              const ok =
+                property.last_page_check_ok === true ||
+                property.last_page_check_ok === "true";
+              const hasUrl = /^https?:\/\//i.test(property.vrm_url || property.listing_url || "");
+              let label = "Not checked";
+              let cls = "bg-gray-100 text-gray-600";
+              if (!hasUrl) {
+                label = "No URL";
+                cls = "bg-amber-100 text-amber-700";
+              } else if (status === "404") {
+                label = "404";
+                cls = "bg-red-100 text-red-700";
+              } else if (ok || (status && status !== "error" && status !== "404")) {
+                // Non-404 successful checks show as available
+                if (ok || /^2\d\d$/.test(status)) {
+                  label = "available";
+                  cls = "bg-emerald-100 text-emerald-700";
+                } else if (status) {
+                  label = status;
+                  cls = "bg-amber-100 text-amber-700";
+                }
+              }
+              return (
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className={`inline-flex items-center text-xs font-medium px-2 py-0.5 rounded-full ${cls}`}>
+                    {label}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleCheckListingUrl}
+                    disabled={checkingListingUrl || !hasUrl}
+                    className="text-xs text-[#0D1B2A] hover:underline disabled:opacity-50"
+                  >
+                    {checkingListingUrl ? "Checking…" : "Check now"}
+                  </button>
+                </div>
+              );
+            })()}
+            {property.last_page_check_at && (
+              <p className="text-[11px] text-gray-400 mt-1">
+                Checked {format(new Date(property.last_page_check_at), "MMM d, yyyy h:mm a")}
+              </p>
             )}
           </div>
         </div>
