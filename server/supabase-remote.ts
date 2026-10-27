@@ -112,6 +112,19 @@ export function rowToRemotePayload(row: Record<string, any>) {
     property_image: row.property_image || images[0] || null,
     photo_count: row.photo_count != null ? String(row.photo_count) : images.length ? String(images.length) : null,
     created_at: row.created_at || new Date().toISOString(),
+    pet_friendly: row.pet_friendly ?? null,
+    pet_policy_url: row.pet_policy_url ?? null,
+    filtered_amenities: (() => {
+      if (row.filtered_amenities == null) return null;
+      if (typeof row.filtered_amenities === "string") {
+        try {
+          return JSON.parse(row.filtered_amenities);
+        } catch {
+          return row.filtered_amenities;
+        }
+      }
+      return row.filtered_amenities;
+    })(),
   };
 }
 
@@ -179,15 +192,36 @@ export async function mirrorPropertiesbase44ToRemote(row: Record<string, any>) {
   );
   const match = pickRemoteMatch(existing, payload);
 
+  const patchRemote = async (targetId: string, fields: Record<string, any>) => {
+    try {
+      return await supabaseRest(`propertiesbase44?id=eq.${encodeURIComponent(targetId)}`, {
+        method: "PATCH",
+        body: JSON.stringify(fields),
+      });
+    } catch (err: any) {
+      const msg = String(err?.message || err);
+      // Classic schema may lag Neon — retry without newer optional columns.
+      if (/filtered_amenities|pet_policy_url|column|schema cache/i.test(msg)) {
+        const {
+          filtered_amenities: _fa,
+          pet_policy_url: _ppu,
+          ...legacy
+        } = fields;
+        return await supabaseRest(`propertiesbase44?id=eq.${encodeURIComponent(targetId)}`, {
+          method: "PATCH",
+          body: JSON.stringify(legacy),
+        });
+      }
+      throw err;
+    }
+  };
+
   if (match) {
     const targetId = String(match.id || match.row_id);
     // Keep the remote primary key stable — rewriting id/row_id collides with
     // other rows when Neon and classic IDs have drifted.
     const { id: _id, row_id: _rowId, ...fields } = payload;
-    const patched = await supabaseRest(`propertiesbase44?id=eq.${encodeURIComponent(targetId)}`, {
-      method: "PATCH",
-      body: JSON.stringify(fields),
-    });
+    const patched = await patchRemote(targetId, fields);
     return { skipped: false as const, action: "updated" as const, row: Array.isArray(patched) ? patched[0] : patched };
   }
 
@@ -200,10 +234,7 @@ export async function mirrorPropertiesbase44ToRemote(row: Record<string, any>) {
     if (nameMatch) {
       const targetId = String(nameMatch.id || nameMatch.row_id);
       const { id: _id, row_id: _rowId, ...fields } = payload;
-      const patched = await supabaseRest(`propertiesbase44?id=eq.${encodeURIComponent(targetId)}`, {
-        method: "PATCH",
-        body: JSON.stringify(fields),
-      });
+      const patched = await patchRemote(targetId, fields);
       return { skipped: false as const, action: "updated" as const, row: Array.isArray(patched) ? patched[0] : patched };
     }
   }
@@ -255,15 +286,33 @@ export async function mirrorPartnerToRemote(partner: Record<string, any>, partne
     return { skipped: true as const, reason: "No partner_name" };
   }
 
+  // Minimal patch for status-driven public-site hide (avoids unknown-column errors).
+  const statusOnly = {
+    partner_name: payload.partner_name,
+    company_name: payload.company_name,
+    status: payload.status,
+    updated_at: payload.updated_at,
+  };
+
+  const write = async (path: string, method: "PATCH" | "POST", fields: Record<string, any>) => {
+    try {
+      return await supabaseRest(path, { method, body: JSON.stringify(fields) });
+    } catch (err: any) {
+      const msg = String(err?.message || err);
+      // Retry with status-focused payload if schema rejects optional columns.
+      if (method === "PATCH" && /column|schema cache|Could not find/i.test(msg)) {
+        return await supabaseRest(path, { method, body: JSON.stringify(statusOnly) });
+      }
+      throw err;
+    }
+  };
+
   const byId = await supabaseRest(
     `partners?id=eq.${encodeURIComponent(payload.id)}&select=id&limit=1`
   );
   if (Array.isArray(byId) && byId[0]?.id) {
     const { id: _id, ...fields } = payload;
-    const patched = await supabaseRest(`partners?id=eq.${encodeURIComponent(String(byId[0].id))}`, {
-      method: "PATCH",
-      body: JSON.stringify(fields),
-    });
+    const patched = await write(`partners?id=eq.${encodeURIComponent(String(byId[0].id))}`, "PATCH", fields);
     return { skipped: false as const, action: "updated" as const, row: Array.isArray(patched) ? patched[0] : patched };
   }
 
@@ -272,18 +321,17 @@ export async function mirrorPartnerToRemote(partner: Record<string, any>, partne
   );
   if (Array.isArray(byName) && byName[0]?.id) {
     const { id: _id, ...fields } = payload;
-    const patched = await supabaseRest(`partners?id=eq.${encodeURIComponent(String(byName[0].id))}`, {
-      method: "PATCH",
-      body: JSON.stringify(fields),
-    });
+    const patched = await write(`partners?id=eq.${encodeURIComponent(String(byName[0].id))}`, "PATCH", fields);
     return { skipped: false as const, action: "updated" as const, row: Array.isArray(patched) ? patched[0] : patched };
   }
 
-  const created = await supabaseRest("partners", {
-    method: "POST",
-    body: JSON.stringify({ ...payload, created_at: new Date().toISOString() }),
-  });
-  return { skipped: false as const, action: "created" as const, row: Array.isArray(created) ? created[0] : created };
+  try {
+    const created = await write("partners", "POST", { ...payload, created_at: new Date().toISOString() });
+    return { skipped: false as const, action: "created" as const, row: Array.isArray(created) ? created[0] : created };
+  } catch (err: any) {
+    // Last resort: status-only insert may still fail without id; rethrow original.
+    throw err;
+  }
 }
 
 /**

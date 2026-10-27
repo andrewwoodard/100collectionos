@@ -468,39 +468,69 @@ export default function PartnerDetail() {
   const markInactive = async () => {
     if (!confirm(`Mark "${partner.partner_name}" and all their properties as inactive?`)) return;
     const syncId = base44PartnerId || partnerId;
+    const warnings = [];
     try {
-      // Base44 Partner is the portal source of truth.
-      if (syncId) {
-        await base44.entities.Partner.update(syncId, { status: "inactive" });
-      }
-      // Neon partners mirror + classic Supabase partners/vrms/properties for the public site.
-      await base44.functions.invoke("syncPartnerToSupabase", {
-        partnerId: syncId,
-        partnerEmail: partner?.primary_contact_email || "",
-        data: {
-          partner_name: partner.partner_name,
-          company_name: partner.company_name || partner.partner_name,
-          primary_contact_email: partner.primary_contact_email || "",
-          status: "inactive",
-        },
-      });
-      // Keep Neon jsonb partners in sync when the URL id differs from Base44 id.
+      // Base44 Partner is the portal source of truth — this must succeed.
+      if (!syncId) throw new Error("No partner id to update");
+      await base44.entities.Partner.update(syncId, { status: "inactive" });
+
+      // Neon jsonb partners mirror (URL id may differ from Base44 id).
       try {
         await sb.update("partners", partnerId, { status: "inactive" });
-      } catch (_) { /* row may not exist yet; syncPartnerToSupabase creates it */ }
-      await Promise.all(
+      } catch (_) { /* syncPartnerToSupabase creates/updates the mirror */ }
+
+      // Dual-write remote partners + deactivate neon/remote properties + hide VRMs.
+      try {
+        await base44.functions.invoke("syncPartnerToSupabase", {
+          partnerId: syncId,
+          partnerEmail: partner?.primary_contact_email || "",
+          data: {
+            partner_name: partner.partner_name,
+            company_name: partner.company_name || partner.partner_name,
+            primary_contact_email: partner.primary_contact_email || "",
+            status: "inactive",
+          },
+        });
+      } catch (e) {
+        warnings.push(e?.message || "Public-site sync failed");
+      }
+
+      // Mark Base44 Property rows inactive (portal list). Public propertiesbase44
+      // is already handled by syncPartnerToSupabase — do not call supabaseProperties
+      // with Base44 ObjectIds (those 404 and used to surface a false failure toast).
+      const propResults = await Promise.allSettled(
         (properties || []).map((p) =>
-          base44.functions.invoke("supabaseProperties", {
-            action: "update",
-            id: p.id,
-            data: { status: "inactive", active: false, portal_visible: false },
-          })
+          base44.entities.Property.update(p.id, { status: "inactive" })
         )
       );
-      toast({
-        title: "Partner marked inactive",
-        description: "Status synced to Supabase so the public site can hide this partner.",
-      });
+      const propFails = propResults.filter((r) => r.status === "rejected").length;
+      if (propFails > 0) warnings.push(`${propFails} property record(s) did not update`);
+
+      // Best-effort: also flip any known Supabase overlay rows by their real id/url.
+      await Promise.allSettled(
+        (properties || [])
+          .filter((p) => p._supabaseRowId || p.supabase_property_id || p.listing_url || p.vrm_url)
+          .map((p) =>
+            base44.functions.invoke("supabaseProperties", {
+              action: "update",
+              id: p._supabaseRowId || p.supabase_property_id || undefined,
+              url: p.listing_url || p.vrm_url || undefined,
+              data: { status: "inactive", active: false, portal_visible: false },
+            })
+          )
+      );
+
+      if (warnings.length) {
+        toast({
+          title: "Partner marked inactive",
+          description: `Saved, with partial sync: ${warnings.join("; ")}`,
+        });
+      } else {
+        toast({
+          title: "Partner marked inactive",
+          description: "Status synced to Supabase so the public site can hide this partner.",
+        });
+      }
     } catch (e) {
       toast({
         variant: "destructive",

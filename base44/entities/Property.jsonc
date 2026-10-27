@@ -154,6 +154,28 @@
       "default": [],
       "description": "List of amenities (Community pool, Elevator access, Fast WiFi, etc.)."
     },
+    "filtered_amenities": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "pet_friendly",
+          "private_pool",
+          "private_hot_tub",
+          "mountain_view",
+          "fire_pit",
+          "outdoor_space",
+          "workspace_wifi",
+          "parking"
+        ]
+      },
+      "default": [],
+      "description": "Curated filter amenities for the public site (pet-friendly, private pool, private hot tub, mountain view, fire pit, outdoor space, workspace/Wi-Fi, parking). Editable on admin Property Detail."
+    },
+    "pet_policy_url": {
+      "type": "string",
+      "description": "URL to the partner’s pet policy, shown with the Pet-friendly filter amenity (fees vary)."
+    },
     "tags": {
       "type": "array",
       "items": {

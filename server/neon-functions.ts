@@ -52,13 +52,14 @@ const PROP_COLUMNS = new Set([
   "best_fit_guest", "photo_count", "last_page_check_at", "last_page_check_ok",
   "last_page_check_status", "last_page_check_error", "last_page_check_final_url",
   "created_at", "images", "vrm_images", "categories", "prop_categories", "tags",
-  "reviews", "propdescription",
+  "reviews", "propdescription", "filtered_amenities", "pet_policy_url",
 ]);
 
 const JSON_COLUMNS = new Set([
   "body_json", "doyentext_json", "favorites_json", "showcase_json", "servicesoffered_json",
   "servicesavailable_json", "serviceofferedpicks_json", "destination_slugs", "images",
   "vrm_images", "categories", "prop_categories", "tags", "reviews", "propdescription",
+  "filtered_amenities",
 ]);
 
 const PROP_ALIASES: Record<string, string> = {
@@ -173,6 +174,18 @@ function fromSupabase(row: any) {
     latitude: source.latitude,
     longitude: source.longitude,
     pet_friendly: source.pet_friendly,
+    filtered_amenities: (() => {
+      const raw = source.filtered_amenities;
+      if (!raw) return [];
+      if (Array.isArray(raw)) return raw;
+      try {
+        const parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
+        return Array.isArray(parsed) ? parsed : [];
+      } catch {
+        return [];
+      }
+    })(),
+    pet_policy_url: source.pet_policy_url || null,
     unique_feature: source.unique_feature,
     why_onehundred: source.why_onehundred,
     excerpt: source.excerpt,
@@ -965,7 +978,7 @@ async function handleSyncPartnerToSupabase(res: any, body: any) {
         `UPDATE supabase.propertiesbase44
          SET status = 'inactive', active = false, portal_visible = false
          WHERE partner_name = ANY($1::text[])
-            OR ($2 <> '' AND partner_id = $2)
+            OR ($2 <> '' AND partner_id::text = $2)
          RETURNING id`,
         [nameVariants, base44Id]
       );
@@ -1596,6 +1609,7 @@ export const LOCAL_FUNCTIONS = new Set([
   "rewritePropertyText",
   "syncPartnerProfileToVrms",
   "syncDestinationToSupabase",
+  "backfillFilteredAmenities",
   ...STRIPE_FUNCTIONS,
 ]);
 
@@ -1652,6 +1666,9 @@ export async function handleNeonFunction(req: any, res: any, functionName: strin
     } else if (functionName === "syncDestinationToSupabase") {
       const { handleSyncDestinationToSupabase } = await import("./sync-destination-to-supabase.js");
       await handleSyncDestinationToSupabase(req, res, body);
+    } else if (functionName === "backfillFilteredAmenities") {
+      const { handleBackfillFilteredAmenities } = await import("./filtered-amenities.js");
+      await handleBackfillFilteredAmenities(req, res, body);
     }
     return true;
   } catch (error: any) {

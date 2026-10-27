@@ -20,6 +20,8 @@ export async function handleUpdatePropertyContent(req: any, res: any, body: any 
     why_100_collection,
     unique_features,
     amenities,
+    filtered_amenities,
+    pet_policy_url,
     bedrooms,
     bathrooms,
     half_bathrooms,
@@ -85,6 +87,10 @@ export async function handleUpdatePropertyContent(req: any, res: any, body: any 
       patch.unique_feature = unique_features;
     }
     if (amenities !== undefined) patch.amenities = Array.isArray(amenities) ? amenities : [];
+    if (filtered_amenities !== undefined) {
+      patch.filtered_amenities = Array.isArray(filtered_amenities) ? filtered_amenities : [];
+    }
+    if (pet_policy_url !== undefined) patch.pet_policy_url = pet_policy_url || null;
     if (bedrooms !== undefined) patch.bedrooms = bedrooms === "" ? null : Number(bedrooms);
     if (bathrooms !== undefined) patch.bathrooms = bathrooms === "" ? null : Number(bathrooms);
     if (half_bathrooms !== undefined) {
@@ -124,6 +130,12 @@ export async function handleUpdatePropertyContent(req: any, res: any, body: any 
     sbClean.categories = JSON.stringify(arr);
     sbClean.prop_categories = JSON.stringify(arr);
   }
+  if (filtered_amenities !== undefined) {
+    const arr = Array.isArray(filtered_amenities) ? filtered_amenities : [];
+    sbClean.filtered_amenities = JSON.stringify(arr);
+    if (arr.includes("pet_friendly")) sbClean.pet_friendly = "true";
+  }
+  if (pet_policy_url !== undefined) sbClean.pet_policy_url = pet_policy_url || null;
   // bedrooms / bathrooms / occupancy are text columns on propertiesbase44
   if (bedrooms !== undefined) {
     sbClean.bedrooms = bedrooms === "" || bedrooms == null ? null : String(bedrooms);
@@ -250,7 +262,7 @@ export async function handleUpdatePropertyContent(req: any, res: any, body: any 
   });
 }
 
-const JSONB_SB_FIELDS = new Set(["categories", "prop_categories"]);
+const JSONB_SB_FIELDS = new Set(["categories", "prop_categories", "filtered_amenities"]);
 
 function quoteIdentSafe(name: string) {
   if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(name)) {
