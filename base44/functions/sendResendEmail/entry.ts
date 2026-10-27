@@ -1,5 +1,6 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
-import { LOGO_URL, LOGO_BASE64, LOGO_ALT_TEXT } from '../../shared/emailAssets.ts';
+import { LOGO_URL, LOGO_ALT_TEXT } from '../../shared/emailAssets.ts';
+import { BRAND_DISPLAY_NAME, normalizeBrandName } from '../../shared/brandName.ts';
 
 // Reusable Resend email helper.
 // Reads config from AppConfig entity (keys: RESEND_API_KEY, RESEND_FROM).
@@ -15,14 +16,14 @@ function emailTemplate(content) {
 <table width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.08);">
 <tr><td style="background:#0D1B2A;padding:32px 40px;text-align:center;">
 <img src="${LOGO_URL}" alt="${LOGO_ALT_TEXT}" width="56" height="56" style="width:56px;height:56px;border-radius:8px;margin-bottom:14px;display:block;"/>
-<div style="color:#C9A96E;font-size:11px;font-weight:600;letter-spacing:2px;text-transform:uppercase;">The 100 Collection</div>
+<div style="color:#C9A96E;font-size:11px;font-weight:600;letter-spacing:2px;text-transform:uppercase;">${BRAND_DISPLAY_NAME}</div>
 </td></tr>
 <tr><td style="padding:40px;color:#0D1B2A;font-size:15px;line-height:1.6;">
 ${content}
 </td></tr>
 <tr><td style="padding:24px 40px 32px;border-top:1px solid #E2E8F0;">
 <p style="margin:0;color:#94A3B8;font-size:12px;text-align:center;line-height:1.5;">
-The 100 Collection &middot; Curated Luxury Vacation Rentals<br>
+${BRAND_DISPLAY_NAME} &middot; Curated Luxury Vacation Rentals<br>
 <a href="https://the100collection.com" style="color:#C9A96E;text-decoration:none;">the100collection.com</a>
 </p>
 </td></tr>
@@ -50,18 +51,22 @@ Deno.serve(async (req) => {
     }
 
     const apiKey = config.RESEND_API_KEY || "";
-    const from = config.RESEND_FROM || "The 100 Collection <noreply@the100collection.com>";
+    const from = normalizeBrandName(
+      config.RESEND_FROM || `${BRAND_DISPLAY_NAME} <noreply@the100collection.com>`
+    );
+    const brandedSubject = normalizeBrandName(String(subject));
 
     const recipients = Array.isArray(to) ? to.join(",") : to;
 
     if (!apiKey) {
-      console.log(`[email] RESEND_API_KEY not configured — skipping send to ${recipients}, subject: ${subject}`);
+      console.log(`[email] RESEND_API_KEY not configured — skipping send to ${recipients}, subject: ${brandedSubject}`);
       return Response.json({ ok: true, skipped: "RESEND_API_KEY not configured" });
     }
 
     // If a pre-wrapped full HTML document is provided (e.g. from buildAdminEmail),
     // use it directly. Otherwise wrap the content in the legacy template.
-    const finalHtml = html || emailTemplate(content || text || "");
+    const finalHtml = normalizeBrandName(html || emailTemplate(content || text || ""));
+    const finalText = normalizeBrandName(text || "");
 
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
@@ -72,9 +77,9 @@ Deno.serve(async (req) => {
       body: JSON.stringify({
         from,
         to: recipients,
-        subject,
+        subject: brandedSubject,
         html: finalHtml,
-        text: text || "",
+        text: finalText,
       }),
     });
 
@@ -85,7 +90,7 @@ Deno.serve(async (req) => {
     }
 
     const data = await res.json();
-    console.log(`[email] Sent to ${recipients}, subject: ${subject}, id: ${data.id}`);
+    console.log(`[email] Sent to ${recipients}, subject: ${brandedSubject}, id: ${data.id}`);
     return Response.json({ ok: true, id: data.id });
   } catch (error) {
     console.error(`[email] Error: ${error.message}`);
