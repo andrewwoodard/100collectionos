@@ -40,11 +40,41 @@ export default function PropertyDetail() {
       } catch {
         // id might be a Supabase numeric ID — look up Base44 Property by supabase_property_id
         try {
-          const results = await base44.entities.Property.filter({ supabase_property_id: id });
-          return results[0] || null;
-        } catch {
-          return null;
-        }
+          const bySb = await base44.entities.Property.filter({ supabase_property_id: id });
+          if (bySb?.[0]) return bySb[0];
+        } catch { /* continue */ }
+        // Last resort: load Supabase row and match Base44 by listing/VRM URL
+        // (common when supabase_property_id was never backfilled).
+        try {
+          const res = await base44.functions.invoke("supabaseProperties", { action: "get", id });
+          const sb = res?.data?.property || res?.property;
+          const urls = [sb?.vrm_url, sb?.listing_url, sb?.url].filter(Boolean);
+          for (const url of urls) {
+            try {
+              const byListing = await base44.entities.Property.filter({ listing_url: url });
+              if (byListing?.[0]) {
+                if (!byListing[0].supabase_property_id && sb?.id) {
+                  base44.entities.Property.update(byListing[0].id, {
+                    supabase_property_id: String(sb.id),
+                  }).catch(() => {});
+                }
+                return byListing[0];
+              }
+            } catch { /* continue */ }
+            try {
+              const byVrm = await base44.entities.Property.filter({ vrm_url: url });
+              if (byVrm?.[0]) {
+                if (!byVrm[0].supabase_property_id && sb?.id) {
+                  base44.entities.Property.update(byVrm[0].id, {
+                    supabase_property_id: String(sb.id),
+                  }).catch(() => {});
+                }
+                return byVrm[0];
+              }
+            } catch { /* continue */ }
+          }
+        } catch { /* continue */ }
+        return null;
       }
     },
     enabled: !!id,

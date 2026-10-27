@@ -6,7 +6,7 @@ import { executeTermination, lookupPartnerEmail } from '../../shared/offboarding
 // when the Base44 mirror row's supabase_property_id is missing or stale, so the
 // frontend lookup falls back to the Supabase row id. Passing that straight to
 // Property.update() throws a 500. This helper prevents that recurrence.
-async function resolvePropertyId(base44, rawId) {
+async function resolvePropertyId(base44, rawId, hints = {}) {
   if (!rawId) return null;
   try {
     const p = await base44.asServiceRole.entities.Property.get(rawId);
@@ -16,6 +16,30 @@ async function resolvePropertyId(base44, rawId) {
     const matches = await base44.asServiceRole.entities.Property.filter({ supabase_property_id: String(rawId) });
     if (matches && matches[0]) return matches[0].id;
   } catch {}
+  // Portal portfolio URLs often use the Supabase numeric id while Base44 still
+  // has a null supabase_property_id. Fall back to listing/VRM URL match.
+  const urls = [hints.listing_url, hints.vrm_url, hints.url]
+    .map((u) => String(u || "").trim())
+    .filter(Boolean);
+  for (const url of urls) {
+    try {
+      const byListing = await base44.asServiceRole.entities.Property.filter({ listing_url: url });
+      if (byListing?.[0]) return byListing[0].id;
+    } catch {}
+    try {
+      const byVrm = await base44.asServiceRole.entities.Property.filter({ vrm_url: url });
+      if (byVrm?.[0]) return byVrm[0].id;
+    } catch {}
+  }
+  if (hints.property_name && hints.partner_name) {
+    try {
+      const byName = await base44.asServiceRole.entities.Property.filter({
+        property_name: hints.property_name,
+        partner_name: hints.partner_name,
+      });
+      if (byName?.[0]) return byName[0].id;
+    } catch {}
+  }
   return null;
 }
 
@@ -33,6 +57,13 @@ export default async function(req) {
 
     body = await req.json();
     const { action } = body;
+    const resolveHints = {
+      listing_url: body?.listing_url,
+      vrm_url: body?.vrm_url,
+      url: body?.url,
+      property_name: body?.property_name,
+      partner_name: body?.partner_name,
+    };
 
     // Admin-only actions
     const adminActions = ['approve_termination', 'reject_termination', 'force_terminate'];
@@ -46,7 +77,7 @@ export default async function(req) {
       case 'take_offline': {
         const { propertyId, reason } = body;
         if (!propertyId) return Response.json({ error: 'propertyId required' }, { status: 400 });
-        const resolvedId = await resolvePropertyId(base44, propertyId);
+        const resolvedId = await resolvePropertyId(base44, propertyId, resolveHints);
         if (!resolvedId) {
           console.warn('[manageOffboarding] take_offline FAILED: property not resolvable', { propertyId, actor: user.email });
           return Response.json({ error: `Property not found (id=${propertyId}). It may not be synced yet. Refresh the page or contact support.` }, { status: 400 });
@@ -104,7 +135,7 @@ export default async function(req) {
       case 'bring_online': {
         const { propertyId } = body;
         if (!propertyId) return Response.json({ error: 'propertyId required' }, { status: 400 });
-        const resolvedId = await resolvePropertyId(base44, propertyId);
+        const resolvedId = await resolvePropertyId(base44, propertyId, resolveHints);
         if (!resolvedId) {
           console.warn('[manageOffboarding] bring_online FAILED: property not resolvable', { propertyId, actor: user.email });
           return Response.json({ error: `Property not found (id=${propertyId}). It may not be synced yet. Refresh the page or contact support.` }, { status: 400 });
@@ -162,7 +193,7 @@ export default async function(req) {
         const today = new Date().toISOString().slice(0, 10);
         if (terminationDate <= today) return Response.json({ error: 'termination_date must be in the future' }, { status: 400 });
 
-        const resolvedId = await resolvePropertyId(base44, propertyId);
+        const resolvedId = await resolvePropertyId(base44, propertyId, resolveHints);
         if (!resolvedId) {
           console.warn('[manageOffboarding] schedule FAILED: property not resolvable', { propertyId, actor: user.email });
           return Response.json({ error: `Property not found (id=${propertyId}). It may not be synced yet. Refresh the page or contact support.` }, { status: 400 });
@@ -214,7 +245,7 @@ export default async function(req) {
       case 'cancel_scheduled': {
         const { propertyId } = body;
         if (!propertyId) return Response.json({ error: 'propertyId required' }, { status: 400 });
-        const resolvedId = await resolvePropertyId(base44, propertyId);
+        const resolvedId = await resolvePropertyId(base44, propertyId, resolveHints);
         if (!resolvedId) {
           console.warn('[manageOffboarding] cancel_scheduled FAILED: property not resolvable', { propertyId, actor: user.email });
           return Response.json({ error: `Property not found (id=${propertyId}). It may not be synced yet. Refresh the page or contact support.` }, { status: 400 });
@@ -267,7 +298,7 @@ export default async function(req) {
 
         // Resolve to the Base44 id so the later approve_termination → executeTermination
         // doesn't choke on a Supabase numeric id stored in source_property_id.
-        const resolvedId = await resolvePropertyId(base44, propertyId) || propertyId;
+        const resolvedId = await resolvePropertyId(base44, propertyId, resolveHints) || propertyId;
         console.log('[manageOffboarding] request_termination START', { propertyId, resolvedId, actor: user.email, ts: new Date().toISOString() });
 
         const submission = await base44.asServiceRole.entities.PropertySubmission.create({

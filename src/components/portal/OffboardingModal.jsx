@@ -39,7 +39,15 @@ export default function OffboardingModal({ property, basePropertyId, user, onClo
   const call = async (payload, successMsg) => {
     setLoading(true);
     try {
-      await base44.functions.invoke("manageOffboarding", payload);
+      // Pass listing URLs so manageOffboarding can resolve Base44 Property when
+      // the portal URL carries a Supabase id and supabase_property_id is unset.
+      await base44.functions.invoke("manageOffboarding", {
+        ...payload,
+        listing_url: property?.listing_url || property?.vrm_url || property?.url || undefined,
+        vrm_url: property?.vrm_url || property?.listing_url || undefined,
+        property_name: property?.property_name || property?.name || undefined,
+        partner_name: property?.partner_name || undefined,
+      });
       toast({ title: successMsg });
       invalidate();
       onCompleted?.();
