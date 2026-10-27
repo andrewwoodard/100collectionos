@@ -5,7 +5,7 @@
 // module load; when that fetch failed on cold starts the email silently fell
 // back to the remote URL, which email clients block — causing missing logos.
 
-export const LOGO_ALT_TEXT = "The 100 Collection";
+export const LOGO_ALT_TEXT = "The 100 Collection™";
 
 // Public HTTPS URL of the logo. This is what email templates MUST use —
 // Gmail and Outlook strip base64 `data:` URIs in <img src>, so a hosted URL is

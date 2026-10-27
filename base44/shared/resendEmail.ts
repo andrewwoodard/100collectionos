@@ -10,6 +10,7 @@
 //   const result = await sendResendEmailDirect(base44, { to, subject, content, text });
 
 import { LOGO_URL, LOGO_ALT_TEXT } from "./emailAssets.ts";
+import { BRAND_DISPLAY_NAME, normalizeBrandName } from "./brandName.ts";
 
 function emailTemplate(content: string): string {
   return `<!DOCTYPE html>
@@ -20,14 +21,14 @@ function emailTemplate(content: string): string {
 <table width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.08);">
 <tr><td style="background:#0D1B2A;padding:32px 40px;text-align:center;">
 <img src="${LOGO_URL}" alt="${LOGO_ALT_TEXT}" width="56" height="56" style="width:56px;height:56px;border-radius:8px;margin-bottom:14px;display:block;"/>
-<div style="color:#C9A96E;font-size:11px;font-weight:600;letter-spacing:2px;text-transform:uppercase;">The 100 Collection</div>
+<div style="color:#C9A96E;font-size:11px;font-weight:600;letter-spacing:2px;text-transform:uppercase;">${BRAND_DISPLAY_NAME}</div>
 </td></tr>
 <tr><td style="padding:40px;color:#0D1B2A;font-size:15px;line-height:1.6;">
 ${content}
 </td></tr>
 <tr><td style="padding:24px 40px 32px;border-top:1px solid #E2E8F0;">
 <p style="margin:0;color:#94A3B8;font-size:12px;text-align:center;line-height:1.5;">
-The 100 Collection &middot; Curated Luxury Vacation Rentals<br>
+${BRAND_DISPLAY_NAME} &middot; Curated Luxury Vacation Rentals<br>
 <a href="https://the100collection.com" style="color:#C9A96E;text-decoration:none;">the100collection.com</a>
 </p>
 </td></tr>
@@ -72,16 +73,20 @@ export async function sendResendEmailDirect(
   }
 
   const apiKey = config.RESEND_API_KEY || "";
-  const from = config.RESEND_FROM || "The 100 Collection <hello@theonehundredcollection.com>";
+  const from = normalizeBrandName(
+    config.RESEND_FROM || `${BRAND_DISPLAY_NAME} <hello@theonehundredcollection.com>`
+  );
+  const brandedSubject = normalizeBrandName(String(subject));
   const toArray = (Array.isArray(to) ? to : [to]).map(r => String(r).trim()).filter(Boolean);
   const recipients = toArray.join(",");
 
   if (!apiKey) {
-    console.log(`[email] RESEND_API_KEY not configured — skipping send to ${recipients}, subject: ${subject}`);
+    console.log(`[email] RESEND_API_KEY not configured — skipping send to ${recipients}, subject: ${brandedSubject}`);
     return { ok: true, skipped: "RESEND_API_KEY not configured" };
   }
 
-  const finalHtml = html || emailTemplate(content || text || "");
+  const finalHtml = normalizeBrandName(html || emailTemplate(content || text || ""));
+  const finalText = normalizeBrandName(text || "");
 
   const res = await fetch("https://api.resend.com/emails", {
     method: "POST",
@@ -92,9 +97,9 @@ export async function sendResendEmailDirect(
     body: JSON.stringify({
       from,
       to: toArray,
-      subject,
+      subject: brandedSubject,
       html: finalHtml,
-      text: text || "",
+      text: finalText,
       ...(scheduledAt ? { scheduled_at: scheduledAt } : {}),
       ...(replyTo ? { reply_to: replyTo } : {}),
     }),
@@ -111,9 +116,9 @@ export async function sendResendEmailDirect(
       for (const r of toArray) {
         await base44.integrations.Core.SendEmail({
           to: r,
-          subject,
+          subject: brandedSubject,
           body: finalHtml,
-          from_name: "The 100 Collection",
+          from_name: BRAND_DISPLAY_NAME,
         });
       }
       console.log(`[email] Fallback SendEmail succeeded for ${recipients}`);
@@ -125,7 +130,7 @@ export async function sendResendEmailDirect(
   }
 
   const data = await res.json();
-  console.log(`[email] Sent to ${recipients}, subject: ${subject}, id: ${data.id}`);
+  console.log(`[email] Sent to ${recipients}, subject: ${brandedSubject}, id: ${data.id}`);
   return { ok: true, id: data.id };
 }
 
