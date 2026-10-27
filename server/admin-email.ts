@@ -1,5 +1,7 @@
+import { BRAND_DISPLAY_NAME, normalizeBrandName } from "./brand-name.js";
+
 const LOGO_URL = "https://media.base44.com/images/public/69aee092656fb9813439389b/389d00003_logoXd.png?v=logo2";
-const LOGO_ALT_TEXT = "The 100 Collection";
+const LOGO_ALT_TEXT = BRAND_DISPLAY_NAME;
 
 function escapeHtml(s: unknown) {
   return String(s == null ? '' : s)
@@ -165,7 +167,7 @@ ${footerNoteHtml}
 </td></tr>
 <tr><td style="padding:24px 40px 32px;border-top:1px solid #E2E8F0;background:#FAFBFC;">
 <p style="margin:0;color:#94A3B8;font-size:12px;text-align:center;line-height:1.6;">
-The 100 Collection &mdash; Curated Luxury Vacation Rentals<br>
+${BRAND_DISPLAY_NAME} &mdash; Curated Luxury Vacation Rentals<br>
 <a href="https://theonehundredcollection.com" style="color:#C9A96E;text-decoration:none;font-weight:600;">theonehundredcollection.com</a>
 </p>
 </td></tr>
@@ -208,14 +210,14 @@ The 100 Collection &mdash; Curated Luxury Vacation Rentals<br>
     if (socialProof) textParts.push('', socialProof.replace(/\*\*/g, ''));
     if (replyPrompt) textParts.push('', 'Questions? Just reply to this email — we read every one.');
     if (footerNote) textParts.push('', footerNote);
-    textParts.push('', 'The 100 Collection — Curated Luxury Vacation Rentals', 'theonehundredcollection.com');
+    textParts.push('', `${BRAND_DISPLAY_NAME} — Curated Luxury Vacation Rentals`, 'theonehundredcollection.com');
     const text = textParts.join('\n');
 
     
     return {
-      subject: subject || headline,
-      html,
-      text,
+      subject: normalizeBrandName(subject || headline),
+      html: normalizeBrandName(html),
+      text: normalizeBrandName(text),
     };
   } catch (error: any) {
     return { error: error.message || "Could not build email", subject: "", html: "", text: "" };

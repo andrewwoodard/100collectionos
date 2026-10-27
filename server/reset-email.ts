@@ -1,4 +1,5 @@
 import { getNeonPool } from "./neon-db.js";
+import { BRAND_DISPLAY_NAME, normalizeBrandName } from "./brand-name.js";
 
 const LOGO_URL =
   "https://media.base44.com/images/public/69aee092656fb9813439389b/389d00003_logoXd.png?v=logo2";
@@ -22,7 +23,7 @@ async function getResendConfig(): Promise<Config> {
   const envKey = process.env.RESEND_API_KEY || "";
   const envFrom = process.env.RESEND_FROM || "";
   let apiKey = envKey;
-  let from = envFrom || "The 100 Collection <hello@portal.the100collection.com>";
+  let from = envFrom || `${BRAND_DISPLAY_NAME} <hello@portal.the100collection.com>`;
   try {
     const pool = getNeonPool();
     const { rows } = await pool.query(
@@ -51,8 +52,8 @@ function resetEmailHtml(name: string, url: string) {
 <tr><td align="center">
 <table width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.08);">
 <tr><td style="background:#0D1B2A;padding:32px 40px;text-align:center;">
-<img src="${LOGO_URL}" alt="The 100 Collection" width="56" height="56" style="width:56px;height:56px;border-radius:8px;margin-bottom:14px;display:block;margin-left:auto;margin-right:auto;"/>
-<div style="color:#C9A96E;font-size:11px;font-weight:600;letter-spacing:2px;text-transform:uppercase;">The 100 Collection</div>
+<img src="${LOGO_URL}" alt="${BRAND_DISPLAY_NAME}" width="56" height="56" style="width:56px;height:56px;border-radius:8px;margin-bottom:14px;display:block;margin-left:auto;margin-right:auto;"/>
+<div style="color:#C9A96E;font-size:11px;font-weight:600;letter-spacing:2px;text-transform:uppercase;">${BRAND_DISPLAY_NAME}</div>
 </td></tr>
 <tr><td style="padding:40px;color:#0D1B2A;font-size:15px;line-height:1.6;">
 <p style="margin:0 0 16px;">${greeting}</p>
@@ -64,7 +65,7 @@ function resetEmailHtml(name: string, url: string) {
 </td></tr>
 <tr><td style="padding:24px 40px 32px;border-top:1px solid #E2E8F0;">
 <p style="margin:0;color:#94A3B8;font-size:12px;text-align:center;line-height:1.5;">
-The 100 Collection &middot; Curated Luxury Vacation Rentals
+${BRAND_DISPLAY_NAME} &middot; Curated Luxury Vacation Rentals
 </p>
 </td></tr>
 </table>
@@ -114,11 +115,11 @@ export async function sendPortalEmail({
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      from,
+      from: normalizeBrandName(from),
       to: toArray,
-      subject,
-      html,
-      text,
+      subject: normalizeBrandName(subject),
+      html: normalizeBrandName(html),
+      text: normalizeBrandName(text),
       ...(replyToArray.length ? { reply_to: replyToArray.length === 1 ? replyToArray[0] : replyToArray } : {}),
     }),
   });
@@ -139,8 +140,8 @@ function magicLinkEmailHtml(url: string) {
 <tr><td align="center">
 <table width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.08);">
 <tr><td style="background:#0D1B2A;padding:32px 40px;text-align:center;">
-<img src="${LOGO_URL}" alt="The 100 Collection" width="56" height="56" style="width:56px;height:56px;border-radius:8px;margin-bottom:14px;display:block;margin-left:auto;margin-right:auto;"/>
-<div style="color:#C9A96E;font-size:11px;font-weight:600;letter-spacing:2px;text-transform:uppercase;">The 100 Collection</div>
+<img src="${LOGO_URL}" alt="${BRAND_DISPLAY_NAME}" width="56" height="56" style="width:56px;height:56px;border-radius:8px;margin-bottom:14px;display:block;margin-left:auto;margin-right:auto;"/>
+<div style="color:#C9A96E;font-size:11px;font-weight:600;letter-spacing:2px;text-transform:uppercase;">${BRAND_DISPLAY_NAME}</div>
 </td></tr>
 <tr><td style="padding:40px;color:#0D1B2A;font-size:15px;line-height:1.6;">
 <p style="margin:0 0 16px;">Hi,</p>
@@ -152,7 +153,7 @@ function magicLinkEmailHtml(url: string) {
 </td></tr>
 <tr><td style="padding:24px 40px 32px;border-top:1px solid #E2E8F0;">
 <p style="margin:0;color:#94A3B8;font-size:12px;text-align:center;line-height:1.5;">
-The 100 Collection &middot; Curated Luxury Vacation Rentals
+${BRAND_DISPLAY_NAME} &middot; Curated Luxury Vacation Rentals
 </p>
 </td></tr>
 </table>

@@ -1,5 +1,6 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.38';
 import { LOGO_URL, LOGO_ALT_TEXT } from '../../shared/emailAssets.ts';
+import { BRAND_DISPLAY_NAME, normalizeBrandName } from '../../shared/brandName.ts';
 
 // Shared branded email template generator.
 // Pure function: takes structured content, returns { subject, html, text }.
@@ -200,7 +201,7 @@ ${footerNoteHtml}
 </td></tr>
 <tr><td style="padding:24px 40px 32px;border-top:1px solid #E2E8F0;background:#FAFBFC;">
 <p style="margin:0;color:#94A3B8;font-size:12px;text-align:center;line-height:1.6;">
-The 100 Collection &mdash; Curated Luxury Vacation Rentals<br>
+${BRAND_DISPLAY_NAME} &mdash; Curated Luxury Vacation Rentals<br>
 <a href="https://theonehundredcollection.com" style="color:#C9A96E;text-decoration:none;font-weight:600;">theonehundredcollection.com</a>
 </p>
 </td></tr>
@@ -243,13 +244,13 @@ The 100 Collection &mdash; Curated Luxury Vacation Rentals<br>
     if (socialProof) textParts.push('', socialProof.replace(/\*\*/g, ''));
     if (replyPrompt) textParts.push('', 'Questions? Just reply to this email — we read every one.');
     if (footerNote) textParts.push('', footerNote);
-    textParts.push('', 'The 100 Collection — Curated Luxury Vacation Rentals', 'theonehundredcollection.com');
+    textParts.push('', `${BRAND_DISPLAY_NAME} — Curated Luxury Vacation Rentals`, 'theonehundredcollection.com');
     const text = textParts.join('\n');
 
     return Response.json({
-      subject: subject || headline,
-      html,
-      text,
+      subject: normalizeBrandName(subject || headline),
+      html: normalizeBrandName(html),
+      text: normalizeBrandName(text),
     });
   } catch (error) {
     return Response.json({ error: error.message }, { status: 500 });

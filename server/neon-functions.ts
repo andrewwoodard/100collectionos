@@ -1035,7 +1035,7 @@ function activationEmailHtml({
 <tr><td align="center">
 <table width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:16px;overflow:hidden;">
 <tr><td style="background:#0D1B2A;padding:32px 40px;text-align:center;">
-<div style="color:#C9A96E;font-size:11px;font-weight:600;letter-spacing:2px;text-transform:uppercase;">The 100 Collection</div>
+<div style="color:#C9A96E;font-size:11px;font-weight:600;letter-spacing:2px;text-transform:uppercase;">The 100 Collection™</div>
 </td></tr>
 <tr><td style="padding:40px;color:#0D1B2A;font-size:15px;line-height:1.6;">
 <p style="margin:0 0 16px;">Hi ${firstName},</p>
@@ -1293,7 +1293,7 @@ function teamInviteEmailHtml({
 <tr><td align="center">
 <table width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:16px;overflow:hidden;">
 <tr><td style="background:#0D1B2A;padding:32px 40px;text-align:center;">
-<div style="color:#C9A96E;font-size:11px;font-weight:600;letter-spacing:2px;text-transform:uppercase;">The 100 Collection</div>
+<div style="color:#C9A96E;font-size:11px;font-weight:600;letter-spacing:2px;text-transform:uppercase;">The 100 Collection™</div>
 </td></tr>
 <tr><td style="padding:40px;color:#0D1B2A;font-size:15px;line-height:1.6;">
 <h2 style="margin:0 0 16px;font-size:24px;font-weight:500;">You're invited</h2>
