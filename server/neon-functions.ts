@@ -309,12 +309,156 @@ async function handleColumnarTable(
   return json(res, 400, { error: "Unknown action" });
 }
 
+/** Careers form writes job_applications to classic Supabase; keep Neon in sync. */
+const LIVE_SUPABASE_TABLES = new Set(["job_applications"]);
+
+async function mirrorJsonTableRow(table: string, row: Record<string, any> | null | undefined) {
+  if (!row?.id) return;
+  try {
+    const pool = getNeonPool();
+    await pool.query(
+      `INSERT INTO supabase.${quoteIdent(table)} (id, data, imported_at)
+       VALUES ($1, $2::jsonb, now())
+       ON CONFLICT (id) DO UPDATE SET data = EXCLUDED.data, imported_at = now()`,
+      [String(row.id), JSON.stringify(row)]
+    );
+  } catch (error: any) {
+    console.warn(`[supabaseData] neon mirror ${table}/${row.id} failed:`, error?.message || error);
+  }
+}
+
+async function handleLiveSupabaseTable(res: any, body: any) {
+  const { table, action, id, data, filters, search, limit } = body || {};
+  const { hasRemoteSupabase, supabaseRest } = await import("./supabase-remote.js");
+  if (!hasRemoteSupabase()) {
+    return json(res, 500, { error: "Remote Supabase is not configured for live tables" });
+  }
+
+  const searchFields = TABLE_SEARCH_FIELDS[table] || [];
+  const lim = Math.min(Number(limit || 500), 5000);
+
+  if (action === "list") {
+    const params = new URLSearchParams();
+    params.set("select", "*");
+    params.set("order", "created_at.desc");
+    params.set("limit", String(lim));
+    if (filters && typeof filters === "object") {
+      for (const [k, v] of Object.entries(filters)) {
+        if (v !== undefined && v !== null && v !== "") params.set(k, `eq.${v}`);
+      }
+    }
+    if (search && searchFields.length) {
+      params.set("or", `(${searchFields.map((f) => `${f}.ilike.*${search}*`).join(",")})`);
+    }
+    const rows = (await supabaseRest(`${table}?${params.toString()}`)) || [];
+    const items = Array.isArray(rows) ? rows : [];
+    // Best-effort mirror so Neon stays usable for offline/admin tooling.
+    for (const row of items.slice(0, 100)) void mirrorJsonTableRow(table, row);
+    return json(res, 200, {
+      items: items.map((r: any) => ({
+        ...r,
+        created_date: r.created_date || r.created_at || null,
+      })),
+    });
+  }
+
+  if (action === "get") {
+    const rows = await supabaseRest(
+      `${table}?id=eq.${encodeURIComponent(String(id))}&select=*&limit=1`
+    );
+    const row = Array.isArray(rows) ? rows[0] : null;
+    if (!row) return json(res, 404, { error: "Not found" });
+    void mirrorJsonTableRow(table, row);
+    return json(res, 200, {
+      item: { ...row, created_date: row.created_date || row.created_at || null },
+    });
+  }
+
+  if (action === "create") {
+    const record = { ...(data || {}) };
+    if (!record.id) record.id = randomUUID();
+    if (!record.created_at) record.created_at = new Date().toISOString();
+    const inserted = await supabaseRest(table, {
+      method: "POST",
+      body: JSON.stringify(record),
+      headers: { Prefer: "return=representation" },
+    });
+    const row = Array.isArray(inserted) ? inserted[0] : inserted;
+    await mirrorJsonTableRow(table, row);
+    return json(res, 200, {
+      item: row ? { ...row, created_date: row.created_date || row.created_at || null } : record,
+    });
+  }
+
+  if (action === "update") {
+    const updated = await supabaseRest(
+      `${table}?id=eq.${encodeURIComponent(String(id))}`,
+      {
+        method: "PATCH",
+        body: JSON.stringify(data || {}),
+        headers: { Prefer: "return=representation" },
+      }
+    );
+    const row = Array.isArray(updated) ? updated[0] : updated;
+    if (!row) return json(res, 404, { error: "Not found" });
+    await mirrorJsonTableRow(table, row);
+    return json(res, 200, {
+      item: { ...row, created_date: row.created_date || row.created_at || null },
+    });
+  }
+
+  if (action === "delete") {
+    await supabaseRest(`${table}?id=eq.${encodeURIComponent(String(id))}`, {
+      method: "DELETE",
+    });
+    try {
+      const pool = getNeonPool();
+      await pool.query(`DELETE FROM supabase.${quoteIdent(table)} WHERE id = $1 OR data->>'id' = $1`, [
+        String(id),
+      ]);
+    } catch {
+      /* ignore neon delete miss */
+    }
+    return json(res, 200, { success: true });
+  }
+
+  if (action === "bulk_create") {
+    const items = [];
+    for (const item of data || []) {
+      const record = { ...item };
+      if (!record.id) record.id = randomUUID();
+      if (!record.created_at) record.created_at = new Date().toISOString();
+      const inserted = await supabaseRest(table, {
+        method: "POST",
+        body: JSON.stringify(record),
+        headers: { Prefer: "return=representation" },
+      });
+      const row = Array.isArray(inserted) ? inserted[0] : inserted;
+      await mirrorJsonTableRow(table, row);
+      items.push(row ? { ...row, created_date: row.created_date || row.created_at || null } : record);
+    }
+    return json(res, 200, { items, count: items.length });
+  }
+
+  return json(res, 400, { error: "Unknown action" });
+}
+
 async function handleSupabaseData(res: any, body: any) {
   const { table, action, id, data, filters, search, limit } = body || {};
   if (!table || !TABLE_SEARCH_FIELDS[table]) {
     return json(res, 400, { error: `Invalid table: ${table}` });
   }
   if (table === "vrms") return handleColumnarTable(res, "vrms", VRMS_COLUMNS, body);
+  // Website careers apps land in classic Supabase; serve those live so the
+  // portal is not stuck on a stale Neon import.
+  if (LIVE_SUPABASE_TABLES.has(table)) {
+    try {
+      return await handleLiveSupabaseTable(res, body);
+    } catch (error: any) {
+      console.error(`[supabaseData] live ${table} ${action} failed:`, error?.message || error);
+      // Fall through to Neon mirror if remote is temporarily unavailable.
+    }
+  }
   const pool = getNeonPool();
   const t = quoteIdent(table);
   const built = buildEqFilters(filters);

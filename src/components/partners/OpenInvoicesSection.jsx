@@ -3,7 +3,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import EmptyState from "../shared/EmptyState";
-import { AlertCircle, ExternalLink, Loader2, Trash2 } from "lucide-react";
+import { AlertCircle, ExternalLink, Loader2, Trash2, Mail } from "lucide-react";
 import { format } from "date-fns";
 import { Button } from "@/components/ui/button";
 import {
@@ -11,13 +11,38 @@ import {
 } from "@/components/ui/dialog";
 import { toast } from "@/components/ui/use-toast";
 
-export default function OpenInvoicesSection({ invoices, loading, billingEmail }) {
+export default function OpenInvoicesSection({ invoices, loading, billingEmail, partnerName }) {
   const queryClient = useQueryClient();
   const [pendingVoid, setPendingVoid] = useState(null);
   const [voidingId, setVoidingId] = useState(null);
+  const [sendingReminder, setSendingReminder] = useState(false);
 
   const openInvoices = (invoices || []).filter(inv => inv.status === "open");
   const totalDue = openInvoices.reduce((sum, inv) => sum + (inv.amount_due ?? inv.total ?? 0), 0);
+
+  const handleSendReminder = async () => {
+    if (!billingEmail || !openInvoices.length) return;
+    setSendingReminder(true);
+    try {
+      const res = await base44.functions.invoke("sendBillingReminder", {
+        email: billingEmail,
+        partner_name: partnerName || undefined,
+      });
+      if (res.data?.error) {
+        toast({ title: "Could not send reminder", description: res.data.error, variant: "destructive" });
+      } else {
+        toast({
+          title: "Reminder sent",
+          description: `Payment reminder sent to ${billingEmail} for ${openInvoices.length} open invoice${openInvoices.length === 1 ? "" : "s"}.`,
+        });
+      }
+    } catch (e) {
+      const msg = e?.response?.data?.error || e?.message || "Unexpected error";
+      toast({ title: "Could not send reminder", description: msg, variant: "destructive" });
+    } finally {
+      setSendingReminder(false);
+    }
+  };
 
   const handleVoidInvoice = async () => {
     if (!pendingVoid) return;
@@ -70,8 +95,8 @@ export default function OpenInvoicesSection({ invoices, loading, billingEmail })
   return (
     <div className="space-y-4">
       {/* Summary */}
-      <div className="bg-amber-50 border border-amber-100 rounded-lg px-4 py-3 flex items-center justify-between">
-        <div className="flex items-center gap-6 text-sm">
+      <div className="bg-amber-50 border border-amber-100 rounded-lg px-4 py-3 flex items-center justify-between gap-3 flex-wrap">
+        <div className="flex items-center gap-6 text-sm flex-wrap">
           <span className="font-semibold text-amber-800 flex items-center gap-1.5">
             <AlertCircle className="w-4 h-4" /> Open Invoices
           </span>
@@ -82,6 +107,18 @@ export default function OpenInvoicesSection({ invoices, loading, billingEmail })
             Total due: <strong className="text-red-700">${(totalDue / 100).toFixed(2)}</strong>
           </span>
         </div>
+        {billingEmail && (
+          <button
+            type="button"
+            onClick={handleSendReminder}
+            disabled={sendingReminder}
+            title={`Send payment reminder to ${billingEmail}`}
+            className="text-xs font-medium text-amber-900 bg-white border border-amber-200 rounded-lg px-2.5 py-1.5 hover:bg-amber-100 disabled:opacity-50 flex items-center gap-1.5"
+          >
+            {sendingReminder ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Mail className="w-3.5 h-3.5" />}
+            Send reminder
+          </button>
+        )}
       </div>
 
       {/* Detail table */}

@@ -917,7 +917,13 @@ export default function PartnerDetail() {
         </TabsContent>
 
         <TabsContent value="billing">
-          <PartnerBillingTab billing={billing} stripeBillingEmail={stripeBillingEmail} stripeData={stripeData} isHomeowner={isHomeowner} />
+          <PartnerBillingTab
+            billing={billing}
+            stripeBillingEmail={stripeBillingEmail}
+            stripeData={stripeData}
+            isHomeowner={isHomeowner}
+            partnerName={partner?.partner_name}
+          />
         </TabsContent>
 
         <TabsContent value="tasks">

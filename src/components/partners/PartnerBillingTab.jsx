@@ -10,7 +10,7 @@ const fmt = (n) => new Intl.NumberFormat("en-US", {
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import StatusBadge from "../shared/StatusBadge";
 import EmptyState from "../shared/EmptyState";
-import { CreditCard, ExternalLink, Loader2, Trash2, Pencil, Calendar, Pause, Play } from "lucide-react";
+import { CreditCard, ExternalLink, Loader2, Trash2, Pencil, Calendar, Pause, Play, Mail } from "lucide-react";
 import { format } from "date-fns";
 import { Button } from "@/components/ui/button";
 import OpenInvoicesSection from "./OpenInvoicesSection";
@@ -21,13 +21,15 @@ import {
 import { toast } from "@/components/ui/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 
-export default function PartnerBillingTab({ billing = [], stripeBillingEmail, stripeData, isHomeowner }) {
+export default function PartnerBillingTab({ billing = [], stripeBillingEmail, stripeData, isHomeowner, partnerName }) {
   const [activeTab, setActiveTab] = useState("stripe");
   const [voidingId, setVoidingId] = useState(null);
   const [pendingVoid, setPendingVoid] = useState(null);
   const [editTarget, setEditTarget] = useState(null);
   const [pauseTarget, setPauseTarget] = useState(null);
   const [pausing, setPausing] = useState(false);
+  const [sendingReminder, setSendingReminder] = useState(false);
+  const [confirmReminder, setConfirmReminder] = useState(false);
   const queryClient = useQueryClient();
 
   // Group Stripe credit slots by subscription so admins can adjust the
@@ -121,6 +123,34 @@ export default function PartnerBillingTab({ billing = [], stripeBillingEmail, st
 
   const openCount = (stripeInvoices || []).filter(inv => inv.status === "open").length;
 
+  const handleSendReminder = async () => {
+    if (!stripeBillingEmail) return;
+    setSendingReminder(true);
+    try {
+      const res = await base44.functions.invoke("sendBillingReminder", {
+        email: stripeBillingEmail,
+        partner_name: partnerName || undefined,
+      });
+      if (res.data?.error) {
+        toast({ title: "Could not send reminder", description: res.data.error, variant: "destructive" });
+      } else {
+        const count = res.data?.open_invoice_count ?? openCount;
+        toast({
+          title: "Reminder sent",
+          description: res.data?.email_skipped
+            ? `Stripe invoice reminder queued for ${stripeBillingEmail} (email provider skipped).`
+            : `Payment reminder sent to ${stripeBillingEmail} for ${count} open invoice${count === 1 ? "" : "s"}.`,
+        });
+      }
+    } catch (e) {
+      const msg = e?.response?.data?.error || e?.message || "Unexpected error";
+      toast({ title: "Could not send reminder", description: msg, variant: "destructive" });
+    } finally {
+      setSendingReminder(false);
+      setConfirmReminder(false);
+    }
+  };
+
   const tabs = [
     { id: "stripe", label: "Stripe Invoices" },
     { id: "open", label: `Open Invoices (${openCount})` },
@@ -132,8 +162,8 @@ export default function PartnerBillingTab({ billing = [], stripeBillingEmail, st
     <div className="space-y-4">
       {/* Stripe summary bar */}
       {stripeData && (
-        <div className="bg-green-50 border border-green-100 rounded-lg px-4 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-4 text-sm">
+        <div className="bg-green-50 border border-green-100 rounded-lg px-4 py-3 flex items-center justify-between gap-3 flex-wrap">
+          <div className="flex items-center gap-4 text-sm flex-wrap">
             <span className="font-semibold text-green-700 flex items-center gap-1.5">
               <CreditCard className="w-4 h-4" /> Stripe Active
             </span>
@@ -151,16 +181,34 @@ export default function PartnerBillingTab({ billing = [], stripeBillingEmail, st
               </span>
             )}
           </div>
-          {stripeData.customer_id && (
-            <a
-              href={`https://dashboard.stripe.com/customers/${stripeData.customer_id}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-xs text-blue-500 hover:underline flex items-center gap-1"
-            >
-              View Customer <ExternalLink className="w-3 h-3" />
-            </a>
-          )}
+          <div className="flex items-center gap-2 shrink-0">
+            {stripeBillingEmail && (
+              <button
+                type="button"
+                onClick={() => setConfirmReminder(true)}
+                disabled={sendingReminder || openCount === 0}
+                title={
+                  openCount === 0
+                    ? "No open invoices to remind about"
+                    : `Send payment reminder to ${stripeBillingEmail}`
+                }
+                className="text-xs font-medium text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5 hover:bg-amber-100 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
+              >
+                {sendingReminder ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Mail className="w-3.5 h-3.5" />}
+                Send reminder
+              </button>
+            )}
+            {stripeData.customer_id && (
+              <a
+                href={`https://dashboard.stripe.com/customers/${stripeData.customer_id}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-xs text-blue-500 hover:underline flex items-center gap-1"
+              >
+                View Customer <ExternalLink className="w-3 h-3" />
+              </a>
+            )}
+          </div>
         </div>
       )}
 
@@ -330,6 +378,7 @@ export default function PartnerBillingTab({ billing = [], stripeBillingEmail, st
           invoices={stripeInvoices}
           loading={loadingInvoices}
           billingEmail={stripeBillingEmail}
+          partnerName={partnerName}
         />
       )}
 
@@ -389,6 +438,29 @@ export default function PartnerBillingTab({ billing = [], stripeBillingEmail, st
             <Button variant="destructive" onClick={handleVoidInvoice} disabled={!!voidingId}>
               {voidingId ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
               Remove invoice
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Billing reminder confirm */}
+      <Dialog open={confirmReminder} onOpenChange={(o) => !o && !sendingReminder && setConfirmReminder(false)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Send payment reminder?</DialogTitle>
+            <DialogDescription>
+              This will email <span className="font-medium text-gray-900">{stripeBillingEmail}</span> about{" "}
+              <strong>{openCount}</strong> open invoice{openCount === 1 ? "" : "s"}, including Stripe pay links.
+              Stripe will also attempt to re-send each open invoice to that billing email.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setConfirmReminder(false)} disabled={sendingReminder}>
+              Cancel
+            </Button>
+            <Button onClick={handleSendReminder} disabled={sendingReminder || openCount === 0}>
+              {sendingReminder ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Mail className="w-4 h-4 mr-2" />}
+              Send reminder
             </Button>
           </DialogFooter>
         </DialogContent>

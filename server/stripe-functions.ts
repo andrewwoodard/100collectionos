@@ -1,6 +1,8 @@
 import { getNeonPool, json } from "./neon-db.js";
 import { requireAdmin } from "./require-session.js";
+import { sendPortalEmail } from "./reset-email.js";
 import { getStripe } from "./stripe.js";
+import { BRAND_DISPLAY_NAME } from "./brand-name.js";
 
 export const STRIPE_FUNCTIONS = new Set([
   "stripePartnerData",
@@ -10,6 +12,7 @@ export const STRIPE_FUNCTIONS = new Set([
   "getPromoCodeDisplay",
   "createStripeCustomer",
   "createSubscriptionInvoice",
+  "sendBillingReminder",
 ]);
 
 function parseScheduleDate(value: unknown) {
@@ -500,11 +503,140 @@ async function handleCreateSubscriptionInvoice(res: any, body: any) {
   });
 }
 
+async function handleSendBillingReminder(res: any, body: any) {
+  const stripe = getStripe();
+  const email = String(body?.email || "").trim().toLowerCase();
+  const partnerName = String(body?.partner_name || "").trim();
+  if (!email) return json(res, 400, { error: "email is required" });
+
+  const customers = await stripe.customers.list({ email, limit: 1 });
+  const customer = customers.data[0];
+  if (!customer) {
+    return json(res, 404, { error: `No Stripe customer found for ${email}` });
+  }
+
+  const invoiceList = await stripe.invoices.list({
+    customer: customer.id,
+    status: "open",
+    limit: 20,
+  });
+  const openInvoices = invoiceList.data || [];
+  if (!openInvoices.length) {
+    return json(res, 400, {
+      error: "No open invoices to remind about for this Stripe customer.",
+      email,
+      customer_id: customer.id,
+    });
+  }
+
+  const resent: Array<{ id: string; number: string | null; ok: boolean; error?: string }> = [];
+  for (const inv of openInvoices) {
+    try {
+      const sent = await stripe.invoices.sendInvoice(inv.id);
+      resent.push({ id: sent.id, number: sent.number || inv.number || null, ok: true });
+    } catch (e: any) {
+      // Already-sent open invoices can still be reminded via Resend with the hosted URL.
+      resent.push({
+        id: inv.id,
+        number: inv.number || null,
+        ok: false,
+        error: e?.message || "Stripe sendInvoice failed",
+      });
+    }
+  }
+
+  const fmt = (cents: number) =>
+    new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format((cents || 0) / 100);
+  const totalDue = openInvoices.reduce((sum, inv) => sum + (inv.amount_due ?? inv.total ?? 0), 0);
+  const greetingName = partnerName || customer.name || "there";
+  const rowsHtml = openInvoices
+    .map((inv) => {
+      const label = inv.number || inv.id;
+      const amount = fmt(inv.amount_due ?? inv.total ?? 0);
+      const link = inv.hosted_invoice_url
+        ? `<a href="${inv.hosted_invoice_url}" style="color:#C9A96E;text-decoration:none;font-weight:600;">Pay invoice</a>`
+        : "—";
+      return `<tr>
+        <td style="padding:10px 0;border-bottom:1px solid #E2E8F0;font-family:monospace;font-size:13px;color:#64748B;">${label}</td>
+        <td style="padding:10px 0;border-bottom:1px solid #E2E8F0;font-size:14px;font-weight:600;color:#0D1B2A;">${amount}</td>
+        <td style="padding:10px 0;border-bottom:1px solid #E2E8F0;text-align:right;">${link}</td>
+      </tr>`;
+    })
+    .join("");
+
+  const inner = `
+<p style="margin:0 0 16px;">Hi ${greetingName},</p>
+<p style="margin:0 0 16px;">This is a friendly reminder that you have <strong>${openInvoices.length}</strong> open invoice${openInvoices.length === 1 ? "" : "s"} with ${BRAND_DISPLAY_NAME} totaling <strong>${fmt(totalDue)}</strong>.</p>
+<table width="100%" cellpadding="0" cellspacing="0" style="margin:8px 0 20px;">${rowsHtml}</table>
+<p style="margin:0 0 16px;">Please use the pay links above at your earliest convenience. If you have already paid or have questions, just reply to this email.</p>
+<p style="margin:0;color:#64748B;font-size:13px;">Sent to your Stripe billing email (${email}).</p>`;
+
+  const html = `<!DOCTYPE html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
+<body style="margin:0;padding:0;background:#FAFBFC;font-family:Helvetica,Arial,sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#FAFBFC;padding:32px 0;">
+<tr><td align="center">
+<table width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.08);">
+<tr><td style="background:#0D1B2A;padding:28px 40px;text-align:center;">
+<div style="color:#C9A96E;font-size:11px;font-weight:600;letter-spacing:2px;text-transform:uppercase;">${BRAND_DISPLAY_NAME}</div>
+</td></tr>
+<tr><td style="padding:40px;color:#0D1B2A;font-size:15px;line-height:1.6;">${inner}</td></tr>
+<tr><td style="padding:24px 40px 32px;border-top:1px solid #E2E8F0;">
+<p style="margin:0;color:#94A3B8;font-size:12px;text-align:center;line-height:1.5;">
+${BRAND_DISPLAY_NAME} &middot; Curated Luxury Vacation Rentals
+</p>
+</td></tr>
+</table>
+</td></tr>
+</table>
+</body></html>`;
+
+  const textLines = [
+    `Hi ${greetingName},`,
+    "",
+    `This is a friendly reminder that you have ${openInvoices.length} open invoice(s) with ${BRAND_DISPLAY_NAME} totaling ${fmt(totalDue)}.`,
+    "",
+    ...openInvoices.map((inv) => {
+      const label = inv.number || inv.id;
+      const amount = fmt(inv.amount_due ?? inv.total ?? 0);
+      return `- ${label}: ${amount}${inv.hosted_invoice_url ? ` — ${inv.hosted_invoice_url}` : ""}`;
+    }),
+    "",
+    "If you have already paid or have questions, just reply to this email.",
+  ];
+
+  const emailResult = await sendPortalEmail({
+    to: email,
+    subject: `Payment reminder — ${openInvoices.length} open invoice${openInvoices.length === 1 ? "" : "s"}`,
+    html,
+    text: textLines.join("\n"),
+  });
+
+  if (!emailResult.ok && !emailResult.skipped) {
+    return json(res, 500, {
+      error: emailResult.error || "Failed to send reminder email",
+      stripe_resent: resent,
+    });
+  }
+
+  return json(res, 200, {
+    ok: true,
+    email,
+    customer_id: customer.id,
+    open_invoice_count: openInvoices.length,
+    total_due_cents: totalDue,
+    stripe_resent: resent,
+    email_skipped: Boolean(emailResult.skipped),
+    email_id: "id" in emailResult ? emailResult.id : undefined,
+  });
+}
+
 export async function handleStripeFunction(req: any, res: any, functionName: string, body: any) {
   if (
     functionName === "voidStripeInvoice" ||
     functionName === "createStripeCustomer" ||
-    functionName === "createSubscriptionInvoice"
+    functionName === "createSubscriptionInvoice" ||
+    functionName === "sendBillingReminder"
   ) {
     const gate = await requireAdmin(req);
     if ("error" in gate && gate.error) return json(res, gate.error, { error: gate.message });
@@ -514,6 +646,7 @@ export async function handleStripeFunction(req: any, res: any, functionName: str
   if (functionName === "stripeAllInvoices") return handleStripeAllInvoices(res);
   if (functionName === "stripeInvoices") return handleStripeInvoices(res, body);
   if (functionName === "createSubscriptionInvoice") return handleCreateSubscriptionInvoice(res, body);
+  if (functionName === "sendBillingReminder") return handleSendBillingReminder(res, body);
   if (functionName === "getPromoCodeDisplay") {
     const stripe = getStripe();
     const promo_id = String(body?.promo_id || "");
