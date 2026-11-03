@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
+import { portalMembershipIds } from "@/lib/portalMembershipIds";
 
 /**
  * Portal-side rollup hook: finds all Partners the current user is a member of,
@@ -9,11 +10,12 @@ import { base44 } from "@/api/base44Client";
  * @param {object} user - the current app user (from useCurrentUser — real or impersonated)
  */
 export function usePortalPartnerRollup(user) {
+  const membershipIds = portalMembershipIds(user);
   // 1. Find all Partners the current user is a member of (via portal_user_ids)
   const { data: myPartners = [] } = useQuery({
-    queryKey: ["my-partners-rollup", user?.id],
-    queryFn: () => base44.entities.Partner.filter({ portal_user_ids: { $in: [user.id] } }),
-    enabled: !!user?.id,
+    queryKey: ["my-partners-rollup", membershipIds.join(",")],
+    queryFn: () => base44.entities.Partner.filter({ portal_user_ids: { $in: membershipIds } }),
+    enabled: membershipIds.length > 0,
   });
 
   const myPartnerIds = (myPartners || []).map(p => p.id);

@@ -28,15 +28,26 @@ export async function resolvePortalProfile(email: string): Promise<PortalProfile
   const portalId = portal?.id ? String(portal.id) : null;
   const data = portal?.data || {};
 
+  // Also match Better Auth session ids already stored on the partner (dual-id membership).
+  const { rows: authUsers } = await pool.query(
+    `SELECT id FROM "user" WHERE lower(email) = $1 LIMIT 1`,
+    [key]
+  );
+  const authId = authUsers[0]?.id ? String(authUsers[0].id) : null;
+
   const { rows: partners } = await pool.query(
     `SELECT id FROM base44.partner
      WHERE ($1::text IS NOT NULL AND (
             data->>'portal_user_id' = $1
             OR data->'portal_user_ids' ? $1
           ))
+        OR ($3::text IS NOT NULL AND (
+            data->>'portal_user_id' = $3
+            OR data->'portal_user_ids' ? $3
+          ))
         OR lower(coalesce(data->>'primary_contact_email', '')) = $2
      LIMIT 5`,
-    [portalId, key]
+    [portalId, key, authId]
   );
 
   return {

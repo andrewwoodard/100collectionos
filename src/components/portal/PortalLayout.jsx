@@ -52,16 +52,29 @@ export default function PortalLayout({ children }) {
     let cancelled = false;
 
     (async () => {
-      // Look up partner via portal_user_ids array (team model)
-      const linked = await base44.entities.Partner.filter({ portal_user_ids: { $in: [user.id] } });
+      // Look up partner via portal_user_ids (Better Auth id and/or Base44 portal id)
+      const membershipIds = [user.id, user.portalId].filter(Boolean);
+      const linked = await base44.entities.Partner.filter({ portal_user_ids: { $in: membershipIds } });
       if (cancelled) return;
       if (linked.length > 0) {
         const p = linked[0];
         // Skip backfill during impersonation — view-only, no writes
-        if (!isImpersonating && (!Array.isArray(p.portal_user_ids) || p.portal_user_ids.length === 0)) {
-          const ids = p.portal_user_id ? [p.portal_user_id] : [];
-          if (!ids.includes(user.id)) ids.push(user.id);
-          await base44.entities.Partner.update(p.id, { portal_user_ids: ids });
+        if (!isImpersonating) {
+          const ids = Array.isArray(p.portal_user_ids) && p.portal_user_ids.length > 0
+            ? [...p.portal_user_ids]
+            : (p.portal_user_id ? [p.portal_user_id] : []);
+          let changed = false;
+          for (const id of membershipIds) {
+            if (!ids.includes(id)) {
+              ids.push(id);
+              changed = true;
+            }
+          }
+          if (changed) {
+            await base44.entities.Partner.update(p.id, { portal_user_ids: ids });
+            setPartnerRecord({ ...p, portal_user_ids: ids });
+            return;
+          }
         }
         setPartnerRecord(p);
         return;
@@ -76,14 +89,16 @@ export default function PortalLayout({ children }) {
         const ids = Array.isArray(p.portal_user_ids) && p.portal_user_ids.length > 0
           ? [...p.portal_user_ids]
           : (p.portal_user_id ? [p.portal_user_id] : []);
-        if (!ids.includes(user.id)) ids.push(user.id);
+        for (const id of membershipIds) {
+          if (!ids.includes(id)) ids.push(id);
+        }
         await base44.entities.Partner.update(p.id, { portal_user_id: user.id, portal_user_ids: ids });
         setPartnerRecord({ ...p, portal_user_id: user.id, portal_user_ids: ids });
       }
     })().catch(() => {});
 
     return () => { cancelled = true; };
-  }, [user?.id, user?.email, isImpersonating]);
+  }, [user?.id, user?.portalId, user?.email, isImpersonating]);
 
   // Close bell popover on outside click
   useEffect(() => {

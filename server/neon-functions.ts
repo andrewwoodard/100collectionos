@@ -875,7 +875,38 @@ async function handleManagePartnerTeam(res: any, body: any) {
     if (partner.portal_user_id === user_id) {
       return json(res, 400, { error: "Cannot remove the primary contact. Promote another member first." });
     }
-    const newIds = userIds.filter((id) => id !== user_id);
+    // Drop every id tied to this person (Base44 + Better Auth), not just the one clicked.
+    const relatedIds = new Set<string>([String(user_id)]);
+    const { rows: b44Rows } = await pool.query(
+      `SELECT id, data->>'email' AS email FROM base44."user" WHERE id = $1 LIMIT 1`,
+      [String(user_id)]
+    );
+    const memberEmail = String(b44Rows[0]?.email || "").trim().toLowerCase();
+    if (!memberEmail) {
+      const { rows: authRows } = await pool.query(
+        `SELECT email FROM "user" WHERE id = $1 LIMIT 1`,
+        [String(user_id)]
+      );
+      const authEmail = String(authRows[0]?.email || "").trim().toLowerCase();
+      if (authEmail) {
+        const { rows: byEmail } = await pool.query(
+          `SELECT id FROM base44."user" WHERE lower(data->>'email') = $1
+           UNION
+           SELECT id::text FROM "user" WHERE lower(email) = $1`,
+          [authEmail]
+        );
+        for (const row of byEmail) relatedIds.add(String(row.id));
+      }
+    } else {
+      const { rows: byEmail } = await pool.query(
+        `SELECT id FROM base44."user" WHERE lower(data->>'email') = $1
+         UNION
+         SELECT id::text FROM "user" WHERE lower(email) = $1`,
+        [memberEmail]
+      );
+      for (const row of byEmail) relatedIds.add(String(row.id));
+    }
+    const newIds = userIds.filter((id) => !relatedIds.has(String(id)));
     await persistPartner({ portal_user_ids: newIds });
     return json(res, 200, { ok: true, portal_user_ids: newIds });
   }
@@ -887,7 +918,18 @@ async function handleManagePartnerTeam(res: any, body: any) {
     if (target.role !== "partner" && target.role !== "admin") {
       return json(res, 400, { error: "Only partner- or admin-role users can be linked to a partner" });
     }
-    const newIds = userIds.includes(user_id) ? userIds : [...userIds, user_id];
+    const newIds = [...userIds];
+    if (!newIds.includes(user_id)) newIds.push(user_id);
+    // Also link Better Auth session id so property lists resolve after login.
+    const memberEmail = String(target.email || "").trim().toLowerCase();
+    if (memberEmail) {
+      const { rows: authRows } = await pool.query(
+        `SELECT id FROM "user" WHERE lower(email) = $1 LIMIT 1`,
+        [memberEmail]
+      );
+      const authId = authRows[0]?.id ? String(authRows[0].id) : "";
+      if (authId && !newIds.includes(authId)) newIds.push(authId);
+    }
     const patch: Record<string, unknown> = { portal_user_ids: newIds };
     if (!partner.portal_user_id) {
       patch.portal_user_id = user_id;
@@ -1399,9 +1441,15 @@ async function handleAcceptPartnerInvitation(req: any, res: any, body: any) {
     );
   }
 
+  // Store both Base44 portal user id and Better Auth session id. The portal UI
+  // filters partners/properties by the session user.id; invite acceptance used
+  // to only write the Base44 id, so teammates could log in but see no properties.
+  const authUserId = String(sessionUser.id || "").trim();
   const ids = Array.isArray(partner.portal_user_ids) ? [...partner.portal_user_ids] : [];
   if (partner.portal_user_id && !ids.includes(partner.portal_user_id)) ids.push(partner.portal_user_id);
-  if (!ids.includes(portalUserId)) ids.push(portalUserId);
+  for (const id of [portalUserId, authUserId]) {
+    if (id && !ids.includes(id)) ids.push(id);
+  }
   const isPrimary = (inv.invitation_type || "teammate") === "primary_activation";
   await pool.query(
     `UPDATE base44.partner
@@ -1416,6 +1464,7 @@ async function handleAcceptPartnerInvitation(req: any, res: any, body: any) {
     status: "accepted",
     accepted_at: new Date().toISOString(),
     accepted_by_user_id: portalUserId,
+    accepted_by_auth_user_id: authUserId || null,
   });
 
   return json(res, 200, { ok: true, redirect: "/portal/dashboard" });

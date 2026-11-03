@@ -22,7 +22,7 @@ export default function TechStack() {
     queryKey: ["portal-partner", user?.id],
     queryFn: async () => {
       if (!user?.id) return null;
-      const linked = await base44.entities.Partner.filter({ portal_user_ids: { $in: [user.id] } });
+      const linked = await base44.entities.Partner.filter({ portal_user_ids: { $in: [user.id, user.portalId].filter(Boolean) } });
       if (linked.length > 0) return linked[0];
       if (user.email) {
         const matches = await base44.entities.Partner.filter({ primary_contact_email: user.email });

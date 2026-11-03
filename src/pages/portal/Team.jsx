@@ -11,7 +11,7 @@ export default function Team() {
 
   const { data: partnerRecords = [] } = useQuery({
     queryKey: ["my-partner-record-team", user?.id],
-    queryFn: () => base44.entities.Partner.filter({ portal_user_ids: { $in: [user.id] } }),
+    queryFn: () => base44.entities.Partner.filter({ portal_user_ids: { $in: [user.id, user.portalId].filter(Boolean) } }),
     enabled: !!user?.id,
   });
   const partner = partnerRecords[0];

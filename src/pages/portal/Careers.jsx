@@ -51,7 +51,7 @@ export default function Careers() {
     if (!user?.id) return;
     let cancelled = false;
     (async () => {
-      const records = await base44.entities.Partner.filter({ portal_user_ids: { $in: [user.id] } });
+      const records = await base44.entities.Partner.filter({ portal_user_ids: { $in: [user.id, user.portalId].filter(Boolean) } });
       if (cancelled) return;
       if (records.length > 0) {
         setPartner(records[0]);

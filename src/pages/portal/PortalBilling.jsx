@@ -40,7 +40,7 @@ export default function PortalBilling() {
     queryKey: ["my-licenses", user?.id],
     queryFn: async () => {
       if (!user?.id) return {};
-      const partners = await base44.entities.Partner.filter({ portal_user_ids: { $in: [user.id] } });
+      const partners = await base44.entities.Partner.filter({ portal_user_ids: { $in: [user.id, user.portalId].filter(Boolean) } });
       if (partners.length === 0) return { licenses: [], partner: null };
       const partner = partners[0];
       const partnerNames = partners.map(p => p.partner_name);

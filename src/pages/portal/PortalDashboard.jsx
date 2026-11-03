@@ -38,7 +38,7 @@ export default function PortalDashboard() {
 
   const { data: partnerRecords = [] } = useQuery({
     queryKey: ["my-partner-record-dashboard", user?.id],
-    queryFn: () => base44.entities.Partner.filter({ portal_user_ids: { $in: [user.id] } }),
+    queryFn: () => base44.entities.Partner.filter({ portal_user_ids: { $in: [user.id, user.portalId].filter(Boolean) } }),
     enabled: !!user?.id,
     staleTime: 0,
   });

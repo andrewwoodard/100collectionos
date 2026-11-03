@@ -5,12 +5,25 @@ import { requireAdmin } from "./require-session.js";
 export const FILTERED_AMENITY_KEYS = [
   "pet_friendly",
   "private_pool",
+  "heated_pool",
   "private_hot_tub",
+  "ocean_view",
   "mountain_view",
+  "beach_access",
+  "waterfront",
   "fire_pit",
+  "fireplace",
   "outdoor_space",
+  "game_room",
+  "home_theater",
+  "chefs_kitchen",
+  "gym",
+  "elevator",
+  "pickleball_tennis",
+  "ski_in_out",
   "workspace_wifi",
   "parking",
+  "ev_charging",
 ] as const;
 
 export type FilteredAmenityKey = (typeof FILTERED_AMENITY_KEYS)[number];
@@ -36,8 +49,17 @@ const HEURISTIC_PATTERNS: Array<{
   },
   {
     key: "private_pool",
-    patterns: [/\bprivate\s+pool\b/i, /\bpool\b/i, /\bswimming\s+pool\b/i],
+    patterns: [
+      /\bprivate\s+pool\b/i,
+      /\bswimming\s+pool\b/i,
+      /\b(?:heated|outdoor|lap|fenced)\s+pool\b/i,
+      /\bpools?\b(?!\s+table)/i,
+    ],
     negations: [/\bcommunity\s+pool\s+only\b/i, /\bno\s+pool\b/i],
+  },
+  {
+    key: "heated_pool",
+    patterns: [/\bheated\s+pool\b/i, /\bpool\s+is\s+heated\b/i, /\bheat(?:ed|able)\s+(?:private\s+)?pool\b/i],
   },
   {
     key: "private_hot_tub",
@@ -45,26 +67,121 @@ const HEURISTIC_PATTERNS: Array<{
     negations: [/\bno\s+hot\s*tub\b/i],
   },
   {
+    key: "ocean_view",
+    patterns: [
+      /\bocean\s+views?\b/i,
+      /\bgulf\s+views?\b/i,
+      /\bsea\s+views?\b/i,
+      /\boceanfront\b/i,
+      /\bgulffront\b/i,
+      /\bocean[- ]front\b/i,
+      /\bgulf[- ]front\b/i,
+      /\bpanoramic\s+(?:ocean|gulf)\b/i,
+    ],
+  },
+  {
     key: "mountain_view",
-    patterns: [/\bmountain\s+views?\b/i, /\bmountain\s+vistas?\b/i],
+    patterns: [
+      /\bmountain\s+views?\b/i,
+      /\bmountain\s+vistas?\b/i,
+      /\bviews?\s+of\s+the\s+(?:blue\s+ridge\s+)?mountains?\b/i,
+      /\boverlooking\s+the\s+(?:blue\s+ridge\s+)?mountains?\b/i,
+    ],
+  },
+  {
+    key: "beach_access",
+    patterns: [
+      /\bbeach\s+access\b/i,
+      /\bprivate\s+beach\b/i,
+      /\bbeachfront\b/i,
+      /\bbeach[- ]front\b/i,
+      /\bsteps?\s+to\s+(?:the\s+)?beach\b/i,
+      /\bwalk\s+to\s+(?:the\s+)?beach\b/i,
+      /\bdirect\s+beach\s+access\b/i,
+    ],
+  },
+  {
+    key: "waterfront",
+    patterns: [
+      /\bwaterfront\b/i,
+      /\bprivate\s+dock\b/i,
+      /\bboat\s+dock\b/i,
+      /\bdeep[- ]water\s+dock\b/i,
+      /\blake\s+views?\b/i,
+      /\briver\s+views?\b/i,
+      /\blakefront\b/i,
+      /\briverfront\b/i,
+    ],
   },
   {
     key: "fire_pit",
     patterns: [/\bfire\s*pit\b/i, /\bfirepit\b/i],
   },
   {
+    key: "fireplace",
+    patterns: [/\bfireplaces?\b/i, /\bwood[- ]burning\s+stove\b/i, /\bgas\s+fireplace\b/i],
+  },
+  {
     key: "outdoor_space",
     patterns: [
       /\boutdoor\s+(space|living|dining|area)\b/i,
-      /\b(private\s+)?deck\b/i,
-      /\b(private\s+)?patio\b/i,
+      /\b(private\s+)?decks?\b/i,
+      /\b(private\s+)?patios?\b/i,
+      /\b(private\s+)?balcon(?:y|ies)\b/i,
       /\bgrill\b/i,
       /\bbbq\b/i,
-      /\bbarbecue\b/i,
+      /\bbecue/i,
       /\bfire\s*pit\b/i,
       /\blanai\b/i,
       /\bterrace\b/i,
     ],
+  },
+  {
+    key: "game_room",
+    patterns: [
+      /\bgame\s+rooms?\b/i,
+      /\bgameroom\b/i,
+      /\barcade\b/i,
+      /\bbilliards?\b/i,
+      /\bpool\s+table\b/i,
+      /\bping\s*pong\b/i,
+      /\bfoosball\b/i,
+      /\bshuffleboard\b/i,
+    ],
+  },
+  {
+    key: "home_theater",
+    patterns: [
+      /\bhome\s+theat(?:er|re)\b/i,
+      /\bmedia\s+room\b/i,
+      /\btheat(?:er|re)\s+room\b/i,
+      /\bmovie\s+room\b/i,
+    ],
+  },
+  {
+    key: "chefs_kitchen",
+    patterns: [/\bchef'?s?\s+kitchen\b/i, /\bgourmet\s+kitchen\b/i],
+  },
+  {
+    key: "gym",
+    patterns: [
+      /\bgym\b/i,
+      /\bfitness\s+(?:center|centre|room|studio)\b/i,
+      /\bworkout\s+room\b/i,
+      /\bexercise\s+room\b/i,
+    ],
+  },
+  {
+    key: "elevator",
+    patterns: [/\belevator\b/i, /\bresidential\s+(?:passenger\s+)?lift\b/i],
+  },
+  {
+    key: "pickleball_tennis",
+    patterns: [/\bpickleball\b/i, /\btennis\s+courts?\b/i],
+  },
+  {
+    key: "ski_in_out",
+    patterns: [/\bski[- ]?in\b/i, /\bski[- ]?out\b/i, /\bski\s+access\b/i],
   },
   {
     key: "workspace_wifi",
@@ -72,23 +189,34 @@ const HEURISTIC_PATTERNS: Array<{
       /\bwi[- ]?fi\b/i,
       /\bwifi\b/i,
       /\bworkspace\b/i,
+      /\bco[- ]?work(?:ing)?\s+space\b/i,
       /\bwork\s+from\s+home\b/i,
       /\bdedicated\s+workspace\b/i,
       /\bhigh[- ]?speed\s+internet\b/i,
       /\bfast\s+wi[- ]?fi\b/i,
-      /\bdesk\b/i,
+      /\b(?:standing|writing|office)\s+desk\b/i,
     ],
+    negations: [/\bfront\s+desk\b/i],
   },
   {
     key: "parking",
     patterns: [
       /\bparking\b/i,
       /\bgarage\b/i,
-      /\bev\s*(charger|charging|station)\b/i,
-      /\belectric\s+vehicle\s+charg/i,
       /\bcar\s+port\b/i,
       /\bdriveway\b/i,
     ],
+  },
+  {
+    key: "ev_charging",
+    patterns: [
+      /\bev\s*(?:charger|charging|station|hook-?ups?)?\b/i,
+      /\belectric\s+vehicle\s+charg/i,
+      /\btesla\s+(?:wall\s*connector|charger|charging)\b/i,
+      /\blevel\s*[- ]?[12]\s+(?:ev\s+)?charg/i,
+      /\bevse\b/i,
+    ],
+    negations: [/\bno\s+ev\b/i, /\bno\s+electric\s+vehicle\s+charg/i],
   },
 ];
 
@@ -167,6 +295,7 @@ export function inferFilteredAmenities(
   ) {
     keys.delete("private_pool");
   }
+  if (keys.has("heated_pool")) keys.add("private_pool");
   return FILTERED_AMENITY_KEYS.filter((k) => keys.has(k));
 }
 
@@ -225,12 +354,25 @@ function buildAiPrompt(row: Record<string, any>, baseAmenities: string[], heuris
 Allowed keys only:
 - pet_friendly
 - private_pool
+- heated_pool
 - private_hot_tub
+- ocean_view
 - mountain_view
+- beach_access
+- waterfront (dock, lakefront, riverfront)
 - fire_pit
-- outdoor_space (deck, grill, fire pit, patio, outdoor dining)
+- fireplace
+- outdoor_space (deck, grill, fire pit, patio, balcony)
+- game_room
+- home_theater
+- chefs_kitchen
+- gym
+- elevator
+- pickleball_tennis
+- ski_in_out
 - workspace_wifi
-- parking (incl. EV charging if mentioned)
+- parking
+- ev_charging (on-site EV charger / Tesla charger / Level 2)
 
 Rules:
 - Only include keys you can support from the text/amenities below.
