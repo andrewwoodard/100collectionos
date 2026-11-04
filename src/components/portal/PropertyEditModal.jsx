@@ -1,11 +1,10 @@
 import React, { useState } from "react";
 import { base44 } from "@/api/base44Client";
-import { compressImage } from "@/lib/imageCompression";
-import { uploadPropertyImage } from "@/lib/propertyImagesBlob";
-import { X, Save, Send, Upload, AlertCircle } from "lucide-react";
+import { X, Save, Send, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 import { usePortalPartnerRollup } from "@/hooks/usePortalPartnerRollup";
 import AmenitiesEditor from "@/components/properties/AmenitiesEditor";
+import PhotoCurationGrid from "@/components/portal/wizard/PhotoCurationGrid";
 import MarketSelect from "../shared/MarketSelect";
 
 const PROPERTY_TYPES = ["villa", "house", "condo", "estate", "cabin", "penthouse", "chalet", "farmhouse", "other"];
@@ -30,26 +29,9 @@ export default function PropertyEditModal({ property, basePropertyId, user, onCl
     photo_urls: property.photo_urls || [],
     notes_to_team: "",
   });
-  const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
 
   const set = (key, val) => setData(d => ({ ...d, [key]: val }));
-
-  const toggleAmenity = (a) => {
-    set("amenities", data.amenities.includes(a) ? data.amenities.filter(x => x !== a) : [...data.amenities, a]);
-  };
-
-  const handlePhotoUpload = async (e) => {
-    const files = Array.from(e.target.files);
-    setUploading(true);
-    const urls = [];
-    for (const file of files) {
-      const compressed = await compressImage(file);
-      urls.push(await uploadPropertyImage(compressed));
-    }
-    set("photo_urls", [...(data.photo_urls || []), ...urls]);
-    setUploading(false);
-  };
 
   const handleSubmit = async (isDraft) => {
     console.log("[PropertyEditModal] handleSubmit called", { isDraft, propertyId: property.id, basePropertyId });
@@ -243,28 +225,13 @@ export default function PropertyEditModal({ property, basePropertyId, user, onCl
 
           {/* Photos */}
           <div>
-            <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Photos</h3>
-            {data.photo_urls?.length > 0 && (
-              <div className="grid grid-cols-4 gap-2 mb-3">
-                {data.photo_urls.map((url, i) => (
-                  <div key={i} className="relative group aspect-video">
-                    <img src={url} className="w-full h-full object-cover rounded-lg" alt="" />
-                    <button
-                      type="button"
-                      onClick={() => set("photo_urls", data.photo_urls.filter((_, idx) => idx !== i))}
-                      className="absolute top-1 right-1 w-5 h-5 bg-red-500 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-                    >
-                      <X className="w-2.5 h-2.5 text-white" />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-            <label className="flex items-center justify-center gap-2 border-2 border-dashed border-slate-200 rounded-xl py-5 cursor-pointer hover:border-[#C9A96E]/50 hover:bg-slate-50 transition-all text-sm text-slate-500">
-              <Upload className="w-4 h-4 text-slate-400" />
-              {uploading ? "Optimizing…" : "Upload photos"}
-              <input type="file" multiple accept="image/*" onChange={handlePhotoUpload} className="hidden" disabled={uploading} />
-            </label>
+            <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Photos</h3>
+            <p className="text-xs text-slate-400 mb-3">Drag to reorder · first photo is the cover · remove with the trash icon</p>
+            <PhotoCurationGrid
+              photos={data.photo_urls || []}
+              onChange={(photos) => set("photo_urls", photos)}
+              propertyName={data.property_name || "Property"}
+            />
           </div>
 
           {/* Notes */}

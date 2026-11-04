@@ -9,14 +9,14 @@ import PropertyContentEditor from "../../components/portal/PropertyContentEditor
 import PropertyDetailsEditor from "../../components/portal/PropertyDetailsEditor";
 import PropertyAmenitiesEditor from "../../components/portal/PropertyAmenitiesEditor";
 import OffboardingModal from "../../components/portal/OffboardingModal";
+import SupabaseImagesGallery from "@/components/properties/SupabaseImagesGallery";
 import { normalizeStorageUrl, imageUrlFromMetadata } from "@/lib/supabase";
-import { getImageUrl } from "@/lib/imageUrl";
 import { useCurrentUser } from "@/lib/useCurrentUser";
 import { usePropertyImages } from "@/hooks/usePropertyImages";
-import { buildAltTextMap, getGalleryAlt, usePropertyAltTexts } from "@/hooks/usePropertyAltTexts";
+import { usePropertyAltTexts } from "@/hooks/usePropertyAltTexts";
 import {
   ChevronLeft, MapPin, Bed, Bath, Users, ExternalLink, Pencil,
-  AlertCircle, ImageIcon, X, Home as HomeIcon, Tag, Settings,
+  AlertCircle, Home as HomeIcon, Tag, Settings,
 } from "lucide-react";
 
 export default function PropertyDetail() {
@@ -25,7 +25,6 @@ export default function PropertyDetail() {
   const queryClient = useQueryClient();
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [offboardingModalOpen, setOffboardingModalOpen] = useState(false);
-  const [lightboxIdx, setLightboxIdx] = useState(null);
 
   const switchToOffboarding = () => { setEditModalOpen(false); setTimeout(() => setOffboardingModalOpen(true), 0); };
   const switchToEdit = () => { setOffboardingModalOpen(false); setTimeout(() => setEditModalOpen(true), 0); };
@@ -152,13 +151,13 @@ export default function PropertyDetail() {
       const normalized = normalizeStorageUrl(url) || url;
       if (normalized && !seen.has(normalized)) {
         seen.add(normalized);
-        urls.push(normalized);
+        urls.push(url);
       }
     };
     if (Array.isArray(property?.images)) property.images.forEach(add);
     if (Array.isArray(property?.photo_urls)) property.photo_urls.forEach(add);
     if (property?.property_image) add(property.property_image);
-    metadataImages.forEach(img => add(imageUrlFromMetadata(img)));
+    metadataImages.forEach((img) => add(imageUrlFromMetadata(img)));
     return urls;
   }, [property, metadataImages]);
 
@@ -169,13 +168,10 @@ export default function PropertyDetail() {
     photoAltTexts: property?.photo_alt_texts || baseProperty?.photo_alt_texts,
   });
 
-  const altTextMap = useMemo(
-    () => buildAltTextMap(
-      property?.photo_urls || baseProperty?.photo_urls,
-      property?.photo_alt_texts || baseProperty?.photo_alt_texts
-    ),
-    [property?.photo_urls, property?.photo_alt_texts, baseProperty?.photo_urls, baseProperty?.photo_alt_texts]
-  );
+  const supabaseRowId =
+    supabaseProperty?.id ||
+    baseProperty?.supabase_property_id ||
+    (hasSbId ? sbId : null);
 
   const isLoading = isLoadingBase || isLoadingSub || isLoadingSb;
 
@@ -300,7 +296,7 @@ export default function PropertyDetail() {
           <div className="mb-5 bg-amber-50 border border-amber-200 rounded-2xl px-5 py-4 flex items-start gap-3">
             <AlertCircle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
             <p className="text-xs text-amber-700 leading-relaxed">
-              This is a live <strong>{status}</strong> property. Use <strong>Edit Details</strong> / <strong>Edit Content</strong> below to update beds, baths, address, and listing copy — those save immediately. “Request Edit” is for larger change requests that need team review.
+              This is a live <strong>{status}</strong> property. Photos, details, and content below save immediately. “Request Edit” is for larger change requests that need team review.
             </p>
           </div>
         )}
@@ -315,35 +311,45 @@ export default function PropertyDetail() {
           </div>
         )}
 
-        {/* Photo Gallery */}
-        {galleryUrls.length > 0 ? (
-          <div className="mb-6">
-            <div
-              className="relative rounded-2xl overflow-hidden aspect-[16/10] bg-slate-100 cursor-pointer mb-3"
-              onClick={() => setLightboxIdx(0)}
-            >
-              <img src={getImageUrl(galleryUrls[0], "hero")} alt={getGalleryAlt(altTextMap, galleryUrls[0], 0, propertyName)} className="w-full h-full object-cover" onError={(e) => { e.currentTarget.style.display = "none"; }} />
-            </div>
-            {galleryUrls.length > 1 && (
-              <div className="grid grid-cols-4 sm:grid-cols-6 gap-2">
-                {galleryUrls.slice(1).map((url, i) => (
-                  <div
-                    key={i}
-                    className="relative aspect-square rounded-lg overflow-hidden bg-slate-100 cursor-pointer group"
-                    onClick={() => setLightboxIdx(i + 1)}
-                  >
-                    <img src={getImageUrl(url, "medium")} alt={getGalleryAlt(altTextMap, url, i + 1, propertyName)} className="w-full h-full object-cover group-hover:opacity-80 transition-opacity" onError={(e) => { e.currentTarget.style.display = "none"; }} />
-                  </div>
-                ))}
-              </div>
-            )}
+        {/* Photos — partners can reorder, remove, and add; first photo is the cover */}
+        <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6 mb-6">
+          <div className="mb-4">
+            <h3 className="text-sm font-semibold text-[#0D1B2A]">Photos</h3>
+            <p className="text-xs text-slate-400 mt-1">
+              Drag to reorder · first photo is the cover · remove with the trash icon · changes save immediately
+            </p>
           </div>
-        ) : (
-          <div className="mb-6 bg-slate-50 rounded-2xl border border-slate-100 flex flex-col items-center justify-center py-16">
-            <ImageIcon className="w-10 h-10 text-slate-300 mb-2" />
-            <p className="text-sm text-slate-400 italic">No photos available yet</p>
-          </div>
-        )}
+          <SupabaseImagesGallery
+            images={galleryUrls}
+            photoUrls={property?.photo_urls || baseProperty?.photo_urls || []}
+            photoAltTexts={property?.photo_alt_texts || baseProperty?.photo_alt_texts || []}
+            propertyName={propertyName || "Property"}
+            supabasePropertyId={supabaseRowId ? String(supabaseRowId) : null}
+            propertyId={baseProperty?.id || null}
+            listingUrl={listingUrl}
+            sbQueryKey={sbQueryKey}
+            showImportTools={false}
+            seedProperty={{
+              property_name: propertyName,
+              market: market || property?.market,
+              listing_url: listingUrl,
+              address: locationFull || property?.address,
+              bedrooms: property?.bedrooms,
+              bathrooms: property?.bathrooms,
+              sleeps: property?.sleeps,
+              property_type: propertyType,
+              partner_name: property?.partner_name,
+              partner_id: property?.partner_id || baseProperty?.partner_id,
+              status: status || "active",
+              portal_visible: true,
+            }}
+            onSupabaseId={() => {
+              queryClient.invalidateQueries({ queryKey: ["property", id] });
+              queryClient.invalidateQueries({ queryKey: ["supabase-property"] });
+              queryClient.invalidateQueries({ queryKey: ["my-linked-properties"] });
+            }}
+          />
+        </div>
 
         {/* Headline */}
         {headline && (
@@ -439,44 +445,6 @@ export default function PropertyDetail() {
                 </a>
               )}
             </div>
-          </div>
-        )}
-
-        {/* Lightbox */}
-        {lightboxIdx !== null && galleryUrls[lightboxIdx] && (
-          <div
-            className="fixed inset-0 bg-black/85 z-50 flex items-center justify-center p-4"
-            onClick={() => setLightboxIdx(null)}
-          >
-            <button className="absolute top-4 right-4 text-white/70 hover:text-white" onClick={() => setLightboxIdx(null)}>
-              <X className="w-6 h-6" />
-            </button>
-            <img
-              src={getImageUrl(galleryUrls[lightboxIdx], "large")}
-              alt={getGalleryAlt(altTextMap, galleryUrls[lightboxIdx], lightboxIdx, propertyName)}
-              className="max-w-full max-h-[90vh] object-contain rounded-lg"
-              onClick={e => e.stopPropagation()}
-            />
-            {galleryUrls.length > 1 && (
-              <>
-                {lightboxIdx > 0 && (
-                  <button
-                    className="absolute left-4 text-white/70 hover:text-white text-2xl px-2"
-                    onClick={e => { e.stopPropagation(); setLightboxIdx(lightboxIdx - 1); }}
-                  >
-                    ‹
-                  </button>
-                )}
-                {lightboxIdx < galleryUrls.length - 1 && (
-                  <button
-                    className="absolute right-4 text-white/70 hover:text-white text-2xl px-2"
-                    onClick={e => { e.stopPropagation(); setLightboxIdx(lightboxIdx + 1); }}
-                  >
-                    ›
-                  </button>
-                )}
-              </>
-            )}
           </div>
         )}
 

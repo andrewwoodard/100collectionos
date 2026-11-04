@@ -5,8 +5,8 @@
 import React, { useState } from "react";
 import { base44 } from "@/api/base44Client";
 import { toast } from "sonner";
-import { uploadPropertyImage } from "@/lib/propertyImagesBlob";
-import { ChevronRight, Save, Send, Upload, AlertCircle, X } from "lucide-react";
+import { ChevronRight, Save, Send, AlertCircle } from "lucide-react";
+import PhotoCurationGrid from "@/components/portal/wizard/PhotoCurationGrid";
 
 const AMENITY_OPTIONS = [
   "Private Pool", "Hot Tub", "Chef's Kitchen", "Ocean View", "Mountain View",
@@ -34,7 +34,6 @@ export default function PropertyEditForm({ property, user, onBack, onSubmitted }
     photo_urls: property.photo_urls || [],
     notes_to_team: "",
   });
-  const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
 
   const set = (key, val) => setData(d => ({ ...d, [key]: val }));
@@ -43,18 +42,6 @@ export default function PropertyEditForm({ property, user, onBack, onSubmitted }
     set("amenities", data.amenities.includes(a)
       ? data.amenities.filter(x => x !== a)
       : [...data.amenities, a]);
-  };
-
-  const handlePhotoUpload = async (e) => {
-    const files = Array.from(e.target.files);
-    if (!files.length) return;
-    setUploading(true);
-    const urls = [];
-    for (const file of files) {
-      urls.push(await uploadPropertyImage(file));
-    }
-    set("photo_urls", [...data.photo_urls, ...urls]);
-    setUploading(false);
   };
 
   const handleSubmit = async (isDraft) => {
@@ -205,27 +192,12 @@ export default function PropertyEditForm({ property, user, onBack, onSubmitted }
 
         {/* Photos */}
         <Section title="Photos">
-          {data.photo_urls.length > 0 && (
-            <div className="grid grid-cols-4 gap-2 mb-3">
-              {data.photo_urls.map((url, i) => (
-                <div key={i} className="relative group aspect-video">
-                  <img src={url} className="w-full h-full object-cover rounded-lg" alt="" />
-                  <button
-                    type="button"
-                    onClick={() => set("photo_urls", data.photo_urls.filter((_, idx) => idx !== i))}
-                    className="absolute top-1 right-1 w-5 h-5 bg-red-500 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-                  >
-                    <X className="w-2.5 h-2.5 text-white" />
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-          <label className="flex items-center justify-center gap-2 border-2 border-dashed border-slate-200 rounded-xl py-6 cursor-pointer hover:border-[#C9A96E]/50 hover:bg-slate-50 transition-all text-sm text-slate-500">
-            <Upload className="w-4 h-4 text-slate-400" />
-            {uploading ? "Uploading…" : "Upload photos"}
-            <input type="file" multiple accept="image/*" onChange={handlePhotoUpload} className="hidden" disabled={uploading} />
-          </label>
+          <p className="text-xs text-slate-400 mb-3 -mt-1">Drag to reorder · first photo is the cover · remove with the trash icon</p>
+          <PhotoCurationGrid
+            photos={data.photo_urls || []}
+            onChange={(photos) => set("photo_urls", photos)}
+            propertyName={property.property_name || "Property"}
+          />
         </Section>
 
         {/* Notes */}

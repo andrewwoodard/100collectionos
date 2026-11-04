@@ -35,6 +35,8 @@ export default function SupabaseImagesGallery({
   sbQueryKey,
   listingUrl,
   onSupabaseId,
+  /** Admin-only AI / HTML import buttons. Portal partners get reorder/remove/upload only. */
+  showImportTools = true,
 }) {
   const altTextMap = buildAltTextMap(
     Array.isArray(photoUrls) && photoUrls.length ? photoUrls : propImages,
@@ -85,6 +87,7 @@ export default function SupabaseImagesGallery({
       queryClient.invalidateQueries({ queryKey: ["supabase-property", sbQueryKey] });
       queryClient.invalidateQueries({ queryKey: ["propertiesbase44"] });
       queryClient.invalidateQueries({ queryKey: ["properties"] });
+      queryClient.invalidateQueries({ queryKey: ["my-linked-properties"] });
       if (propertyId) {
         queryClient.invalidateQueries({ queryKey: ["property", propertyId] });
       }
@@ -209,30 +212,34 @@ export default function SupabaseImagesGallery({
           {saving && !reordering ? " · saving…" : ""}
         </p>
         <div className="flex items-center gap-2">
-          <AiPhotoPullButton
-            listingUrl={listingUrl}
-            supabasePropertyId={linkedSbId || supabasePropertyId}
-            propertyId={propertyId}
-            seedProperty={seedProperty}
-            sbQueryKey={sbQueryKey}
-            currentImages={localImages}
-            onImagesChange={async (next) => {
-              setLocalImages(next);
-              await saveImages(next);
-            }}
-          />
-          <PasteHtmlButton
-            listingUrl={listingUrl}
-            supabasePropertyId={linkedSbId || supabasePropertyId}
-            propertyId={propertyId}
-            seedProperty={seedProperty}
-            sbQueryKey={sbQueryKey}
-            currentImages={localImages}
-            onImagesChange={async (next) => {
-              setLocalImages(next);
-              await saveImages(next);
-            }}
-          />
+          {showImportTools && (
+            <>
+              <AiPhotoPullButton
+                listingUrl={listingUrl}
+                supabasePropertyId={linkedSbId || supabasePropertyId}
+                propertyId={propertyId}
+                seedProperty={seedProperty}
+                sbQueryKey={sbQueryKey}
+                currentImages={localImages}
+                onImagesChange={async (next) => {
+                  setLocalImages(next);
+                  await saveImages(next);
+                }}
+              />
+              <PasteHtmlButton
+                listingUrl={listingUrl}
+                supabasePropertyId={linkedSbId || supabasePropertyId}
+                propertyId={propertyId}
+                seedProperty={seedProperty}
+                sbQueryKey={sbQueryKey}
+                currentImages={localImages}
+                onImagesChange={async (next) => {
+                  setLocalImages(next);
+                  await saveImages(next);
+                }}
+              />
+            </>
+          )}
           <Button size="sm" onClick={() => setAddOpen(true)}>
             <Plus className="w-3.5 h-3.5 mr-1.5" /> Add Image
           </Button>
