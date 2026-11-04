@@ -17,6 +17,7 @@ import {
 import StatusBadge from "../components/shared/StatusBadge";
 import EmptyState from "../components/shared/EmptyState";
 import PartnerFormModal from "../components/partners/PartnerFormModal";
+import ActivePartnerEmailsTab from "../components/admin/ActivePartnerEmailsTab";
 import { Switch } from "@/components/ui/switch";
 import SyncButton from "../components/shared/SyncButton";
 import PartnerFilters from "../components/shared/PartnerFilters";
@@ -38,6 +39,7 @@ const SEGMENTS = [
   { key: "property_manager", label: "PM Partners" },
   { key: "owner", label: "Homeowners" },
   { key: "subbrand", label: "Sub-brands" },
+  { key: "emails", label: "Active Emails" },
 ];
 
 // Color-coded type pill for a partner row.
@@ -59,6 +61,7 @@ export default function Partners() {
   const [searchParams, setSearchParams] = useSearchParams();
   const urlSegment = searchParams.get("type") || "all";
   const [segment, setSegment] = useState(SEGMENTS.some(s => s.key === urlSegment) ? urlSegment : "all");
+  const isEmailsTab = segment === "emails";
 
   const setSegmentAndUrl = (key) => {
     setSegment(key);
@@ -557,69 +560,94 @@ export default function Partners() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h2 className="text-xl font-bold text-gray-900">{segment === "owner" ? "Homeowners" : segment === "property_manager" ? "PM Partners" : segment === "subbrand" ? "Sub-brands" : "All Partners"}</h2>
-          <p className="text-sm text-gray-500">
-            <span className="font-medium text-gray-700">{segmentCounts.all}</span> Partners:
-            {" "}
-            <span className="text-[#0D1B2A]">{segmentCounts.property_manager} PM</span>
-            {" · "}
-            <span className="text-[#A68B4B]">{segmentCounts.owner} Owner</span>
-            {" · "}
-            <span className="text-[#0D9488]">{segmentCounts.subbrand} Sub-brand</span>
-          </p>
+          <h2 className="text-xl font-bold text-gray-900">
+            {segment === "owner"
+              ? "Homeowners"
+              : segment === "property_manager"
+                ? "PM Partners"
+                : segment === "subbrand"
+                  ? "Sub-brands"
+                  : segment === "emails"
+                    ? "Active Partner Emails"
+                    : "All Partners"}
+          </h2>
+          {!isEmailsTab && (
+            <p className="text-sm text-gray-500">
+              <span className="font-medium text-gray-700">{segmentCounts.all}</span> Partners:
+              {" "}
+              <span className="text-[#0D1B2A]">{segmentCounts.property_manager} PM</span>
+              {" · "}
+              <span className="text-[#A68B4B]">{segmentCounts.owner} Owner</span>
+              {" · "}
+              <span className="text-[#0D9488]">{segmentCounts.subbrand} Sub-brand</span>
+            </p>
+          )}
+          {isEmailsTab && (
+            <p className="text-sm text-gray-500">
+              Email addresses for live partners from portal + Supabase
+            </p>
+          )}
         </div>
-        <div className="flex items-center gap-2">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm" className="gap-1.5 text-xs" disabled={isSyncing || isSyncingAll || isSyncingProfiles}>
-                <RefreshCw className={`w-3.5 h-3.5 ${(isSyncing || isSyncingAll || isSyncingProfiles) ? "animate-spin" : ""}`} />
-                Sync <ChevronDown className="w-3 h-3" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={handleSyncStripe}>Sync Stripe</DropdownMenuItem>
-              <DropdownMenuItem onClick={handleSyncAllToSupabase}>Sync to Supabase</DropdownMenuItem>
-              <DropdownMenuItem onClick={handleSyncProfilesWithProperties}>Sync Profiles</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => queryClient.invalidateQueries({ queryKey: ["partners"] })}>Sync from Site</DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-          <Button
-            variant={showArchived ? "default" : "outline"}
-            size="sm"
-            onClick={() => setShowArchived((v) => !v)}
-            className={showArchived ? "bg-[#0F172A] text-white" : ""}
-          >
-            <Archive className="w-4 h-4 mr-1.5" />
-            {showArchived ? "Showing archived" : "Archived"}
-          </Button>
-          <Button onClick={() => { setEditingPartner(null); setModalOpen(true); }} className="bg-[#0F172A] hover:bg-[#1E293B] text-white">
-            <Plus className="w-4 h-4 mr-1.5" /> Add Partner
-          </Button>
-        </div>
+        {!isEmailsTab && (
+          <div className="flex items-center gap-2">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" className="gap-1.5 text-xs" disabled={isSyncing || isSyncingAll || isSyncingProfiles}>
+                  <RefreshCw className={`w-3.5 h-3.5 ${(isSyncing || isSyncingAll || isSyncingProfiles) ? "animate-spin" : ""}`} />
+                  Sync <ChevronDown className="w-3 h-3" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={handleSyncStripe}>Sync Stripe</DropdownMenuItem>
+                <DropdownMenuItem onClick={handleSyncAllToSupabase}>Sync to Supabase</DropdownMenuItem>
+                <DropdownMenuItem onClick={handleSyncProfilesWithProperties}>Sync Profiles</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => queryClient.invalidateQueries({ queryKey: ["partners"] })}>Sync from Site</DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <Button
+              variant={showArchived ? "default" : "outline"}
+              size="sm"
+              onClick={() => setShowArchived((v) => !v)}
+              className={showArchived ? "bg-[#0F172A] text-white" : ""}
+            >
+              <Archive className="w-4 h-4 mr-1.5" />
+              {showArchived ? "Showing archived" : "Archived"}
+            </Button>
+            <Button onClick={() => { setEditingPartner(null); setModalOpen(true); }} className="bg-[#0F172A] hover:bg-[#1E293B] text-white">
+              <Plus className="w-4 h-4 mr-1.5" /> Add Partner
+            </Button>
+          </div>
+        )}
       </div>
 
       {/* Segment tabs */}
-      <div className="flex items-center gap-1.5 border-b border-gray-100 pb-px">
+      <div className="flex items-center gap-1.5 border-b border-gray-100 pb-px overflow-x-auto">
         {SEGMENTS.map(seg => (
           <button
             key={seg.key}
             onClick={() => setSegmentAndUrl(seg.key)}
-            className={`flex items-center gap-1.5 px-3.5 py-2 text-sm rounded-t-lg transition-colors border-b-2 -mb-px ${
+            className={`flex items-center gap-1.5 px-3.5 py-2 text-sm rounded-t-lg transition-colors border-b-2 -mb-px whitespace-nowrap ${
               segment === seg.key
                 ? "border-[#C9A96E] text-[#0D1B2A] font-semibold"
                 : "border-transparent text-gray-500 hover:text-gray-800"
             }`}
           >
             {seg.label}
-            <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${
-              segment === seg.key ? "bg-[#C9A96E]/20 text-[#A68B4B]" : "bg-gray-100 text-gray-400"
-            }`}>
-              {segmentCounts[seg.key]}
-            </span>
+            {seg.key !== "emails" && (
+              <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${
+                segment === seg.key ? "bg-[#C9A96E]/20 text-[#A68B4B]" : "bg-gray-100 text-gray-400"
+              }`}>
+                {segmentCounts[seg.key]}
+              </span>
+            )}
           </button>
         ))}
       </div>
 
+      {isEmailsTab ? (
+        <ActivePartnerEmailsTab />
+      ) : (
+      <>
       <PartnerFilters onChange={setFilters} />
 
       {/* Sub-brand toggle */}
@@ -903,6 +931,8 @@ export default function Partners() {
             </TableBody>
           </Table>
         </div>
+      )}
+      </>
       )}
 
       <PartnerFormModal
