@@ -10,6 +10,7 @@ import PartnerFormModal from "../../../components/partners/PartnerFormModal";
 import PartnerLogoCell from "../../../components/admin/PartnerLogoCell";
 import { Users, Search, Link2, Edit2 } from "lucide-react";
 import UnpaidInvoicesTab from "../../../components/admin/UnpaidInvoicesTab";
+import ActivePartnerEmailsTab from "../../../components/admin/ActivePartnerEmailsTab";
 
 export default function AdminPartners({ embedded = false }) {
   const [search, setSearch] = useState("");
@@ -91,6 +92,7 @@ export default function AdminPartners({ embedded = false }) {
         <div className="flex gap-1 border-b border-slate-100">
           {[
             { id: "partners", label: "All Partners" },
+            { id: "emails", label: "Active Emails" },
             { id: "unpaid", label: "Unpaid Invoices" },
           ].map((t) => (
             <button
@@ -106,15 +108,19 @@ export default function AdminPartners({ embedded = false }) {
             </button>
           ))}
         </div>
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search partners…"
-            className="pl-9 pr-4 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#C9A96E]/30 bg-white w-52" />
-        </div>
+        {tab === "partners" && (
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search partners…"
+              className="pl-9 pr-4 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#C9A96E]/30 bg-white w-52" />
+          </div>
+        )}
       </div>
 
       {tab === "unpaid" ? (
         <UnpaidInvoicesTab />
+      ) : tab === "emails" ? (
+        <ActivePartnerEmailsTab />
       ) : (
       <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-x-auto">
         <table className="w-full min-w-[1200px]">
