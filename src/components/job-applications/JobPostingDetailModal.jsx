@@ -46,6 +46,8 @@ export default function JobPostingDetailModal({ job, onClose }) {
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ["admin-job-postings"] });
     qc.invalidateQueries({ queryKey: ["admin-job-posting-badge"] });
+    qc.invalidateQueries({ queryKey: ["public-jobs"] });
+    qc.invalidateQueries({ queryKey: ["partner-jobs"] });
   };
 
   const handleActivate = async () => {

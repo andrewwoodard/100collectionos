@@ -12,5 +12,7 @@ dist
 .vercel
 .agents
 .better_auth_secret.tmp
+tmp-active-partner-accounts.json
+tmp-active-partner-accounts.csv
 !.env.example
 .env*

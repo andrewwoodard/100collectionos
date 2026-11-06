@@ -1802,6 +1802,7 @@ export const LOCAL_FUNCTIONS = new Set([
   "rewritePropertyText",
   "syncPartnerProfileToVrms",
   "syncDestinationToSupabase",
+  "syncJobPostingToSupabase",
   "backfillFilteredAmenities",
   ...STRIPE_FUNCTIONS,
 ]);
@@ -1859,6 +1860,37 @@ export async function handleNeonFunction(req: any, res: any, functionName: strin
     } else if (functionName === "syncDestinationToSupabase") {
       const { handleSyncDestinationToSupabase } = await import("./sync-destination-to-supabase.js");
       await handleSyncDestinationToSupabase(req, res, body);
+    } else if (functionName === "syncJobPostingToSupabase") {
+      const {
+        syncJobPostingToSupabase,
+        deleteJobPostingFromSupabase,
+      } = await import("./sync-job-posting-to-supabase.js");
+      if (body?.event_type === "delete" && body?.entity_id) {
+        json(res, 200, await deleteJobPostingFromSupabase(body.entity_id));
+      } else if (body?.entity_id || body?.data?.id) {
+        const pool = getNeonPool();
+        let job = body?.data || null;
+        const id = body?.entity_id || body?.data?.id;
+        if (!job && id) {
+          const { rows } = await pool.query(`SELECT * FROM base44.job_posting WHERE id = $1`, [id]);
+          if (rows[0]) {
+            const data = rows[0].data && typeof rows[0].data === "object" ? rows[0].data : {};
+            job = { ...data, id: rows[0].id };
+          }
+        }
+        json(res, 200, await syncJobPostingToSupabase(job));
+      } else {
+        // Full sync of all postings
+        const pool = getNeonPool();
+        const { rows } = await pool.query(`SELECT * FROM base44.job_posting`);
+        let synced = 0;
+        for (const row of rows) {
+          const data = row.data && typeof row.data === "object" ? row.data : {};
+          const result = await syncJobPostingToSupabase({ ...data, id: row.id });
+          if (!result.skipped) synced += 1;
+        }
+        json(res, 200, { success: true, synced, total: rows.length });
+      }
     } else if (functionName === "backfillFilteredAmenities") {
       const { handleBackfillFilteredAmenities } = await import("./filtered-amenities.js");
       await handleBackfillFilteredAmenities(req, res, body);

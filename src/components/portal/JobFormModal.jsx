@@ -6,13 +6,15 @@ import { useQueryClient } from "@tanstack/react-query";
 const DEFAULTS = {
   title: "", location: "", job_type: "full_time", department: "operations",
   description: "", requirements: "", compensation: "", application_email: "",
-  application_url: "", status: "active", closes_at: "",
+  application_url: "", status: "draft", closes_at: "",
 };
 
 export default function JobFormModal({ job, partnerId, partnerName, onClose }) {
   const [form, setForm] = useState(DEFAULTS);
   const [saving, setSaving] = useState(false);
   const qc = useQueryClient();
+  const isEdit = !!job?.id;
+  const isLive = job?.status === "active";
 
   useEffect(() => {
     if (job) setForm({ ...DEFAULTS, ...job });
@@ -24,6 +26,21 @@ export default function JobFormModal({ job, partnerId, partnerName, onClose }) {
   const handleSave = async () => {
     setSaving(true);
     const data = { ...form, partner_id: partnerId, partner_name: partnerName };
+
+    // New / revised partner submissions go to admin review as draft.
+    // Partners cannot self-publish to the public careers site.
+    if (!isEdit) {
+      data.status = "draft";
+      data.admin_reviewed_at = null;
+      data.admin_review_note = null;
+    } else if (form.status === "active" && job?.status !== "active") {
+      data.status = "draft";
+      data.admin_reviewed_at = null;
+    } else if (form.status === "draft" && job?.admin_reviewed_at) {
+      // Re-submit after admin send-back → re-queue for review
+      data.admin_reviewed_at = null;
+    }
+
     if (job?.id) {
       await base44.entities.JobPosting.update(job.id, data);
     } else {
@@ -45,13 +62,15 @@ export default function JobFormModal({ job, partnerId, partnerName, onClose }) {
         </div>
 
         <div className="px-6 py-5 space-y-4">
-          {/* Logo note */}
+          {/* Logo / review note */}
           <div className="flex items-center gap-2.5 bg-[#FBF6EF] border border-[#E8DDD0] rounded-lg px-4 py-3">
             <div className="w-5 h-5 rounded-full bg-[#C9A96E]/20 flex items-center justify-center flex-shrink-0">
               <span className="text-[#C9A96E] text-[10px] font-bold">i</span>
             </div>
             <p className="text-xs text-[#8B7355] leading-relaxed">
-              Your company logo (from your <strong>Partner Profile</strong>) will appear automatically on the public listing — no upload needed here.
+              {isLive
+                ? "Edits to a live posting sync to the public careers page. Your company logo comes from your Partner Profile."
+                : "New postings go to The 100 Collection admin for review. Once approved, they appear on the public careers page. Your company logo comes from your Partner Profile."}
             </p>
           </div>
 
@@ -109,14 +128,20 @@ export default function JobFormModal({ job, partnerId, partnerName, onClose }) {
             </div>
             <div>
               <label className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-1 block">Status</label>
-              <select
-                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#C9A96E]/40"
-                value={form.status} onChange={e => set("status", e.target.value)}
-              >
-                <option value="active">Active</option>
-                <option value="draft">Draft</option>
-                <option value="closed">Closed</option>
-              </select>
+              {isLive ? (
+                <div className="w-full border border-emerald-200 bg-emerald-50 text-emerald-700 rounded-lg px-3 py-2 text-sm font-medium">
+                  Active (live on careers)
+                </div>
+              ) : (
+                <select
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#C9A96E]/40"
+                  value={form.status === "closed" ? "closed" : "draft"}
+                  onChange={e => set("status", e.target.value)}
+                >
+                  <option value="draft">Submit for admin review</option>
+                  <option value="closed">Closed</option>
+                </select>
+              )}
             </div>
           </div>
 
@@ -189,7 +214,7 @@ export default function JobFormModal({ job, partnerId, partnerName, onClose }) {
             disabled={saving || !form.title || !form.compensation}
             className="px-5 py-2 bg-[#0D1B2A] text-white text-sm rounded-lg hover:bg-[#1a2e45] transition-colors disabled:opacity-50"
           >
-            {saving ? "Saving..." : job ? "Save Changes" : "Post Job"}
+            {saving ? "Saving..." : job ? "Save Changes" : "Submit for Review"}
           </button>
         </div>
       </div>

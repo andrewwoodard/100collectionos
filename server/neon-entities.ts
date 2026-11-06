@@ -166,7 +166,19 @@ export async function handleNeonEntity(req: any, res: any, entityName: string, r
          RETURNING *`,
         [id, body.created_by || null, body.created_by_id || null, !!body.is_sample, JSON.stringify(data)]
       );
-      return json(res, 200, toRecord(rows[0]));
+      const record = toRecord(rows[0]);
+      if (entityName === "JobPosting") {
+        try {
+          const { notifyAdminsNewJobPosting, syncJobPostingToSupabase } = await import(
+            "./sync-job-posting-to-supabase.js"
+          );
+          await notifyAdminsNewJobPosting(record);
+          await syncJobPostingToSupabase(record);
+        } catch (error: any) {
+          console.warn("[neon-entities] JobPosting create side-effects failed:", error?.message || error);
+        }
+      }
+      return json(res, 200, record);
     }
 
     if (method === "PUT" && rest === "bulk") {
@@ -195,11 +207,28 @@ export async function handleNeonEntity(req: any, res: any, entityName: string, r
         [rest, JSON.stringify(body)]
       );
       if (!rows[0]) return json(res, 404, { message: "Not found" });
-      return json(res, 200, toRecord(rows[0]));
+      const record = toRecord(rows[0]);
+      if (entityName === "JobPosting") {
+        try {
+          const { syncJobPostingToSupabase } = await import("./sync-job-posting-to-supabase.js");
+          await syncJobPostingToSupabase(record);
+        } catch (error: any) {
+          console.warn("[neon-entities] JobPosting update sync failed:", error?.message || error);
+        }
+      }
+      return json(res, 200, record);
     }
 
     if (method === "DELETE" && rest) {
       await pool.query(`DELETE FROM base44.${table} WHERE id = $1`, [rest]);
+      if (entityName === "JobPosting") {
+        try {
+          const { deleteJobPostingFromSupabase } = await import("./sync-job-posting-to-supabase.js");
+          await deleteJobPostingFromSupabase(rest);
+        } catch (error: any) {
+          console.warn("[neon-entities] JobPosting delete sync failed:", error?.message || error);
+        }
+      }
       return json(res, 200, { success: true });
     }
 

@@ -157,15 +157,20 @@ export default function Careers() {
 
   const handleReopen = async (job) => {
     await base44.entities.JobPosting.update(job.id, {
-      status: "active",
+      status: "draft",
       closed_at: null,
       closed_reason: null,
       hired_person_name: null,
       hired_person_start_date: null,
       hired_from_application_id: null,
+      admin_reviewed_at: null,
+      admin_review_note: null,
     });
     qc.invalidateQueries({ queryKey: ["partner-jobs"] });
-    toast({ title: "Position reopened", description: `${job.title} is active again.` });
+    toast({
+      title: "Submitted for review",
+      description: `${job.title} was reopened as a draft and sent to admin for approval before going live again.`,
+    });
   };
 
   const activeJobs = jobs.filter(j => j.status === "active");
@@ -375,7 +380,7 @@ export default function Careers() {
                           onClick={() => handleReopen(job)}
                           className="flex items-center gap-1 text-xs font-medium text-[#C9A96E] hover:text-[#b8935a] transition-colors ml-auto"
                         >
-                          <RotateCcw className="w-3.5 h-3.5" /> Reopen
+                          <RotateCcw className="w-3.5 h-3.5" /> Resubmit for review
                         </button>
                       </div>
                     )}
