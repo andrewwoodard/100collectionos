@@ -126,7 +126,7 @@ export default function Settings() {
               { role: "Onboarding", desc: "Manage onboarding pipeline and related documents" },
               { role: "Finance", desc: "Manage billing, invoices, and financial reports" },
               { role: "Marketing", desc: "Manage media library and brand assets" },
-              { role: "Media", desc: "Partner property images in Media Library only (alt text / gallery)" },
+              { role: "Media", desc: "Partner property images, Sanity images, and blog posts in Media Library" },
             ].map(r => (
               <div key={r.role} className="flex items-center justify-between py-2 border-b border-gray-50 last:border-0">
                 <div>

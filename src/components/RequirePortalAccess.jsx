@@ -59,7 +59,7 @@ export default function RequirePortalAccess({ children }) {
   // Admins can access portal for testing
   if (user.role === "admin") return children;
 
-  // Media role is Collection OS only (property images) — never the partner portal
+  // Media role is Collection OS only — never the partner portal
   if (isMediaPropertyImagesOnly(user.role)) {
     return <Navigate to={defaultHomeForRole(user.role)} replace />;
   }

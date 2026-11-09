@@ -1805,6 +1805,7 @@ export const LOCAL_FUNCTIONS = new Set([
   "syncJobPostingToSupabase",
   "backfillFilteredAmenities",
   "listPropertyPageImages",
+  "listSanityContent",
   ...STRIPE_FUNCTIONS,
 ]);
 
@@ -1855,6 +1856,9 @@ export async function handleNeonFunction(req: any, res: any, functionName: strin
     } else if (functionName === "listPropertyPageImages") {
       const { handleListPropertyPageImages } = await import("./list-property-page-images.js");
       await handleListPropertyPageImages(res, body);
+    } else if (functionName === "listSanityContent") {
+      const { handleListSanityContent } = await import("./list-sanity-content.js");
+      await handleListSanityContent(req, res, body);
     } else if (functionName === "rewritePropertyText") {
       const { handleRewritePropertyText } = await import("./rewrite-property-text.js");
       await handleRewritePropertyText(req, res, body);

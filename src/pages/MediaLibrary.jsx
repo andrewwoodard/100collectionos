@@ -2,7 +2,11 @@ import React, { useState, useEffect, useCallback } from "react";
 import { base44 } from "@/api/base44Client";
 import { fetchAllProperties } from "@/lib/fetchAllProperties";
 import { useAuth } from "@/lib/AuthContext";
-import { isMediaPropertyImagesOnly } from "@/lib/staffAccess";
+import {
+  canUseMediaLibraryTab,
+  isMediaRestrictedRole,
+  MEDIA_ROLE_TABS,
+} from "@/lib/staffAccess";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Plus, Search, Image, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -14,6 +18,8 @@ import MediaUploadModal from "@/components/media/MediaUploadModal";
 import MediaFolderModal from "@/components/media/MediaFolderModal";
 import MediaGrid from "@/components/media/MediaGrid";
 import PartnerPropertyImagesTab from "@/components/media/PartnerPropertyImagesTab";
+import SanityImagesTab from "@/components/media/SanityImagesTab";
+import SanityBlogPostsTab from "@/components/media/SanityBlogPostsTab";
 import PreviewModal from "@/components/preview/PreviewModal";
 import { usePreview } from "@/components/preview/usePreview";
 import MediaDriveSidebar from "@/components/media/MediaDriveSidebar";
@@ -22,6 +28,7 @@ import FolderCards from "@/components/documents/FolderCards";
 import CmdKSearch from "@/components/documents/CmdKSearch";
 
 const ASSET_TYPES = ["all", "photo", "video", "logo", "pdf", "brand_asset", "other"];
+const ALL_TABS = ["library", "property-images", "sanity-images", "blog-posts"];
 
 function getUrlParams() {
   const p = new URLSearchParams(window.location.search);
@@ -32,19 +39,28 @@ function getUrlParams() {
   };
 }
 
+function resolveTab(role, rawTab) {
+  const tab = ALL_TABS.includes(rawTab) ? rawTab : "library";
+  if (canUseMediaLibraryTab(role, tab)) return tab;
+  return MEDIA_ROLE_TABS[0];
+}
+
 export default function MediaLibrary() {
   const { user } = useAuth();
-  const propertyImagesOnly = isMediaPropertyImagesOnly(user?.role);
+  const mediaRestricted = isMediaRestrictedRole(user?.role);
 
   const [navState, setNavState] = useState(() => {
     const p = getUrlParams();
-    const tab = propertyImagesOnly || p.tab === "property-images" ? "property-images" : "library";
-    return { folder: p.folder, view: p.view, tab };
+    return {
+      folder: p.folder,
+      view: p.view,
+      tab: resolveTab(user?.role, p.tab),
+    };
   });
 
   const selectedFolderId = navState.folder;
   const selectedView = navState.view;
-  const activeTab = propertyImagesOnly ? "property-images" : navState.tab;
+  const activeTab = resolveTab(user?.role, navState.tab);
 
   const navigate = useCallback((updates) => {
     setNavState((prev) => {
@@ -54,7 +70,7 @@ export default function MediaLibrary() {
         tab: prev.tab || "library",
         ...updates,
       };
-      if (propertyImagesOnly) next.tab = "property-images";
+      next.tab = resolveTab(user?.role, next.tab);
       const p = new URLSearchParams();
       if (next.tab && next.tab !== "library") p.set("tab", next.tab);
       if (next.folder) p.set("folder", next.folder);
@@ -63,39 +79,33 @@ export default function MediaLibrary() {
       window.history.pushState({}, "", url);
       return next;
     });
-  }, [propertyImagesOnly]);
+  }, [user?.role]);
 
   const onSelectFolder = useCallback((id) => navigate({ folder: id, tab: "library" }), [navigate]);
   const onSelectView = useCallback((v) => navigate({ view: v, tab: "library" }), [navigate]);
   const onSelectTab = useCallback((tab) => {
-    if (propertyImagesOnly) {
-      navigate({ tab: "property-images", folder: null, view: null });
-      return;
-    }
-    if (tab === "property-images") navigate({ tab: "property-images", folder: null, view: null });
-    else navigate({ tab: "library" });
-  }, [navigate, propertyImagesOnly]);
+    if (!canUseMediaLibraryTab(user?.role, tab)) return;
+    if (tab === "library") navigate({ tab: "library" });
+    else navigate({ tab, folder: null, view: null });
+  }, [navigate, user?.role]);
 
-  // Handle browser back/forward
   useEffect(() => {
     const handler = () => {
       const p = getUrlParams();
       setNavState({
         folder: p.folder,
         view: p.view,
-        tab: propertyImagesOnly || p.tab === "property-images" ? "property-images" : "library",
+        tab: resolveTab(user?.role, p.tab),
       });
     };
     window.addEventListener("popstate", handler);
     return () => window.removeEventListener("popstate", handler);
-  }, [propertyImagesOnly]);
+  }, [user?.role]);
 
   useEffect(() => {
-    if (!propertyImagesOnly) return;
-    if (navState.tab !== "property-images") {
-      navigate({ tab: "property-images", folder: null, view: null });
-    }
-  }, [propertyImagesOnly, navState.tab, navigate]);
+    if (canUseMediaLibraryTab(user?.role, navState.tab)) return;
+    navigate({ tab: MEDIA_ROLE_TABS[0], folder: null, view: null });
+  }, [user?.role, navState.tab, navigate]);
 
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState("all");
@@ -104,26 +114,27 @@ export default function MediaLibrary() {
   const [cmdKOpen, setCmdKOpen] = useState(false);
 
   const queryClient = useQueryClient();
+  const libraryEnabled = !mediaRestricted;
 
   const { data: assets = [] } = useQuery({
     queryKey: ["media"],
     queryFn: () => base44.entities.MediaAsset.list("-created_date", 500),
-    enabled: !propertyImagesOnly,
+    enabled: libraryEnabled,
   });
   const { data: folders = [] } = useQuery({
     queryKey: ["mediaFolders"],
     queryFn: () => base44.entities.MediaFolder.list("name", 500),
-    enabled: !propertyImagesOnly,
+    enabled: libraryEnabled,
   });
   const { data: partners = [] } = useQuery({
     queryKey: ["partners"],
     queryFn: () => base44.entities.Partner.list("-created_date", 500),
-    enabled: !propertyImagesOnly,
+    enabled: libraryEnabled,
   });
   const { data: properties = [] } = useQuery({
     queryKey: ["properties"],
     queryFn: () => fetchAllProperties(),
-    enabled: !propertyImagesOnly,
+    enabled: libraryEnabled,
   });
 
   const createAsset = useMutation({ mutationFn: d => base44.entities.MediaAsset.create(d), onSuccess: () => queryClient.invalidateQueries({ queryKey: ["media"] }) });
@@ -149,7 +160,6 @@ export default function MediaLibrary() {
     }
   });
 
-  // Cmd+K
   useEffect(() => {
     const handler = (e) => {
       if ((e.metaKey || e.ctrlKey) && e.key === "k") {
@@ -194,13 +204,11 @@ export default function MediaLibrary() {
     else await createFolder.mutateAsync(data);
   };
 
-  // Subfolders as cards
   const isFolderMode = !selectedView;
   const visibleSubfolders = isFolderMode
     ? folders.filter(f => selectedFolderId === null ? !f.parent_id : f.parent_id === selectedFolderId)
     : [];
 
-  // Fake "docs" list for CmdK compatibility (media assets)
   const assetDocsForSearch = assets.map(a => ({
     ...a,
     id: a.id,
@@ -212,17 +220,16 @@ export default function MediaLibrary() {
   return (
     <div className="space-y-4 animate-fade-up" style={{ minHeight: "calc(100vh - 120px)" }}>
       <Tabs value={activeTab} onValueChange={onSelectTab} className="w-full">
-        {!propertyImagesOnly && (
-          <TabsList className="bg-white border border-gray-200">
-            <TabsTrigger value="library">Media Library</TabsTrigger>
-            <TabsTrigger value="property-images">Partner Property Images</TabsTrigger>
-          </TabsList>
-        )}
+        <TabsList className="bg-white border border-gray-200 flex flex-wrap h-auto gap-1 p-1">
+          {!mediaRestricted && <TabsTrigger value="library">Media Library</TabsTrigger>}
+          <TabsTrigger value="property-images">Partner Property Images</TabsTrigger>
+          <TabsTrigger value="sanity-images">Sanity Images</TabsTrigger>
+          <TabsTrigger value="blog-posts">Blog Posts</TabsTrigger>
+        </TabsList>
 
-        {!propertyImagesOnly && (
+        {!mediaRestricted && (
         <TabsContent value="library" className="mt-4 focus-visible:outline-none">
           <div className="flex gap-5">
-            {/* Sidebar */}
             <MediaDriveSidebar
               folders={folders}
               assets={assets}
@@ -233,9 +240,7 @@ export default function MediaLibrary() {
               onAddFolder={(parentId) => setFolderModal({ open: true, folder: null, parentId })}
             />
 
-            {/* Main content */}
             <div className="flex-1 min-w-0 space-y-4">
-              {/* Top bar */}
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div className="space-y-1">
                   <DocBreadcrumb
@@ -263,7 +268,6 @@ export default function MediaLibrary() {
                 </div>
               </div>
 
-              {/* Filters */}
               <div className="flex flex-col sm:flex-row gap-3">
                 <div className="relative flex-1">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
@@ -282,7 +286,6 @@ export default function MediaLibrary() {
                 </Select>
               </div>
 
-              {/* Subfolder cards */}
               {isFolderMode && visibleSubfolders.length > 0 && (
                 <FolderCards
                   folders={visibleSubfolders}
@@ -312,9 +315,17 @@ export default function MediaLibrary() {
         <TabsContent value="property-images" className="mt-4 focus-visible:outline-none">
           <PartnerPropertyImagesTab />
         </TabsContent>
+
+        <TabsContent value="sanity-images" className="mt-4 focus-visible:outline-none">
+          <SanityImagesTab />
+        </TabsContent>
+
+        <TabsContent value="blog-posts" className="mt-4 focus-visible:outline-none">
+          <SanityBlogPostsTab />
+        </TabsContent>
       </Tabs>
 
-      {!propertyImagesOnly && (
+      {libraryEnabled && (
       <MediaUploadModal
         open={uploadOpen}
         onOpenChange={setUploadOpen}
@@ -326,7 +337,7 @@ export default function MediaLibrary() {
       />
       )}
 
-      {!propertyImagesOnly && (
+      {libraryEnabled && (
       <MediaFolderModal
         open={folderModal.open}
         onOpenChange={(o) => setFolderModal(f => ({ ...f, open: o }))}
@@ -336,7 +347,7 @@ export default function MediaLibrary() {
       />
       )}
 
-      {!propertyImagesOnly && previewItem && (
+      {libraryEnabled && previewItem && (
         <PreviewModal
           item={previewItem}
           items={filtered}
@@ -352,7 +363,7 @@ export default function MediaLibrary() {
         />
       )}
 
-      {!propertyImagesOnly && (
+      {libraryEnabled && (
         <CmdKSearch
           open={cmdKOpen}
           onClose={() => setCmdKOpen(false)}

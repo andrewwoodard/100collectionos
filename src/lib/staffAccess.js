@@ -17,6 +17,9 @@ export const STAFF_PAGE_ACCESS = {
   media: ["MediaLibrary"],
 };
 
+/** Tabs media role may use inside Media Library (brand asset library excluded). */
+export const MEDIA_ROLE_TABS = ["property-images", "sanity-images", "blog-posts"];
+
 export function isStaffRole(role) {
   return STAFF_ROLES.includes(String(role || ""));
 }
@@ -53,7 +56,18 @@ export function defaultHomeForRole(role) {
   return "/portal/dashboard";
 }
 
-/** Media role is limited to Partner Property Images (not brand asset library). */
-export function isMediaPropertyImagesOnly(role) {
+/** Media staff: property images + Sanity images/posts — not the brand asset library. */
+export function isMediaRestrictedRole(role) {
   return String(role || "") === "media";
+}
+
+/** @deprecated use isMediaRestrictedRole */
+export function isMediaPropertyImagesOnly(role) {
+  return isMediaRestrictedRole(role);
+}
+
+export function canUseMediaLibraryTab(role, tab) {
+  if (isAdminRole(role)) return true;
+  if (!isMediaRestrictedRole(role)) return true;
+  return MEDIA_ROLE_TABS.includes(tab);
 }
