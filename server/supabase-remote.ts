@@ -239,11 +239,33 @@ export async function mirrorPropertiesbase44ToRemote(row: Record<string, any>) {
     }
   }
 
-  const created = await supabaseRest("propertiesbase44", {
-    method: "POST",
-    headers: { Prefer: "return=representation" },
-    body: JSON.stringify(payload),
-  });
+  const createRemote = async (fields: Record<string, any>) => {
+    try {
+      return await supabaseRest("propertiesbase44", {
+        method: "POST",
+        headers: { Prefer: "return=representation" },
+        body: JSON.stringify(fields),
+      });
+    } catch (err: any) {
+      const msg = String(err?.message || err);
+      // Classic schema may lag Neon — retry without newer optional columns.
+      if (/filtered_amenities|pet_policy_url|column|schema cache/i.test(msg)) {
+        const {
+          filtered_amenities: _fa,
+          pet_policy_url: _ppu,
+          ...legacy
+        } = fields;
+        return await supabaseRest("propertiesbase44", {
+          method: "POST",
+          headers: { Prefer: "return=representation" },
+          body: JSON.stringify(legacy),
+        });
+      }
+      throw err;
+    }
+  };
+
+  const created = await createRemote(payload);
   return { skipped: false as const, action: "created" as const, row: Array.isArray(created) ? created[0] : created };
 }
 

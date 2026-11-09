@@ -1,0 +1,756 @@
+{
+  "as_of": "2026-11-09T12:13:36.936Z",
+  "partners_scanned": 65,
+  "overdue_partners": 14,
+  "open_invoice_count": 29,
+  "total_open_amount": 38719.6,
+  "partners_with_past_due_subs": 11,
+  "partners_with_unpaid_subs": 0,
+  "buckets": {
+    "0-7": {
+      "count": 3,
+      "amount": 1992.1
+    },
+    "8-30": {
+      "count": 6,
+      "amount": 10790
+    },
+    "31-60": {
+      "count": 5,
+      "amount": 2946.5
+    },
+    "61-90": {
+      "count": 3,
+      "amount": 5229
+    },
+    "90+": {
+      "count": 12,
+      "amount": 17762
+    }
+  },
+  "errors": [],
+  "partners": [
+    {
+      "partner_id": "69d3dc68cff4e8ecfe5ec027",
+      "partner_name": "Scenic Stays",
+      "email": "cwheeler@myscenicstays.com",
+      "billing_status": "active",
+      "partner_status": "live",
+      "partner_type": "property_manager",
+      "customer_id": "cus_SJ24Fhp2QQ3KHq",
+      "open_invoice_count": 1,
+      "open_amount": 7470,
+      "max_age_days": 194,
+      "invoices": [
+        {
+          "id": "in_1TRPIYIkknsd9dBLrNor7PyF",
+          "number": "BRSKKJFS-0001",
+          "status": "open",
+          "amount_due": 7470,
+          "total": 7470,
+          "currency": "USD",
+          "created": 1777435230,
+          "due_date": null,
+          "age_days": 194,
+          "bucket": "90+",
+          "hosted_invoice_url": "https://invoice.stripe.com/i/acct_1QmhTPIkknsd9dBL/live_YWNjdF8xUW1oVFBJa2tuc2Q5ZEJMLF9VUUZvMEJXVml5UVBpcTlLOGVuR291T25SbGEydzNULDE4NDc2NzIxNQ0200vY4HzKdV?s=ap",
+          "period_start": 1777435200,
+          "period_end": 1777435200
+        }
+      ],
+      "troubled_subscriptions": [
+        {
+          "id": "sub_1TRPIWIkknsd9dBLQvF2RAw2",
+          "status": "past_due",
+          "current_period_end": 1808971200,
+          "quantity": 15
+        }
+      ]
+    },
+    {
+      "partner_id": "69d3dc677ed838f1a7959ae5",
+      "partner_name": "Paradise in Hawaii Luxury Homes",
+      "email": "jeff@paradiseinhawaii.com",
+      "billing_status": "active",
+      "partner_status": "live",
+      "partner_type": "property_manager",
+      "customer_id": "cus_SJ1uQkAxWV6mrR",
+      "open_invoice_count": 1,
+      "open_amount": 7470,
+      "max_age_days": 25,
+      "invoices": [
+        {
+          "id": "in_1UL2doIkknsd9dBLZgX3fbax",
+          "number": "QL6MDE5O-0003",
+          "status": "open",
+          "amount_due": 7470,
+          "total": 7470,
+          "currency": "USD",
+          "created": 1790694504,
+          "due_date": 1791990466,
+          "age_days": 25,
+          "bucket": "8-30",
+          "hosted_invoice_url": "https://invoice.stripe.com/i/acct_1QmhTPIkknsd9dBL/live_YWNjdF8xUW1oVFBJa2tuc2Q5ZEJMLF9WTGs4SFVhNHF4a29zTWNsNUMySWtFUVBXRjVSbXd1LDE4NDc2NzIxNA0200vIJkAb6Z?s=ap",
+          "period_start": 1759158466,
+          "period_end": 1790694466
+        }
+      ],
+      "troubled_subscriptions": [
+        {
+          "id": "sub_1Rym9XIkknsd9dBLNSismIMA",
+          "status": "past_due",
+          "current_period_end": 1822230466,
+          "quantity": 15
+        }
+      ]
+    },
+    {
+      "partner_id": "69d3dc0c20d9381dc78c1838",
+      "partner_name": "Dunes Properties",
+      "email": "lbernthal@dunesproperties.com",
+      "billing_status": "active",
+      "partner_status": "live",
+      "partner_type": "property_manager",
+      "customer_id": "cus_SJ1eF01eZyKpGR",
+      "open_invoice_count": 1,
+      "open_amount": 4482,
+      "max_age_days": 78,
+      "invoices": [
+        {
+          "id": "in_1U7Sa6Ikknsd9dBLcr3R6wjJ",
+          "number": "HCG2QD4F-0002",
+          "status": "open",
+          "amount_due": 4482,
+          "total": 4482,
+          "currency": "USD",
+          "created": 1787457626,
+          "due_date": null,
+          "age_days": 78,
+          "bucket": "61-90",
+          "hosted_invoice_url": "https://invoice.stripe.com/i/acct_1QmhTPIkknsd9dBL/live_YWNjdF8xUW1oVFBJa2tuc2Q5ZEJMLF9WN2kwZmxpcTNyUzJEMllpallnaTM5bWZkMzRNeUdELDE4NDc2NzIxNg0200gj8CevJc?s=ap",
+          "period_start": 1755921600,
+          "period_end": 1787457600
+        }
+      ],
+      "troubled_subscriptions": [
+        {
+          "id": "sub_1Rz8dVIkknsd9dBLdFnaeaJf",
+          "status": "past_due",
+          "current_period_end": 1818993600,
+          "quantity": 9
+        }
+      ]
+    },
+    {
+      "partner_id": "69d3dc0b2e2f9a836f011084",
+      "partner_name": "The Good Life Bahamas",
+      "email": "valentina@thegoodlifebahamas.com",
+      "billing_status": "active",
+      "partner_status": "live",
+      "partner_type": "property_manager",
+      "customer_id": "cus_SJ29oBvfxBD9UM",
+      "open_invoice_count": 1,
+      "open_amount": 3984,
+      "max_age_days": 140,
+      "invoices": [
+        {
+          "id": "in_1TfPuzIkknsd9dBL2XGccakS",
+          "number": "6WRMEDNC-0003",
+          "status": "open",
+          "amount_due": 3984,
+          "total": 3984,
+          "currency": "USD",
+          "created": 1780774205,
+          "due_date": 1782070065,
+          "age_days": 140,
+          "bucket": "90+",
+          "hosted_invoice_url": "https://invoice.stripe.com/i/acct_1QmhTPIkknsd9dBL/live_YWNjdF8xUW1oVFBJa2tuc2Q5ZEJMLF9VZWpOMTJrcm8xelFZR0d2Tnk0UWxpWnhuSFRDcVdHLDE4NDc2NzIxNQ0200KWe9rEUH?s=ap",
+          "period_start": 1749238065,
+          "period_end": 1780774065
+        }
+      ],
+      "troubled_subscriptions": [
+        {
+          "id": "sub_1RX5vZIkknsd9dBLawy3MTeQ",
+          "status": "past_due",
+          "current_period_end": 1812310065,
+          "quantity": 8
+        }
+      ]
+    },
+    {
+      "partner_id": "69d3dc5903a111cce9970305",
+      "partner_name": "Mountain Laurel Chalets",
+      "email": "Jennifer@mtnlaurelchalets.com",
+      "billing_status": "active",
+      "partner_status": "live",
+      "partner_type": "property_manager",
+      "customer_id": "cus_SJ1rQ1Z65YSCmk",
+      "open_invoice_count": 7,
+      "open_amount": 3776.5,
+      "max_age_days": 194,
+      "invoices": [
+        {
+          "id": "in_1UQ82SIkknsd9dBLo6QktkpE",
+          "number": "KOQDYRJP-0017",
+          "status": "open",
+          "amount_due": 539.5,
+          "total": 539.5,
+          "currency": "USD",
+          "created": 1791906892,
+          "due_date": 1793202841,
+          "age_days": 11,
+          "bucket": "8-30",
+          "hosted_invoice_url": "https://invoice.stripe.com/i/acct_1QmhTPIkknsd9dBL/live_YWNjdF8xUW1oVFBJa2tuc2Q5ZEJMLF9WUjAyY3NYclBJZFJoY1FXR2ZnRzFXZFlaNFpWSDBsLDE4NDc2NzIxNQ0200iNrfT9Di?s=ap",
+          "period_start": 1789314841,
+          "period_end": 1791906841
+        },
+        {
+          "id": "in_1UFFjJIkknsd9dBLtcG5qPiw",
+          "number": "KOQDYRJP-0016",
+          "status": "open",
+          "amount_due": 539.5,
+          "total": 539.5,
+          "currency": "USD",
+          "created": 1789314850,
+          "due_date": 1790610841,
+          "age_days": 41,
+          "bucket": "31-60",
+          "hosted_invoice_url": "https://invoice.stripe.com/i/acct_1QmhTPIkknsd9dBL/live_YWNjdF8xUW1oVFBJa2tuc2Q5ZEJMLF9WRmxGdmp2V2Q0dThXdTJmdDgwU1JZZEYzMTNVbTNNLDE4NDc2NzIxNQ0200Gn4dAvQL?s=ap",
+          "period_start": 1786636441,
+          "period_end": 1789314841
+        },
+        {
+          "id": "in_1U40xYIkknsd9dBLRNs2xl5B",
+          "number": "KOQDYRJP-0015",
+          "status": "open",
+          "amount_due": 539.5,
+          "total": 539.5,
+          "currency": "USD",
+          "created": 1786636464,
+          "due_date": 1787932441,
+          "age_days": 72,
+          "bucket": "61-90",
+          "hosted_invoice_url": "https://invoice.stripe.com/i/acct_1QmhTPIkknsd9dBL/live_YWNjdF8xUW1oVFBJa2tuc2Q5ZEJMLF9WNDlHb25LNzFPc2ZvUnZLWUpSd1VWRHkzWGRWOHl6LDE4NDc2NzIxNQ0200QPPW3iM6?s=ap",
+          "period_start": 1783958041,
+          "period_end": 1786636441
+        },
+        {
+          "id": "in_1TsmBJIkknsd9dBLRkrdeZC7",
+          "number": "KOQDYRJP-0014",
+          "status": "open",
+          "amount_due": 539.5,
+          "total": 539.5,
+          "currency": "USD",
+          "created": 1783958049,
+          "due_date": 1785254041,
+          "age_days": 103,
+          "bucket": "90+",
+          "hosted_invoice_url": "https://invoice.stripe.com/i/acct_1QmhTPIkknsd9dBL/live_YWNjdF8xUW1oVFBJa2tuc2Q5ZEJMLF9Vc1hGUUJWQzVrUWJtR0YwbVgxR01BY3hBQ0t3THhYLDE4NDc2NzIxNQ02008RMnkL8a?s=ap",
+          "period_start": 1781366041,
+          "period_end": 1783958041
+        },
+        {
+          "id": "in_1Thtu6Ikknsd9dBL1ul4evXp",
+          "number": "KOQDYRJP-0013",
+          "status": "open",
+          "amount_due": 539.5,
+          "total": 539.5,
+          "currency": "USD",
+          "created": 1781366126,
+          "due_date": 1782662041,
+          "age_days": 133,
+          "bucket": "90+",
+          "hosted_invoice_url": "https://invoice.stripe.com/i/acct_1QmhTPIkknsd9dBL/live_YWNjdF8xUW1oVFBJa2tuc2Q5ZEJMLF9VaElWRHMxaUJpWGtZbkY3ZUFTdkZNOXo5QWNNZVZjLDE4NDc2NzIxNQ0200HuoyBvjZ?s=ap",
+          "period_start": 1778687641,
+          "period_end": 1781366041
+        },
+        {
+          "id": "in_1TWf7DIkknsd9dBLWV8dwE2T",
+          "number": "KOQDYRJP-0012",
+          "status": "open",
+          "amount_due": 539.5,
+          "total": 539.5,
+          "currency": "USD",
+          "created": 1778687671,
+          "due_date": 1779983641,
+          "age_days": 164,
+          "bucket": "90+",
+          "hosted_invoice_url": "https://invoice.stripe.com/i/acct_1QmhTPIkknsd9dBL/live_YWNjdF8xUW1oVFBJa2tuc2Q5ZEJMLF9VVmdVWldCWGhad2pTamR6TEpPejlJZHJ5WXNOZjQ5LDE4NDc2NzIxNQ02001AiqqJL5?s=ap",
+          "period_start": 1776095641,
+          "period_end": 1778687641
+        },
+        {
+          "id": "in_1TLmokIkknsd9dBL6rmx9DNg",
+          "number": "KOQDYRJP-0011",
+          "status": "open",
+          "amount_due": 539.5,
+          "total": 539.5,
+          "currency": "USD",
+          "created": 1776095670,
+          "due_date": 1777391641,
+          "age_days": 194,
+          "bucket": "90+",
+          "hosted_invoice_url": "https://invoice.stripe.com/i/acct_1QmhTPIkknsd9dBL/live_YWNjdF8xUW1oVFBJa2tuc2Q5ZEJMLF9VS1JpUnl0SlFZSHA0TVZsYU96Y1dqZmFLUFRnQmNQLDE4NDc2NzIxNQ0200J4B4x9pU?s=ap",
+          "period_start": 1773417241,
+          "period_end": 1776095641
+        }
+      ],
+      "troubled_subscriptions": [
+        {
+          "id": "sub_1Rvh01Ikknsd9dBL70b6lnPv",
+          "status": "past_due",
+          "current_period_end": 1794585241,
+          "quantity": 13
+        }
+      ]
+    },
+    {
+      "partner_id": "69d3dc050e63c23b63eadfa9",
+      "partner_name": "Holiday Isle Properties",
+      "email": "patriciad@holidayisle.net",
+      "billing_status": "active",
+      "partner_status": "live",
+      "partner_type": "property_manager",
+      "customer_id": "cus_SJ1lVRHiygQLP8",
+      "open_invoice_count": 2,
+      "open_amount": 2573,
+      "max_age_days": 42,
+      "invoices": [
+        {
+          "id": "in_1T4Q6MIkknsd9dBLalQEOdYr",
+          "number": "ZS1OV90T-0017",
+          "status": "open",
+          "amount_due": 1286.5,
+          "total": 1286.5,
+          "currency": "USD",
+          "created": 1771956774,
+          "due_date": 1793106022,
+          "age_days": 12,
+          "bucket": "8-30",
+          "hosted_invoice_url": "https://invoice.stripe.com/i/acct_1QmhTPIkknsd9dBL/live_YWNjdF8xUW1oVFBJa2tuc2Q5ZEJMLF9VMlY2S2RNOXd0Q0diVk5BUFQ0UmJNeTlRaWo2bXEzLDE4NDc2NzIxNQ0200JS64olhf?s=ap",
+          "period_start": 1771956774,
+          "period_end": 1771956774
+        },
+        {
+          "id": "in_1T4Q5zIkknsd9dBLJMYgczKv",
+          "number": "ZS1OV90T-0016",
+          "status": "open",
+          "amount_due": 1286.5,
+          "total": 1286.5,
+          "currency": "USD",
+          "created": 1771956752,
+          "due_date": 1790514045,
+          "age_days": 42,
+          "bucket": "31-60",
+          "hosted_invoice_url": "https://invoice.stripe.com/i/acct_1QmhTPIkknsd9dBL/live_YWNjdF8xUW1oVFBJa2tuc2Q5ZEJMLF9VMlY2YzFiTHlNQXpkdmF5Umxrbkd1QUt5WmpyUTVPLDE4NDc2NzIxNQ0200fClf0Cve?s=ap",
+          "period_start": 1771956751,
+          "period_end": 1771956751
+        }
+      ],
+      "troubled_subscriptions": []
+    },
+    {
+      "partner_id": "69d3dc10726621cd60e6f4e3",
+      "partner_name": "Lifestyle Properties",
+      "email": "megan@lifestylepropertiesoregon.com",
+      "billing_status": "active",
+      "partner_status": "live",
+      "partner_type": "property_manager",
+      "customer_id": "cus_SJ1oeFlnqx0j3f",
+      "open_invoice_count": 1,
+      "open_amount": 2490,
+      "max_age_days": 178,
+      "invoices": [
+        {
+          "id": "in_1TRlmcIkknsd9dBL9f678XmS",
+          "number": "SGDAXDIX-0001",
+          "status": "open",
+          "amount_due": 2490,
+          "total": 2490,
+          "currency": "USD",
+          "created": 1777521662,
+          "due_date": 1778817600,
+          "age_days": 178,
+          "bucket": "90+",
+          "hosted_invoice_url": "https://invoice.stripe.com/i/acct_1QmhTPIkknsd9dBL/live_YWNjdF8xUW1oVFBJa2tuc2Q5ZEJMLF9VUWQyNVBUMkxHVVBKZUJPQndKWWFUU1FDcjl1azhzLDE4NDc2NzIxNg0200jZRL7HH0?s=ap",
+          "period_start": 1777521600,
+          "period_end": 1777521600
+        }
+      ],
+      "troubled_subscriptions": [
+        {
+          "id": "sub_1TRlmbIkknsd9dBL1ur7Rr8D",
+          "status": "past_due",
+          "current_period_end": 1809057600,
+          "quantity": 5
+        }
+      ]
+    },
+    {
+      "partner_id": "69d3dc1a965bffe20fabe2e1",
+      "partner_name": "Stowe Resort Homes",
+      "email": "Accounting@StoweResortHomes.com",
+      "billing_status": "active",
+      "partner_status": "live",
+      "partner_type": "property_manager",
+      "customer_id": "cus_SJ28JzvB2nMZYj",
+      "open_invoice_count": 4,
+      "open_amount": 1411,
+      "max_age_days": 283,
+      "invoices": [
+        {
+          "id": "in_1UVyaTIkknsd9dBLMCxOhWcF",
+          "number": "X8PIZMHU-0017",
+          "status": "open",
+          "amount_due": 290.5,
+          "total": 290.5,
+          "currency": "USD",
+          "created": 1793300529,
+          "due_date": 1794596482,
+          "age_days": 0,
+          "bucket": "0-7",
+          "hosted_invoice_url": "https://invoice.stripe.com/i/acct_1QmhTPIkknsd9dBL/live_YWNjdF8xUW1oVFBJa2tuc2Q5ZEJMLF9WWDJmZlQ0UjZQNTc3Nlg1VXlNeWJ2NVJoOVBsS21LLDE4NDc2NzIxNQ0200HYQx9NU8?s=ap",
+          "period_start": 1790708482,
+          "period_end": 1793300482
+        },
+        {
+          "id": "in_1UL6HqIkknsd9dBLZy7XdXIi",
+          "number": "X8PIZMHU-0016",
+          "status": "open",
+          "amount_due": 290.5,
+          "total": 290.5,
+          "currency": "USD",
+          "created": 1790708518,
+          "due_date": 1792004482,
+          "age_days": 25,
+          "bucket": "8-30",
+          "hosted_invoice_url": "https://invoice.stripe.com/i/acct_1QmhTPIkknsd9dBL/live_YWNjdF8xUW1oVFBJa2tuc2Q5ZEJMLF9WTG50ekszVlV6ak5IVnpIbjVXUE1qb2xHSmZXcEJoLDE4NDc2NzIxNQ0200bcDGladL?s=ap",
+          "period_start": 1788030082,
+          "period_end": 1790708482
+        },
+        {
+          "id": "in_1U9rVwIkknsd9dBL45xykw15",
+          "number": "X8PIZMHU-0015",
+          "status": "open",
+          "amount_due": 290.5,
+          "total": 290.5,
+          "currency": "USD",
+          "created": 1788030125,
+          "due_date": 1789326082,
+          "age_days": 56,
+          "bucket": "31-60",
+          "hosted_invoice_url": "https://invoice.stripe.com/i/acct_1QmhTPIkknsd9dBL/live_YWNjdF8xUW1oVFBJa2tuc2Q5ZEJMLF9WQUJ0UDJSUE8zTWFZZUlWYk1GWDNKcjlQOVFORjQ2LDE4NDc2NzIxNQ0200EdCrU0Gl?s=ap",
+          "period_start": 1785351682,
+          "period_end": 1788030082
+        },
+        {
+          "id": "in_1SpwPyIkknsd9dBLTDw1gnRE",
+          "number": "X8PIZMHU-0007",
+          "status": "open",
+          "amount_due": 539.5,
+          "total": 539.5,
+          "currency": "USD",
+          "created": 1768506078,
+          "due_date": 1769716094,
+          "age_days": 283,
+          "bucket": "90+",
+          "hosted_invoice_url": "https://invoice.stripe.com/i/acct_1QmhTPIkknsd9dBL/live_YWNjdF8xUW1oVFBJa2tuc2Q5ZEJMLF9UblhVTG1HRjB2WVVrUThpcFlZOEtiU1ltRnBKbmxNLDE4NDc2NzIxNQ0200aRSdObDj?s=ap",
+          "period_start": 1767034882,
+          "period_end": 1769713282
+        }
+      ],
+      "troubled_subscriptions": [
+        {
+          "id": "sub_1SNecYIkknsd9dBLiODZU5pf",
+          "status": "past_due",
+          "current_period_end": 1795978882,
+          "quantity": 7
+        }
+      ]
+    },
+    {
+      "partner_id": "69d3dc05fdccb112447cca44",
+      "partner_name": "Home Sweet City",
+      "email": "lara@homesweetcity.com",
+      "billing_status": "active",
+      "partner_status": "live",
+      "partner_type": "property_manager",
+      "customer_id": "cus_SJ1mmGYRpgZ28i",
+      "open_invoice_count": 6,
+      "open_amount": 1245,
+      "max_age_days": 161,
+      "invoices": [
+        {
+          "id": "in_1UWpwXIkknsd9dBLhMnwnJgD",
+          "number": "L2M9CTXF-0018",
+          "status": "open",
+          "amount_due": 207.5,
+          "total": 207.5,
+          "currency": "USD",
+          "created": 1793505629,
+          "due_date": null,
+          "age_days": 8,
+          "bucket": "8-30",
+          "hosted_invoice_url": "https://invoice.stripe.com/i/acct_1QmhTPIkknsd9dBL/live_YWNjdF8xUW1oVFBJa2tuc2Q5ZEJMLF9WWHZvVUJYSGZ1SndiZnFFZm9kRWNacTBmVW9Fa2pXLDE4NDc2NzIxNg0200IAWseBKO?s=ap",
+          "period_start": 1790827200,
+          "period_end": 1793505600
+        },
+        {
+          "id": "in_1ULbDlIkknsd9dBLZ7ubrhzs",
+          "number": "L2M9CTXF-0017",
+          "status": "open",
+          "amount_due": 207.5,
+          "total": 207.5,
+          "currency": "USD",
+          "created": 1790827429,
+          "due_date": null,
+          "age_days": 39,
+          "bucket": "31-60",
+          "hosted_invoice_url": "https://invoice.stripe.com/i/acct_1QmhTPIkknsd9dBL/live_YWNjdF8xUW1oVFBJa2tuc2Q5ZEJMLF9WTUpySWFCTFFjTFZTcXVid3JPaWdpS25ha3ZBWjNULDE4NDc2NzIxNg0200YGcK4LiR?s=ap",
+          "period_start": 1788235200,
+          "period_end": 1790827200
+        },
+        {
+          "id": "in_1UAjE0Ikknsd9dBL8kv5Ngib",
+          "number": "L2M9CTXF-0016",
+          "status": "open",
+          "amount_due": 207.5,
+          "total": 207.5,
+          "currency": "USD",
+          "created": 1788236588,
+          "due_date": null,
+          "age_days": 69,
+          "bucket": "61-90",
+          "hosted_invoice_url": "https://invoice.stripe.com/i/acct_1QmhTPIkknsd9dBL/live_YWNjdF8xUW1oVFBJa2tuc2Q5ZEJMLF9WQjVPRGZvN1lBQ2tNU3BkdWNKNnpldE5vcnk5cW1nLDE4NDc2NzIxNg0200d9I73Hea?s=ap",
+          "period_start": 1785556800,
+          "period_end": 1788235200
+        },
+        {
+          "id": "in_1TzUAvIkknsd9dBL8OaKw57D",
+          "number": "L2M9CTXF-0015",
+          "status": "open",
+          "amount_due": 207.5,
+          "total": 207.5,
+          "currency": "USD",
+          "created": 1785557129,
+          "due_date": null,
+          "age_days": 100,
+          "bucket": "90+",
+          "hosted_invoice_url": "https://invoice.stripe.com/i/acct_1QmhTPIkknsd9dBL/live_YWNjdF8xUW1oVFBJa2tuc2Q5ZEJMLF9VelQ3dGpKaVRmcE1weWdSZXFHc0h3TXRDVEU0WllULDE4NDc2NzIxNg02008lIUGn8A?s=ap",
+          "period_start": 1782878400,
+          "period_end": 1785556800
+        },
+        {
+          "id": "in_1ToFRrIkknsd9dBLHztwAJt2",
+          "number": "L2M9CTXF-0014",
+          "status": "open",
+          "amount_due": 207.5,
+          "total": 207.5,
+          "currency": "USD",
+          "created": 1782878911,
+          "due_date": null,
+          "age_days": 131,
+          "bucket": "90+",
+          "hosted_invoice_url": "https://invoice.stripe.com/i/acct_1QmhTPIkknsd9dBL/live_YWNjdF8xUW1oVFBJa2tuc2Q5ZEJMLF9VbnJBanN0OUt0V3AxRk5rWGVpMFh4YUNxRFc5RW1ILDE4NDc2NzIxNg0200imLILbLp?s=ap",
+          "period_start": 1780286400,
+          "period_end": 1782878400
+        },
+        {
+          "id": "in_1TdO2BIkknsd9dBLNxkWedjt",
+          "number": "L2M9CTXF-0013",
+          "status": "open",
+          "amount_due": 207.5,
+          "total": 207.5,
+          "currency": "USD",
+          "created": 1780290307,
+          "due_date": null,
+          "age_days": 161,
+          "bucket": "90+",
+          "hosted_invoice_url": "https://invoice.stripe.com/i/acct_1QmhTPIkknsd9dBL/live_YWNjdF8xUW1oVFBJa2tuc2Q5ZEJMLF9VY2RJeGJxTEcwSGU3aG9SeHdWcVFnUktOa2ZSbWVMLDE4NDc2NzIxNg02005rheVvRI?s=ap",
+          "period_start": 1777608000,
+          "period_end": 1780286400
+        }
+      ],
+      "troubled_subscriptions": [
+        {
+          "id": "sub_1RrA9bIkknsd9dBL3aQYQSEk",
+          "status": "past_due",
+          "current_period_end": 1796097600,
+          "quantity": 5
+        }
+      ]
+    },
+    {
+      "partner_id": "69d3dc0ce615db0c0fa08c75",
+      "partner_name": "Perdido Realty Vacations",
+      "email": "valerie@perdidokey.com",
+      "billing_status": "active",
+      "partner_status": "live",
+      "partner_type": "property_manager",
+      "customer_id": "cus_SJ1v8G6asrF5aZ",
+      "open_invoice_count": 1,
+      "open_amount": 996,
+      "max_age_days": 10,
+      "invoices": [
+        {
+          "id": "in_1UQfpyIkknsd9dBLeURwbJHU",
+          "number": "7FI8A109-0006",
+          "status": "open",
+          "amount_due": 996,
+          "total": 996,
+          "currency": "USD",
+          "created": 1792036814,
+          "due_date": 1793332800,
+          "age_days": 10,
+          "bucket": "8-30",
+          "hosted_invoice_url": "https://invoice.stripe.com/i/acct_1QmhTPIkknsd9dBL/live_YWNjdF8xUW1oVFBJa2tuc2Q5ZEJMLF9WUll4VVR6MExmalRnNjFLajJ6WVNXeWJtWjZBeXFMLDE4NDc2NzIxNg0200Q9qyYher?s=ap",
+          "period_start": 1760500800,
+          "period_end": 1792036800
+        }
+      ],
+      "troubled_subscriptions": [
+        {
+          "id": "sub_1SILsrIkknsd9dBLW0CF2r95",
+          "status": "past_due",
+          "current_period_end": 1823572800,
+          "quantity": 2
+        }
+      ]
+    },
+    {
+      "partner_id": "1a1a220ab383cb8a383",
+      "partner_name": "Hummingbird Luxury",
+      "email": "susie@hummingbirdluxury.com",
+      "billing_status": "not_setup",
+      "partner_status": "live",
+      "partner_type": "owner",
+      "customer_id": "cus_Va0UsF4eNDhiaM",
+      "open_invoice_count": 1,
+      "open_amount": 996,
+      "max_age_days": 0,
+      "invoices": [
+        {
+          "id": "in_1UYqUIIkknsd9dBL4COlTMmr",
+          "number": "JQXPDQ7R-0001",
+          "status": "open",
+          "amount_due": 996,
+          "total": 996,
+          "currency": "USD",
+          "created": 1793984378,
+          "due_date": 1794589178,
+          "age_days": 0,
+          "bucket": "0-7",
+          "hosted_invoice_url": "https://invoice.stripe.com/i/acct_1QmhTPIkknsd9dBL/live_YWNjdF8xUW1oVFBJa2tuc2Q5ZEJMLF9WYTBWOTVRRUJmTlR5cFAxYWl2ZVVTR2pudmJLbGlRLDE4NDc2NzIxNQ02004E9X1Z4N?s=ap",
+          "period_start": 1793984378,
+          "period_end": 1793984378
+        }
+      ],
+      "troubled_subscriptions": []
+    },
+    {
+      "partner_id": "6a7b5e2805a0ad8b955507de",
+      "partner_name": "CoralTree Residence Collection ",
+      "email": "tina.page@coraltreeresidences.com",
+      "billing_status": "not_setup",
+      "partner_status": "approved",
+      "partner_type": "property_manager",
+      "customer_id": "cus_V9p0AU9ig2iwTO",
+      "open_invoice_count": 1,
+      "open_amount": 705.6,
+      "max_age_days": 7,
+      "invoices": [
+        {
+          "id": "in_1UUTlvIkknsd9dBLagdPQmQv",
+          "number": "GT2DU25L-0002",
+          "status": "open",
+          "amount_due": 705.6,
+          "total": 705.6,
+          "currency": "USD",
+          "created": 1792943747,
+          "due_date": 1793548531,
+          "age_days": 7,
+          "bucket": "0-7",
+          "hosted_invoice_url": "https://invoice.stripe.com/i/acct_1QmhTPIkknsd9dBL/live_YWNjdF8xUW1oVFBJa2tuc2Q5ZEJMLF9WVlVsNmdKVnhBb05waVBpSXdHMUFIMVVSdFd5VzBtLDE4NDc2NzIxNQ0200xc8V0M2X?s=ap",
+          "period_start": 1790351731,
+          "period_end": 1792943731
+        }
+      ],
+      "troubled_subscriptions": [
+        {
+          "id": "sub_1UJbTDIkknsd9dBLeoibRCzk",
+          "status": "past_due",
+          "current_period_end": 1795622131,
+          "quantity": 20
+        }
+      ]
+    },
+    {
+      "partner_id": "69d3dc1765994e77eaa6985b",
+      "partner_name": "Ascend Properties",
+      "email": "billing@ascendbigsky.com",
+      "billing_status": "active",
+      "partner_status": "live",
+      "partner_type": "property_manager",
+      "customer_id": "cus_SJ1TtbThu3Qgf5",
+      "open_invoice_count": 1,
+      "open_amount": 622.5,
+      "max_age_days": 58,
+      "invoices": [
+        {
+          "id": "in_1UEi7lIkknsd9dBL4ZNg76Lb",
+          "number": "ZVKW3CXM-0015",
+          "status": "open",
+          "amount_due": 622.5,
+          "total": 622.5,
+          "currency": "USD",
+          "created": 1789185669,
+          "due_date": null,
+          "age_days": 58,
+          "bucket": "31-60",
+          "hosted_invoice_url": "https://invoice.stripe.com/i/acct_1QmhTPIkknsd9dBL/live_YWNjdF8xUW1oVFBJa2tuc2Q5ZEJMLF9WRkNXOXh3VXpSY1AwSDg3SUI3NXRsRXlVeUdSb3RkLDE4NDc2NzIxNQ0200DDXAyOYk?s=ap",
+          "period_start": 1786507200,
+          "period_end": 1789185600
+        }
+      ],
+      "troubled_subscriptions": []
+    },
+    {
+      "partner_id": "69d3dc1a48fc9048f34aa849",
+      "partner_name": "Beachball Properties",
+      "email": "brandy@beachball.com",
+      "billing_status": "active",
+      "partner_status": "inactive",
+      "partner_type": "property_manager",
+      "customer_id": "cus_SJ1Ucedzm3Q0EY",
+      "open_invoice_count": 1,
+      "open_amount": 498,
+      "max_age_days": 116,
+      "invoices": [
+        {
+          "id": "in_1To6FgIkknsd9dBLrJSmkuBJ",
+          "number": "QTGBMIR0-0004",
+          "status": "open",
+          "amount_due": 498,
+          "total": 498,
+          "currency": "USD",
+          "created": 1782843560,
+          "due_date": 1784139519,
+          "age_days": 116,
+          "bucket": "90+",
+          "hosted_invoice_url": "https://invoice.stripe.com/i/acct_1QmhTPIkknsd9dBL/live_YWNjdF8xUW1oVFBJa2tuc2Q5ZEJMLF9VbmhmZW1SZ29mVG1kdzN4NU1qdEt0ak9nTlFndE9BLDE4NDc2NzIxNQ0200n5q2qqhB?s=ap",
+          "period_start": 1751307519,
+          "period_end": 1782843519
+        }
+      ],
+      "troubled_subscriptions": [
+        {
+          "id": "sub_1RfmHrIkknsd9dBLXOAwqtqu",
+          "status": "past_due",
+          "current_period_end": 1814379519,
+          "quantity": 1
+        }
+      ]
+    }
+  ]
+}

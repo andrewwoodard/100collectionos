@@ -2,14 +2,16 @@ import React, { useState, useEffect, useCallback } from "react";
 import { base44 } from "@/api/base44Client";
 import { fetchAllProperties } from "@/lib/fetchAllProperties";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, Search, Image, LayoutGrid, X } from "lucide-react";
+import { Plus, Search, Image, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import EmptyState from "@/components/shared/EmptyState";
 import MediaUploadModal from "@/components/media/MediaUploadModal";
 import MediaFolderModal from "@/components/media/MediaFolderModal";
 import MediaGrid from "@/components/media/MediaGrid";
+import PartnerPropertyImagesTab from "@/components/media/PartnerPropertyImagesTab";
 import PreviewModal from "@/components/preview/PreviewModal";
 import { usePreview } from "@/components/preview/usePreview";
 import MediaDriveSidebar from "@/components/media/MediaDriveSidebar";
@@ -21,36 +23,57 @@ const ASSET_TYPES = ["all", "photo", "video", "logo", "pdf", "brand_asset", "oth
 
 function getUrlParams() {
   const p = new URLSearchParams(window.location.search);
-  return { folder: p.get("folder") || null, view: p.get("view") || null };
+  return {
+    folder: p.get("folder") || null,
+    view: p.get("view") || null,
+    tab: p.get("tab") || "library",
+  };
 }
 
 export default function MediaLibrary() {
   const [navState, setNavState] = useState(() => {
     const p = getUrlParams();
-    return { folder: p.folder, view: p.view };
+    return { folder: p.folder, view: p.view, tab: p.tab === "property-images" ? "property-images" : "library" };
   });
 
   const selectedFolderId = navState.folder;
   const selectedView = navState.view;
+  const activeTab = navState.tab;
 
   const navigate = useCallback((updates) => {
-    const next = { folder: null, view: null, ...updates };
-    setNavState(next);
-    const p = new URLSearchParams();
-    if (next.folder) p.set("folder", next.folder);
-    if (next.view) p.set("view", next.view);
-    const url = `${window.location.pathname}${p.toString() ? "?" + p.toString() : ""}`;
-    window.history.pushState({}, "", url);
+    setNavState((prev) => {
+      const next = {
+        folder: null,
+        view: null,
+        tab: prev.tab || "library",
+        ...updates,
+      };
+      const p = new URLSearchParams();
+      if (next.tab && next.tab !== "library") p.set("tab", next.tab);
+      if (next.folder) p.set("folder", next.folder);
+      if (next.view) p.set("view", next.view);
+      const url = `${window.location.pathname}${p.toString() ? "?" + p.toString() : ""}`;
+      window.history.pushState({}, "", url);
+      return next;
+    });
   }, []);
 
-  const onSelectFolder = useCallback((id) => navigate({ folder: id }), [navigate]);
-  const onSelectView = useCallback((v) => navigate({ view: v }), [navigate]);
+  const onSelectFolder = useCallback((id) => navigate({ folder: id, tab: "library" }), [navigate]);
+  const onSelectView = useCallback((v) => navigate({ view: v, tab: "library" }), [navigate]);
+  const onSelectTab = useCallback((tab) => {
+    if (tab === "property-images") navigate({ tab: "property-images", folder: null, view: null });
+    else navigate({ tab: "library" });
+  }, [navigate]);
 
   // Handle browser back/forward
   useEffect(() => {
     const handler = () => {
       const p = getUrlParams();
-      setNavState({ folder: p.folder, view: p.view });
+      setNavState({
+        folder: p.folder,
+        view: p.view,
+        tab: p.tab === "property-images" ? "property-images" : "library",
+      });
     };
     window.addEventListener("popstate", handler);
     return () => window.removeEventListener("popstate", handler);
@@ -67,7 +90,10 @@ export default function MediaLibrary() {
   const { data: assets = [] } = useQuery({ queryKey: ["media"], queryFn: () => base44.entities.MediaAsset.list("-created_date", 500) });
   const { data: folders = [] } = useQuery({ queryKey: ["mediaFolders"], queryFn: () => base44.entities.MediaFolder.list("name", 500) });
   const { data: partners = [] } = useQuery({ queryKey: ["partners"], queryFn: () => base44.entities.Partner.list("-created_date", 500) });
-  const { data: properties = [] } = useQuery({ queryKey: ["properties"],     queryFn: () => fetchAllProperties() });
+  const { data: properties = [], isLoading: propertiesLoading } = useQuery({
+    queryKey: ["properties"],
+    queryFn: () => fetchAllProperties(),
+  });
 
   const createAsset = useMutation({ mutationFn: d => base44.entities.MediaAsset.create(d), onSuccess: () => queryClient.invalidateQueries({ queryKey: ["media"] }) });
   const updateAsset = useMutation({ mutationFn: ({ id, data }) => base44.entities.MediaAsset.update(id, data), onSuccess: () => queryClient.invalidateQueries({ queryKey: ["media"] }) });
@@ -130,7 +156,6 @@ export default function MediaLibrary() {
     return result;
   })();
 
-  const [draggedAssetId, setDraggedAssetId] = useState(null);
   const { previewItem, openPreview, closePreview } = usePreview(filtered);
 
   const handleSaveFolder = async (data) => {
@@ -154,91 +179,105 @@ export default function MediaLibrary() {
   }));
 
   return (
-    <div className="flex gap-5 animate-fade-up" style={{ minHeight: "calc(100vh - 120px)" }}>
-      {/* Sidebar */}
-      <MediaDriveSidebar
-        folders={folders}
-        assets={assets}
-        selectedFolderId={selectedFolderId}
-        selectedView={selectedView}
-        onSelectFolder={onSelectFolder}
-        onSelectView={onSelectView}
-        onAddFolder={(parentId) => setFolderModal({ open: true, folder: null, parentId })}
-      />
+    <div className="space-y-4 animate-fade-up" style={{ minHeight: "calc(100vh - 120px)" }}>
+      <Tabs value={activeTab} onValueChange={onSelectTab} className="w-full">
+        <TabsList className="bg-white border border-gray-200">
+          <TabsTrigger value="library">Media Library</TabsTrigger>
+          <TabsTrigger value="property-images">Partner Property Images</TabsTrigger>
+        </TabsList>
 
-      {/* Main content */}
-      <div className="flex-1 min-w-0 space-y-4">
-        {/* Top bar */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div className="space-y-1">
-            <DocBreadcrumb
+        <TabsContent value="library" className="mt-4 focus-visible:outline-none">
+          <div className="flex gap-5">
+            {/* Sidebar */}
+            <MediaDriveSidebar
+              folders={folders}
+              assets={assets}
               selectedFolderId={selectedFolderId}
               selectedView={selectedView}
-              selectedTag={null}
-              folders={folders}
               onSelectFolder={onSelectFolder}
               onSelectView={onSelectView}
-              rootLabel="Media"
+              onAddFolder={(parentId) => setFolderModal({ open: true, folder: null, parentId })}
             />
-            <p className="text-xs text-gray-400">
-              {filtered.length} asset{filtered.length !== 1 ? "s" : ""}
-              {isFolderMode && visibleSubfolders.length > 0 && `, ${visibleSubfolders.length} folder${visibleSubfolders.length !== 1 ? "s" : ""}`}
-            </p>
-          </div>
-          <div className="flex gap-2">
-            <Button variant="outline" size="sm" onClick={() => setCmdKOpen(true)} className="text-gray-500 border-gray-200 gap-1.5">
-              <Search className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline text-xs text-gray-400">⌘K</span>
-            </Button>
-            <Button onClick={() => setUploadOpen(true)} size="sm" className="bg-[#0F172A] hover:bg-[#1E293B] text-white">
-              <Plus className="w-4 h-4 mr-1.5" /> Upload Asset
-            </Button>
-          </div>
-        </div>
 
-        {/* Filters */}
-        <div className="flex flex-col sm:flex-row gap-3">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-            <Input placeholder="Search assets…" className="pl-9 bg-white" value={search} onChange={e => setSearch(e.target.value)} />
-            {search && (
-              <button onClick={() => setSearch("")} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-300 hover:text-gray-500">
-                <X className="w-3.5 h-3.5" />
-              </button>
-            )}
+            {/* Main content */}
+            <div className="flex-1 min-w-0 space-y-4">
+              {/* Top bar */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="space-y-1">
+                  <DocBreadcrumb
+                    selectedFolderId={selectedFolderId}
+                    selectedView={selectedView}
+                    selectedTag={null}
+                    folders={folders}
+                    onSelectFolder={onSelectFolder}
+                    onSelectView={onSelectView}
+                    rootLabel="Media"
+                  />
+                  <p className="text-xs text-gray-400">
+                    {filtered.length} asset{filtered.length !== 1 ? "s" : ""}
+                    {isFolderMode && visibleSubfolders.length > 0 && `, ${visibleSubfolders.length} folder${visibleSubfolders.length !== 1 ? "s" : ""}`}
+                  </p>
+                </div>
+                <div className="flex gap-2">
+                  <Button variant="outline" size="sm" onClick={() => setCmdKOpen(true)} className="text-gray-500 border-gray-200 gap-1.5">
+                    <Search className="w-3.5 h-3.5" />
+                    <span className="hidden sm:inline text-xs text-gray-400">⌘K</span>
+                  </Button>
+                  <Button onClick={() => setUploadOpen(true)} size="sm" className="bg-[#0F172A] hover:bg-[#1E293B] text-white">
+                    <Plus className="w-4 h-4 mr-1.5" /> Upload Asset
+                  </Button>
+                </div>
+              </div>
+
+              {/* Filters */}
+              <div className="flex flex-col sm:flex-row gap-3">
+                <div className="relative flex-1">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                  <Input placeholder="Search assets…" className="pl-9 bg-white" value={search} onChange={e => setSearch(e.target.value)} />
+                  {search && (
+                    <button onClick={() => setSearch("")} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-300 hover:text-gray-500">
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+                <Select value={typeFilter} onValueChange={setTypeFilter}>
+                  <SelectTrigger className="w-36 bg-white"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {ASSET_TYPES.map(t => <SelectItem key={t} value={t}>{t === "all" ? "All Types" : t.replace("_", " ").replace(/\b\w/g, c => c.toUpperCase())}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Subfolder cards */}
+              {isFolderMode && visibleSubfolders.length > 0 && (
+                <FolderCards
+                  folders={visibleSubfolders}
+                  allFolders={folders}
+                  documents={assets.map(a => ({ ...a, folder_id: a.folder_id }))}
+                  parentId={selectedFolderId}
+                  onNavigate={onSelectFolder}
+                />
+              )}
+
+              {filtered.length === 0 && visibleSubfolders.length === 0 ? (
+                <EmptyState icon={Image} title="No media assets" description="Upload your first asset to this folder" actionLabel="Upload Asset" onAction={() => setUploadOpen(true)} />
+              ) : filtered.length > 0 ? (
+                <MediaGrid
+                  assets={filtered}
+                  folders={folders}
+                  onDelete={(id) => deleteAsset.mutate(id)}
+                  onMove={(id, folderId) => updateAsset.mutate({ id, data: { folder_id: folderId } })}
+                  onPreview={openPreview}
+                />
+              ) : null}
+            </div>
           </div>
-          <Select value={typeFilter} onValueChange={setTypeFilter}>
-            <SelectTrigger className="w-36 bg-white"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              {ASSET_TYPES.map(t => <SelectItem key={t} value={t}>{t === "all" ? "All Types" : t.replace("_", " ").replace(/\b\w/g, c => c.toUpperCase())}</SelectItem>)}
-            </SelectContent>
-          </Select>
-        </div>
+        </TabsContent>
 
-        {/* Subfolder cards */}
-        {isFolderMode && visibleSubfolders.length > 0 && (
-          <FolderCards
-            folders={visibleSubfolders}
-            allFolders={folders}
-            documents={assets.map(a => ({ ...a, folder_id: a.folder_id }))}
-            parentId={selectedFolderId}
-            onNavigate={onSelectFolder}
-          />
-        )}
-
-        {filtered.length === 0 && visibleSubfolders.length === 0 ? (
-          <EmptyState icon={Image} title="No media assets" description="Upload your first asset to this folder" actionLabel="Upload Asset" onAction={() => setUploadOpen(true)} />
-        ) : filtered.length > 0 ? (
-          <MediaGrid
-            assets={filtered}
-            folders={folders}
-            onDelete={(id) => deleteAsset.mutate(id)}
-            onMove={(id, folderId) => updateAsset.mutate({ id, data: { folder_id: folderId } })}
-            onDragStart={setDraggedAssetId}
-            onPreview={openPreview}
-          />
-        ) : null}
-      </div>
+        <TabsContent value="property-images" className="mt-4 focus-visible:outline-none">
+          <PartnerPropertyImagesTab properties={properties} isLoading={propertiesLoading} />
+        </TabsContent>
+      </Tabs>
 
       <MediaUploadModal
         open={uploadOpen}
