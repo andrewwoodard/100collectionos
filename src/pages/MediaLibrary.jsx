@@ -90,7 +90,7 @@ export default function MediaLibrary() {
   const { data: assets = [] } = useQuery({ queryKey: ["media"], queryFn: () => base44.entities.MediaAsset.list("-created_date", 500) });
   const { data: folders = [] } = useQuery({ queryKey: ["mediaFolders"], queryFn: () => base44.entities.MediaFolder.list("name", 500) });
   const { data: partners = [] } = useQuery({ queryKey: ["partners"], queryFn: () => base44.entities.Partner.list("-created_date", 500) });
-  const { data: properties = [], isLoading: propertiesLoading } = useQuery({
+  const { data: properties = [] } = useQuery({
     queryKey: ["properties"],
     queryFn: () => fetchAllProperties(),
   });
@@ -275,7 +275,7 @@ export default function MediaLibrary() {
         </TabsContent>
 
         <TabsContent value="property-images" className="mt-4 focus-visible:outline-none">
-          <PartnerPropertyImagesTab properties={properties} isLoading={propertiesLoading} />
+          <PartnerPropertyImagesTab />
         </TabsContent>
       </Tabs>
 

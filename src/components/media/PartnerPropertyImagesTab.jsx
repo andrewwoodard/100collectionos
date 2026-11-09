@@ -1,60 +1,33 @@
-import React, { useMemo, useState } from "react";
-import { ExternalLink, Image as ImageIcon, Search, X } from "lucide-react";
+import React, { useEffect, useMemo, useState } from "react";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { ExternalLink, Image as ImageIcon, Loader2, Search, X } from "lucide-react";
+import { base44 } from "@/api/base44Client";
 import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import EmptyState from "@/components/shared/EmptyState";
-import { Link } from "react-router-dom";
-import { createPageUrl } from "@/utils";
+import { normalizeStorageUrl } from "@/lib/supabase";
 
-/**
- * Flatten Property.photo_urls (+ aligned photo_alt_texts) into gallery items
- * used on property pages across the portal.
- */
-export function buildPartnerPropertyImageItems(properties = []) {
-  const items = [];
-  for (const prop of properties) {
-    const urls = Array.isArray(prop?.photo_urls) ? prop.photo_urls.filter(Boolean) : [];
-    if (!urls.length) continue;
-    const alts = Array.isArray(prop?.photo_alt_texts) ? prop.photo_alt_texts : [];
-    const propertyName = (prop.property_name || prop.name || "Untitled property").trim();
-    const partnerName = (prop.partner_name || "").trim();
-    urls.forEach((url, index) => {
-      const alt = String(alts[index] ?? "").trim();
-      items.push({
-        id: `${prop.id || "prop"}-${index}`,
-        url,
-        alt,
-        index,
-        propertyId: prop.id,
-        propertyName,
-        partnerId: prop.partner_id || null,
-        partnerName,
-        market: prop.market || "",
-        hasAlt: Boolean(alt),
-      });
-    });
+function publicPropertyHref(item) {
+  const path = String(item.propertyUrl || "").trim();
+  if (path.startsWith("/destinations/")) {
+    return `https://the100collection.com${path}`;
   }
-  return items;
+  const vrm = String(item.vrmUrl || "").trim();
+  if (/^https?:\/\//i.test(vrm)) return vrm;
+  return null;
 }
 
-function matchesQuery(item, query) {
-  if (!query) return true;
-  const q = query.toLowerCase();
-  // Prefer alt text; also allow property / partner / market so operators can narrow the set.
-  if (item.alt.toLowerCase().includes(q)) return true;
-  if (item.propertyName.toLowerCase().includes(q)) return true;
-  if (item.partnerName.toLowerCase().includes(q)) return true;
-  if ((item.market || "").toLowerCase().includes(q)) return true;
-  return false;
-}
+const PAGE_SIZE = 60;
 
 function PropertyImageCard({ item }) {
   const [errored, setErrored] = useState(false);
+  const src = normalizeStorageUrl(item.url) || item.url;
 
   return (
     <div className="bg-white rounded-xl border border-gray-100 overflow-hidden hover:shadow-md transition-all group">
       <a
-        href={item.url}
+        href={src}
         target="_blank"
         rel="noreferrer"
         className="aspect-square bg-gray-50 flex items-center justify-center overflow-hidden relative block"
@@ -62,8 +35,8 @@ function PropertyImageCard({ item }) {
       >
         {!errored ? (
           <img
-            src={item.url}
-            alt={item.alt || `${item.propertyName} — photo ${item.index + 1}`}
+            src={src}
+            alt={item.alt || `${item.propertyName} — photo ${item.index}`}
             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
             loading="lazy"
             onError={() => setErrored(true)}
@@ -88,13 +61,15 @@ function PropertyImageCard({ item }) {
           {item.hasAlt ? item.alt : "No alt text"}
         </p>
         <div className="pt-1 border-t border-gray-50 space-y-0.5">
-          {item.propertyId ? (
-            <Link
-              to={createPageUrl("PropertyDetail") + `?id=${item.propertyId}`}
+          {publicPropertyHref(item) ? (
+            <a
+              href={publicPropertyHref(item)}
+              target="_blank"
+              rel="noreferrer"
               className="text-xs font-medium text-gray-900 hover:text-[#C9A96E] truncate block"
             >
               {item.propertyName}
-            </Link>
+            </a>
           ) : (
             <p className="text-xs font-medium text-gray-900 truncate">{item.propertyName}</p>
           )}
@@ -107,44 +82,93 @@ function PropertyImageCard({ item }) {
   );
 }
 
-export default function PartnerPropertyImagesTab({ properties = [], isLoading = false }) {
+async function fetchPage({ search, altFilter, partnerFilter, offset }) {
+  const res = await base44.functions.invoke("listPropertyPageImages", {
+    search: search || "",
+    alt_filter: altFilter || "all",
+    partner: partnerFilter === "all" ? "" : partnerFilter || "",
+    limit: PAGE_SIZE,
+    offset,
+  });
+  const body = res?.data || res || {};
+  return {
+    items: Array.isArray(body.items) ? body.items : [],
+    total: Number(body.total) || 0,
+    catalogTotal: Number(body.catalog_total) || 0,
+    catalogWithAlt: Number(body.catalog_with_alt) || 0,
+    partners: Array.isArray(body.partners) ? body.partners : [],
+  };
+}
+
+/**
+ * Catalog of every photo on property pages (propertiesbase44.images ≈ 50k+),
+ * with alt text from image_metadata when available. Search/filter run server-side.
+ */
+export default function PartnerPropertyImagesTab() {
+  const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
-  const [altFilter, setAltFilter] = useState("all"); // all | with_alt | missing_alt
+  const [altFilter, setAltFilter] = useState("all");
   const [partnerFilter, setPartnerFilter] = useState("all");
+  const [offset, setOffset] = useState(0);
+  const [accumulated, setAccumulated] = useState([]);
 
-  const allItems = useMemo(() => buildPartnerPropertyImageItems(properties), [properties]);
+  // Debounce search typing
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setSearch(searchInput.trim());
+      setOffset(0);
+      setAccumulated([]);
+    }, 300);
+    return () => clearTimeout(t);
+  }, [searchInput]);
 
-  const partnerOptions = useMemo(() => {
-    const map = new Map();
-    for (const item of allItems) {
-      const key = item.partnerId || item.partnerName || "";
-      if (!key) continue;
-      if (!map.has(key)) map.set(key, item.partnerName || "Unknown partner");
-    }
-    return Array.from(map.entries())
-      .map(([id, name]) => ({ id, name }))
-      .sort((a, b) => a.name.localeCompare(b.name));
-  }, [allItems]);
+  useEffect(() => {
+    setOffset(0);
+    setAccumulated([]);
+  }, [altFilter, partnerFilter]);
 
-  const filtered = useMemo(() => {
-    return allItems.filter((item) => {
-      if (altFilter === "with_alt" && !item.hasAlt) return false;
-      if (altFilter === "missing_alt" && item.hasAlt) return false;
-      if (partnerFilter !== "all") {
-        const key = item.partnerId || item.partnerName || "";
-        if (key !== partnerFilter) return false;
+  const query = useQuery({
+    queryKey: ["property-page-images", search, altFilter, partnerFilter, offset],
+    queryFn: () => fetchPage({ search, altFilter, partnerFilter, offset }),
+    placeholderData: keepPreviousData,
+    staleTime: 30_000,
+  });
+
+  useEffect(() => {
+    if (!query.data?.items) return;
+    setAccumulated((prev) => {
+      if (offset === 0) return query.data.items;
+      const seen = new Set(prev.map((i) => i.id));
+      const next = [...prev];
+      for (const item of query.data.items) {
+        if (!seen.has(item.id)) next.push(item);
       }
-      return matchesQuery(item, search.trim());
+      return next;
     });
-  }, [allItems, altFilter, partnerFilter, search]);
+  }, [query.data, offset]);
 
-  const withAltCount = useMemo(() => allItems.filter((i) => i.hasAlt).length, [allItems]);
+  const total = query.data?.total ?? 0;
+  const [catalogMeta, setCatalogMeta] = useState({ total: 0, withAlt: 0, partners: [] });
+  useEffect(() => {
+    if (!query.data || offset !== 0) return;
+    setCatalogMeta({
+      total: query.data.catalogTotal || 0,
+      withAlt: query.data.catalogWithAlt || 0,
+      partners: query.data.partners || [],
+    });
+  }, [query.data, offset]);
 
-  if (isLoading) {
-    return (
-      <div className="py-16 text-center text-sm text-gray-400">Loading property images…</div>
-    );
-  }
+  const catalogTotal = catalogMeta.total;
+  const catalogWithAlt = catalogMeta.withAlt;
+  const partners = catalogMeta.partners;
+  const items = accumulated;
+  const hasMore = items.length < total;
+  const isInitialLoading = query.isLoading && offset === 0;
+
+  const partnerOptions = useMemo(
+    () => [...partners].sort((a, b) => String(a.name).localeCompare(String(b.name))),
+    [partners],
+  );
 
   return (
     <div className="space-y-4">
@@ -152,10 +176,16 @@ export default function PartnerPropertyImagesTab({ properties = [], isLoading = 
         <div>
           <h2 className="text-sm font-semibold text-gray-900">Partner property images</h2>
           <p className="text-xs text-gray-400 mt-0.5">
-            {filtered.length.toLocaleString()} of {allItems.length.toLocaleString()} photos
-            {allItems.length > 0 && (
-              <> · {withAltCount.toLocaleString()} with alt text</>
-            )}
+            {isInitialLoading
+              ? "Loading catalog…"
+              : (
+                <>
+                  Showing {items.length.toLocaleString()} of {total.toLocaleString()} matching
+                  {catalogTotal > 0 && (
+                    <> · {catalogTotal.toLocaleString()} on property pages · {catalogWithAlt.toLocaleString()} with alt text</>
+                  )}
+                </>
+              )}
           </p>
         </div>
       </div>
@@ -166,13 +196,13 @@ export default function PartnerPropertyImagesTab({ properties = [], isLoading = 
           <Input
             placeholder="Search by alt text, property, or partner…"
             className="pl-9 bg-white"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
           />
-          {search && (
+          {searchInput && (
             <button
               type="button"
-              onClick={() => setSearch("")}
+              onClick={() => setSearchInput("")}
               className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-300 hover:text-gray-500"
             >
               <X className="w-3.5 h-3.5" />
@@ -204,28 +234,58 @@ export default function PartnerPropertyImagesTab({ properties = [], isLoading = 
         </Select>
       </div>
 
-      {search.trim() && (
+      {search && (
         <p className="text-xs text-gray-400">
-          Matching primarily on alt text when available; property and partner names are also searched.
+          Filtering primarily on alt text when available; property, partner, and destination also match.
         </p>
       )}
 
-      {filtered.length === 0 ? (
+      {isInitialLoading ? (
+        <div className="py-16 flex items-center justify-center gap-2 text-sm text-gray-400">
+          <Loader2 className="w-4 h-4 animate-spin" />
+          Loading property page images…
+        </div>
+      ) : items.length === 0 ? (
         <EmptyState
           icon={ImageIcon}
-          title={allItems.length === 0 ? "No property images yet" : "No matches"}
+          title={catalogTotal === 0 ? "No property images yet" : "No matches"}
           description={
-            allItems.length === 0
-              ? "Property gallery photos from partner listings will appear here"
+            catalogTotal === 0
+              ? "Property gallery photos will appear here once listings have images"
               : "Try a different alt-text search or clear filters"
           }
         />
       ) : (
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-          {filtered.map((item) => (
-            <PropertyImageCard key={item.id} item={item} />
-          ))}
-        </div>
+        <>
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+            {items.map((item) => (
+              <PropertyImageCard key={item.id} item={item} />
+            ))}
+          </div>
+
+          <div className="flex items-center justify-center gap-3 pt-2 pb-6">
+            {hasMore ? (
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={query.isFetching}
+                onClick={() => setOffset((o) => o + PAGE_SIZE)}
+                className="min-w-[140px]"
+              >
+                {query.isFetching ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+                    Loading…
+                  </>
+                ) : (
+                  `Load more (${(total - items.length).toLocaleString()} left)`
+                )}
+              </Button>
+            ) : (
+              <p className="text-xs text-gray-400">All matching images loaded</p>
+            )}
+          </div>
+        </>
       )}
     </div>
   );

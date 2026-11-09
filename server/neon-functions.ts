@@ -1804,6 +1804,7 @@ export const LOCAL_FUNCTIONS = new Set([
   "syncDestinationToSupabase",
   "syncJobPostingToSupabase",
   "backfillFilteredAmenities",
+  "listPropertyPageImages",
   ...STRIPE_FUNCTIONS,
 ]);
 
@@ -1851,6 +1852,9 @@ export async function handleNeonFunction(req: any, res: any, functionName: strin
     } else if (functionName === "generatePropertyAltText") {
       const { handleGeneratePropertyAltText } = await import("./generate-property-alt-text.js");
       await handleGeneratePropertyAltText(req, res, body);
+    } else if (functionName === "listPropertyPageImages") {
+      const { handleListPropertyPageImages } = await import("./list-property-page-images.js");
+      await handleListPropertyPageImages(res, body);
     } else if (functionName === "rewritePropertyText") {
       const { handleRewritePropertyText } = await import("./rewrite-property-text.js");
       await handleRewritePropertyText(req, res, body);
