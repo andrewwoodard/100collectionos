@@ -180,9 +180,10 @@ export default function PartnerPropertyImagesTab() {
               ? "Loading catalog…"
               : (
                 <>
-                  Showing {items.length.toLocaleString()} of {total.toLocaleString()} matching
-                  {catalogTotal > 0 && (
-                    <> · {catalogTotal.toLocaleString()} on property pages · {catalogWithAlt.toLocaleString()} with alt text</>
+                  {(catalogTotal > 0 ? total : items.length).toLocaleString()} of{" "}
+                  {(catalogTotal || total || items.length).toLocaleString()} photos
+                  {(catalogTotal > 0 || catalogWithAlt > 0) && (
+                    <> · {catalogWithAlt.toLocaleString()} with alt text</>
                   )}
                 </>
               )}
@@ -214,7 +215,7 @@ export default function PartnerPropertyImagesTab() {
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All alt status</SelectItem>
+            <SelectItem value="all">All photos</SelectItem>
             <SelectItem value="with_alt">Has alt text</SelectItem>
             <SelectItem value="missing_alt">Missing alt text</SelectItem>
           </SelectContent>
@@ -234,13 +235,13 @@ export default function PartnerPropertyImagesTab() {
         </Select>
       </div>
 
-      {search && (
-        <p className="text-xs text-gray-400">
-          Filtering primarily on alt text when available; property, partner, and destination also match.
-        </p>
-      )}
-
-      {isInitialLoading ? (
+      {query.isError && !isInitialLoading && items.length === 0 ? (
+        <EmptyState
+          icon={ImageIcon}
+          title="Couldn’t load property images"
+          description="Try refreshing. Photos without alt text are included in the catalog."
+        />
+      ) : isInitialLoading ? (
         <div className="py-16 flex items-center justify-center gap-2 text-sm text-gray-400">
           <Loader2 className="w-4 h-4 animate-spin" />
           Loading property page images…
@@ -252,7 +253,7 @@ export default function PartnerPropertyImagesTab() {
           description={
             catalogTotal === 0
               ? "Property gallery photos will appear here once listings have images"
-              : "Try a different alt-text search or clear filters"
+              : "Try a different search or clear filters — images without alt text are included when Alt status is All"
           }
         />
       ) : (

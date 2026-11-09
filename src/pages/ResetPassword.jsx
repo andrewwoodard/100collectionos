@@ -9,6 +9,7 @@ import AuthLayout, { AUTH_INPUT, AUTH_LABEL, AUTH_LINK, AUTH_PRIMARY } from "@/c
 export default function ResetPassword() {
   const [searchParams] = useSearchParams();
   const resetToken = searchParams.get("token");
+  const linkError = searchParams.get("error");
 
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -18,6 +19,14 @@ export default function ResetPassword() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
+    if (!resetToken) {
+      setError("This reset link is missing a token. Request a new one.");
+      return;
+    }
+    if (newPassword.length < 8) {
+      setError("Password must be at least 8 characters.");
+      return;
+    }
     if (newPassword !== confirmPassword) {
       setError("Passwords do not match");
       return;
@@ -31,17 +40,27 @@ export default function ResetPassword() {
       if (resetError) throw resetError;
       window.location.href = "/login";
     } catch (err) {
-      setError(err.message || "Failed to reset password");
+      const message = String(err?.message || "").toLowerCase();
+      if (message.includes("invalid token") || message.includes("expired")) {
+        setError("This reset link is invalid or has expired. Request a new one and try again.");
+      } else {
+        setError(err.message || "Failed to reset password");
+      }
     } finally {
       setLoading(false);
     }
   };
 
   if (!resetToken) {
+    const expired = String(linkError || "").toUpperCase().includes("TOKEN");
     return (
       <AuthLayout
         title="Invalid reset link"
-        subtitle="This password reset link is missing or no longer valid."
+        subtitle={
+          expired
+            ? "This password reset link is invalid or has expired."
+            : "This password reset link is missing or no longer valid."
+        }
         footer={
           <Link to="/forgot-password" className={AUTH_LINK}>
             Request a new link
@@ -49,7 +68,7 @@ export default function ResetPassword() {
         }
       >
         <p className="text-sm text-[#0D1B2A] text-center font-light leading-relaxed">
-          Please request a new password reset email and try again.
+          Please request a new password reset email from the portal and open the latest link.
         </p>
       </AuthLayout>
     );
@@ -60,6 +79,13 @@ export default function ResetPassword() {
       {error && (
         <div className="mb-4 p-3 rounded-lg bg-[#F8EDE6] text-[#8B3A2A] text-sm border border-[#E8DDD0]">
           {error}
+          {(error.toLowerCase().includes("invalid") || error.toLowerCase().includes("expired")) && (
+            <div className="mt-2">
+              <Link to="/forgot-password" className={AUTH_LINK}>
+                Request a new link
+              </Link>
+            </div>
+          )}
         </div>
       )}
       <form onSubmit={handleSubmit} className="space-y-4">
@@ -79,6 +105,7 @@ export default function ResetPassword() {
               onChange={(e) => setNewPassword(e.target.value)}
               className={AUTH_INPUT}
               required
+              minLength={8}
             />
           </div>
         </div>
@@ -97,6 +124,7 @@ export default function ResetPassword() {
               onChange={(e) => setConfirmPassword(e.target.value)}
               className={AUTH_INPUT}
               required
+              minLength={8}
             />
           </div>
         </div>

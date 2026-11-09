@@ -48,6 +48,7 @@ export async function handleListPropertyPageImages(res: any, body: BrowseBody = 
     i += 1;
   }
 
+  // Default "all" includes every property-page photo, with or without alt text.
   if (altFilter === "with_alt") {
     where.push(`coalesce(a.alttext, '') <> ''`);
   } else if (altFilter === "missing_alt") {

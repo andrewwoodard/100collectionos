@@ -15,7 +15,11 @@ export default function ForgotPassword() {
     e.preventDefault();
     setLoading(true);
     try {
-      await authClient.forgetPassword({
+      const request =
+        typeof authClient.requestPasswordReset === "function"
+          ? authClient.requestPasswordReset.bind(authClient)
+          : authClient.forgetPassword.bind(authClient);
+      await request({
         email,
         redirectTo: `${window.location.origin}/reset-password`,
       });

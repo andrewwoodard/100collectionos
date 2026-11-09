@@ -134,8 +134,25 @@ export const auth = betterAuth({
   },
   emailAndPassword: {
     enabled: true,
-    sendResetPassword: async ({ user, url }) => {
-      await deliverPasswordResetEmail({ user, url });
+    // Prefer a direct SPA link (/reset-password?token=…) over Better Auth's
+    // /api/auth/reset-password/:token?callbackURL=… hop. The callback hop loses
+    // callbackURL under some Vercel rewrite/query combinations and lands users
+    // on /reset-password?error=INVALID_TOKEN even when the token row is valid.
+    sendResetPassword: async ({ user, url, token }) => {
+      let spaUrl = url;
+      try {
+        const parsed = new URL(url);
+        const callbackRaw = parsed.searchParams.get("callbackURL");
+        const callback = callbackRaw ? decodeURIComponent(callbackRaw) : "";
+        if (token && callback) {
+          const dest = new URL(callback);
+          dest.searchParams.set("token", String(token));
+          spaUrl = dest.toString();
+        }
+      } catch {
+        /* keep Better Auth url */
+      }
+      await deliverPasswordResetEmail({ user, url: spaUrl });
     },
     onPasswordReset: async ({ user }) => {
       if (user?.id) await clearMustChangePassword(user.id);

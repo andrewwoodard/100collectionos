@@ -6,7 +6,7 @@
     },
     {
       "source": "/api/auth/:path*",
-      "destination": "/api/auth-handler?path=:path*"
+      "destination": "/api/auth-handler/:path*"
     },
     {
       "source": "/((?!api/).*)",
