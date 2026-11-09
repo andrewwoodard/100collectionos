@@ -4,6 +4,7 @@ import { createPageUrl } from "@/utils";
 import { useAuth } from "@/lib/AuthContext";
 import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
+import { canAccessStaffPage, isAdminRole, isMediaPropertyImagesOnly } from "@/lib/staffAccess";
 import {
   LayoutDashboard,
   Users,
@@ -103,7 +104,8 @@ const navGroups = [
 export default function Sidebar({ currentPage, mobileOpen, onMobileClose }) {
   const [collapsed, setCollapsed] = useState(false);
   const { user } = useAuth();
-  const isAdmin = user?.role === "admin";
+  const isAdmin = isAdminRole(user?.role);
+  const mediaOnly = isMediaPropertyImagesOnly(user?.role);
 
   const hiddenPages = user?.sidebar_hidden_pages || [];
 
@@ -112,6 +114,7 @@ export default function Sidebar({ currentPage, mobileOpen, onMobileClose }) {
     queryKey: ["sidebar-submission-count"],
     queryFn: () => base44.entities.PropertySubmission.list("-created_date", 100),
     refetchInterval: 30000,
+    enabled: isAdmin,
   });
   const submissionCount = pendingSubmissions.filter(s => s.status === "submitted" || s.status === "under_review").length;
 
@@ -120,8 +123,16 @@ export default function Sidebar({ currentPage, mobileOpen, onMobileClose }) {
     queryKey: ["admin-job-posting-badge"],
     queryFn: () => base44.entities.JobPosting.list("-created_date", 200),
     refetchInterval: 30000,
+    enabled: isAdmin,
   });
   const jobPostingBadgeCount = jobPostingsBadge.filter(j => j.admin_notified_at && !j.admin_reviewed_at).length;
+
+  const canSeeNavItem = (item) => {
+    if (hiddenPages.includes(item.page)) return false;
+    if (item.adminOnly && !isAdmin) return false;
+    if (item.hidden && !isAdmin) return false;
+    return canAccessStaffPage(user?.role, item.page);
+  };
 
   return (
     <aside
@@ -152,7 +163,10 @@ export default function Sidebar({ currentPage, mobileOpen, onMobileClose }) {
 
       {/* Navigation */}
       <nav className="flex-1 py-3 px-2 overflow-y-auto space-y-4">
-        {navGroups.map((group, gi) => (
+        {navGroups.map((group, gi) => {
+          const visibleItems = group.items.filter(canSeeNavItem);
+          if (visibleItems.length === 0) return null;
+          return (
           <div key={gi}>
             {group.label && !collapsed && (
               <div className="px-3 mb-1">
@@ -163,9 +177,12 @@ export default function Sidebar({ currentPage, mobileOpen, onMobileClose }) {
               <div className="border-t border-white/10 mb-1" />
             )}
             <div className="space-y-0.5">
-              {group.items.filter(item => !hiddenPages.includes(item.page) && (!item.adminOnly || isAdmin)).map((item) => {
+              {visibleItems.map((item) => {
                 const isActive = currentPage === item.page;
-                const href = item.path || (item.page === "AdminHub" ? "/admin/hub" : createPageUrl(item.page));
+                const href =
+                  item.page === "MediaLibrary" && mediaOnly
+                    ? "/MediaLibrary?tab=property-images"
+                    : item.path || (item.page === "AdminHub" ? "/admin/hub" : createPageUrl(item.page));
                 return (
                   <Link
                     key={item.page}
@@ -199,20 +216,23 @@ export default function Sidebar({ currentPage, mobileOpen, onMobileClose }) {
               })}
             </div>
           </div>
-        ))}
+          );
+        })}
       </nav>
 
-      {/* Partner Portal shortcut */}
-      <div className="px-2 pb-2 border-t border-white/10 pt-2">
-        <Link
-          to="/portal/dashboard"
-          className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-[#C9A96E]/70 hover:text-[#C9A96E] hover:bg-white/5 transition-all"
-          title={collapsed ? "Partner Portal" : undefined}
-        >
-          <ExternalLink className="w-[18px] h-[18px] flex-shrink-0" />
-          {!collapsed && <span className="truncate flex-1 text-xs">Partner Portal</span>}
-        </Link>
-      </div>
+      {/* Partner Portal shortcut — staff with full access only */}
+      {isAdmin && (
+        <div className="px-2 pb-2 border-t border-white/10 pt-2">
+          <Link
+            to="/portal/dashboard"
+            className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-[#C9A96E]/70 hover:text-[#C9A96E] hover:bg-white/5 transition-all"
+            title={collapsed ? "Partner Portal" : undefined}
+          >
+            <ExternalLink className="w-[18px] h-[18px] flex-shrink-0" />
+            {!collapsed && <span className="truncate flex-1 text-xs">Partner Portal</span>}
+          </Link>
+        </div>
+      )}
 
       {/* Collapse toggle */}
       <div className="p-2 border-t border-white/10">

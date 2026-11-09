@@ -15,7 +15,7 @@ import {
   UserCog,
 } from "lucide-react";
 
-const ROLES = ["admin", "operations", "onboarding", "finance", "marketing", "partner", "user"];
+const ROLES = ["admin", "operations", "onboarding", "finance", "marketing", "media", "partner", "user"];
 const PARTNER_ROLES = ["owner", "marketing", "finance", "operations"];
 
 const ROLE_STYLES = {
@@ -24,6 +24,7 @@ const ROLE_STYLES = {
   onboarding: "bg-sky-50 text-sky-700 border-sky-200",
   finance: "bg-emerald-50 text-emerald-700 border-emerald-200",
   marketing: "bg-amber-50 text-amber-700 border-amber-200",
+  media: "bg-fuchsia-50 text-fuchsia-700 border-fuchsia-200",
   partner: "bg-blue-50 text-blue-700 border-blue-200",
   user: "bg-slate-50 text-slate-600 border-slate-200",
 };
@@ -167,6 +168,7 @@ export default function AdminUsers({ embedded = false }) {
           {[
             { id: "all", label: "All" },
             { id: "admin", label: "Admins" },
+            { id: "media", label: "Media" },
             { id: "partner", label: "Partners" },
             { id: "user", label: "Users" },
           ].map((f) => (

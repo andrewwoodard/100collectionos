@@ -10,9 +10,11 @@
         "onboarding",
         "finance",
         "marketing",
+        "media",
         "partner"
       ],
-      "default": "partner"
+      "default": "partner",
+      "description": "App role. 'media' is staff access limited to Media Library → Partner Property Images only."
     },
     "partner_role": {
       "type": "string",

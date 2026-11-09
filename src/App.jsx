@@ -13,6 +13,7 @@ import ProtectedRoute from '@/components/ProtectedRoute';
 import RequireAdmin from '@/components/RequireAdmin';
 import RequirePortalAccess from '@/components/RequirePortalAccess';
 import RequirePortalRole from '@/components/RequirePortalRole';
+import { defaultHomeForRole, rolesForStaffPage } from '@/lib/staffAccess';
 import ApplyChooser from './pages/apply/ApplyChooser';
 import PropertyManagerApply from './pages/apply/PropertyManagerApply';
 import HomeownerApply from './pages/apply/HomeownerApply';
@@ -105,9 +106,7 @@ const AuthenticatedApp = () => {
         <Route path="/" element={
           !user
             ? <LandingPage />
-            : user.role === 'admin' || user.role === 'super_admin'
-              ? <Navigate to="/admin/hub" replace />
-              : <Navigate to="/portal/dashboard" replace />
+            : <Navigate to={defaultHomeForRole(user.role)} replace />
         } />
         <Route path="/apply" element={<ApplyChooser />} />
         <Route path="/apply/property-manager" element={<PropertyManagerApply />} />
@@ -125,7 +124,7 @@ const AuthenticatedApp = () => {
               key={path}
               path={`/${path}`}
               element={
-                <RequireAdmin>
+                <RequireAdmin page={path} allowedRoles={rolesForStaffPage(path)}>
                   <LayoutWrapper currentPageName={path}><Page /></LayoutWrapper>
                 </RequireAdmin>
               }

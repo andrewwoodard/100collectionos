@@ -1,8 +1,15 @@
 import React from "react";
 import { Navigate } from "react-router-dom";
 import { useAuth } from "@/lib/AuthContext";
+import { canAccessStaffPage, defaultHomeForRole, isAdminRole } from "@/lib/staffAccess";
 
-export default function RequireAdmin({ children }) {
+/**
+ * Gate Collection OS pages.
+ * - Default: admin only (legacy behavior).
+ * - Pass `page` (e.g. "MediaLibrary") to allow roles listed in STAFF_PAGE_ACCESS.
+ * - Or pass `allowedRoles` explicitly (admin is always included).
+ */
+export default function RequireAdmin({ children, page, allowedRoles }) {
   const { user, isLoadingAuth } = useAuth();
 
   if (isLoadingAuth) {
@@ -13,7 +20,13 @@ export default function RequireAdmin({ children }) {
     );
   }
 
-  if (!user) return <Navigate to="/" replace />;
-  if (user.role === "admin") return children;
-  return <Navigate to="/portal/dashboard" replace />;
+  if (!user) return <Navigate to="/login" replace />;
+
+  if (isAdminRole(user.role)) return children;
+
+  if (page && canAccessStaffPage(user.role, page)) return children;
+
+  if (Array.isArray(allowedRoles) && allowedRoles.includes(user.role)) return children;
+
+  return <Navigate to={defaultHomeForRole(user.role)} replace />;
 }
