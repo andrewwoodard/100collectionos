@@ -96,13 +96,14 @@ async function fetchPage({ search, altFilter, partnerFilter, offset }) {
     total: Number(body.total) || 0,
     catalogTotal: Number(body.catalog_total) || 0,
     catalogWithAlt: Number(body.catalog_with_alt) || 0,
+    catalogMissingAlt: Number(body.catalog_missing_alt) || 0,
     partners: Array.isArray(body.partners) ? body.partners : [],
   };
 }
 
 /**
- * Catalog of every photo on property pages (propertiesbase44.images ≈ 50k+),
- * with alt text from image_metadata when available. Search/filter run server-side.
+ * Catalog of photos on active property pages only.
+ * Active listings are expected to have alt text on every photo.
  */
 export default function PartnerPropertyImagesTab() {
   const [searchInput, setSearchInput] = useState("");
@@ -148,18 +149,25 @@ export default function PartnerPropertyImagesTab() {
   }, [query.data, offset]);
 
   const total = query.data?.total ?? 0;
-  const [catalogMeta, setCatalogMeta] = useState({ total: 0, withAlt: 0, partners: [] });
+  const [catalogMeta, setCatalogMeta] = useState({
+    total: 0,
+    withAlt: 0,
+    missingAlt: 0,
+    partners: [],
+  });
   useEffect(() => {
     if (!query.data || offset !== 0) return;
     setCatalogMeta({
       total: query.data.catalogTotal || 0,
       withAlt: query.data.catalogWithAlt || 0,
+      missingAlt: query.data.catalogMissingAlt || 0,
       partners: query.data.partners || [],
     });
   }, [query.data, offset]);
 
   const catalogTotal = catalogMeta.total;
   const catalogWithAlt = catalogMeta.withAlt;
+  const catalogMissingAlt = catalogMeta.missingAlt;
   const partners = catalogMeta.partners;
   const items = accumulated;
   const hasMore = items.length < total;
@@ -177,13 +185,19 @@ export default function PartnerPropertyImagesTab() {
           <h2 className="text-sm font-semibold text-gray-900">Partner property images</h2>
           <p className="text-xs text-gray-400 mt-0.5">
             {isInitialLoading
-              ? "Loading catalog…"
+              ? "Loading active property photos…"
               : (
                 <>
                   {(catalogTotal > 0 ? total : items.length).toLocaleString()} of{" "}
-                  {(catalogTotal || total || items.length).toLocaleString()} photos
-                  {(catalogTotal > 0 || catalogWithAlt > 0) && (
-                    <> · {catalogWithAlt.toLocaleString()} with alt text</>
+                  {(catalogTotal || total || items.length).toLocaleString()} photos on active properties
+                  {catalogTotal > 0 && (
+                    <>
+                      {" "}
+                      · {catalogWithAlt.toLocaleString()} with alt text
+                      {catalogMissingAlt > 0 && (
+                        <> · {catalogMissingAlt.toLocaleString()} missing alt</>
+                      )}
+                    </>
                   )}
                 </>
               )}
@@ -239,21 +253,21 @@ export default function PartnerPropertyImagesTab() {
         <EmptyState
           icon={ImageIcon}
           title="Couldn’t load property images"
-          description="Try refreshing. Photos without alt text are included in the catalog."
+          description="Try refreshing. Only active property photos are listed."
         />
       ) : isInitialLoading ? (
         <div className="py-16 flex items-center justify-center gap-2 text-sm text-gray-400">
           <Loader2 className="w-4 h-4 animate-spin" />
-          Loading property page images…
+          Loading active property photos…
         </div>
       ) : items.length === 0 ? (
         <EmptyState
           icon={ImageIcon}
-          title={catalogTotal === 0 ? "No property images yet" : "No matches"}
+          title={catalogTotal === 0 ? "No active property images" : "No matches"}
           description={
             catalogTotal === 0
-              ? "Property gallery photos will appear here once listings have images"
-              : "Try a different search or clear filters — images without alt text are included when Alt status is All"
+              ? "Gallery photos for active listings will appear here"
+              : "Try a different search or clear filters. Use Missing alt text to find active photos that still need alt."
           }
         />
       ) : (

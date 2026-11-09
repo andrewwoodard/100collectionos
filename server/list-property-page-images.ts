@@ -3,6 +3,9 @@ import { getNeonPool, json } from "./neon-db.js";
 const PAGE_SIZE_DEFAULT = 60;
 const PAGE_SIZE_MAX = 200;
 
+/** Live/public properties only — matches other Neon property filters. */
+const ACTIVE_PROPERTY_SQL = `(coalesce(p.status, '') = 'active' OR p.active IS TRUE)`;
+
 type BrowseBody = {
   search?: string;
   alt_filter?: "all" | "with_alt" | "missing_alt";
@@ -16,8 +19,9 @@ function sanitizeLike(raw: string): string {
 }
 
 /**
- * Browse every photo used on property pages (propertiesbase44.images),
+ * Browse photos on active property pages (propertiesbase44.images),
  * with alt text joined from image_metadata when the storage filename matches.
+ * Active properties are expected to have alt text on every photo.
  */
 export async function handleListPropertyPageImages(res: any, body: BrowseBody = {}) {
   const pool = getNeonPool();
@@ -48,7 +52,6 @@ export async function handleListPropertyPageImages(res: any, body: BrowseBody = 
     i += 1;
   }
 
-  // Default "all" includes every property-page photo, with or without alt text.
   if (altFilter === "with_alt") {
     where.push(`coalesce(a.alttext, '') <> ''`);
   } else if (altFilter === "missing_alt") {
@@ -88,6 +91,7 @@ export async function handleListPropertyPageImages(res: any, body: BrowseBody = 
       CROSS JOIN LATERAL jsonb_array_elements_text(
         CASE WHEN jsonb_typeof(p.images) = 'array' THEN p.images ELSE '[]'::jsonb END
       ) WITH ORDINALITY AS ord(img_url, ordinality)
+      WHERE ${ACTIVE_PROPERTY_SQL}
     )
   `;
 
@@ -127,14 +131,16 @@ export async function handleListPropertyPageImages(res: any, body: BrowseBody = 
   let partners: { id: string; name: string }[] = [];
   let catalogTotal = total;
   let catalogWithAlt = 0;
+  let catalogMissingAlt = 0;
 
   // Only compute catalog/partner metadata on the first page of a browse session.
   if (offset === 0) {
     const [{ rows: partnerRows }, { rows: coverageRows }] = await Promise.all([
       pool.query(`
         SELECT DISTINCT coalesce(partner_name, '') AS name, coalesce(partner_id::text, '') AS id
-        FROM supabase.propertiesbase44
-        WHERE images IS NOT NULL
+        FROM supabase.propertiesbase44 p
+        WHERE ${ACTIVE_PROPERTY_SQL}
+          AND images IS NOT NULL
           AND jsonb_typeof(images) = 'array'
           AND jsonb_array_length(images) > 0
           AND coalesce(partner_name, '') <> ''
@@ -155,6 +161,7 @@ export async function handleListPropertyPageImages(res: any, body: BrowseBody = 
           CROSS JOIN LATERAL jsonb_array_elements_text(
             CASE WHEN jsonb_typeof(p.images) = 'array' THEN p.images ELSE '[]'::jsonb END
           ) AS img_url
+          WHERE ${ACTIVE_PROPERTY_SQL}
         )
         SELECT
           (SELECT count(*)::int FROM imgs) AS catalog_total,
@@ -163,7 +170,13 @@ export async function handleListPropertyPageImages(res: any, body: BrowseBody = 
             FROM imgs i
             LEFT JOIN alt_by_file a ON a.storage_path = i.filename
             WHERE a.alttext IS NOT NULL
-          ) AS catalog_with_alt
+          ) AS catalog_with_alt,
+          (
+            SELECT count(*)::int
+            FROM imgs i
+            LEFT JOIN alt_by_file a ON a.storage_path = i.filename
+            WHERE a.alttext IS NULL
+          ) AS catalog_missing_alt
       `),
     ]);
 
@@ -173,6 +186,7 @@ export async function handleListPropertyPageImages(res: any, body: BrowseBody = 
     }));
     catalogTotal = coverageRows[0]?.catalog_total ?? total;
     catalogWithAlt = coverageRows[0]?.catalog_with_alt ?? 0;
+    catalogMissingAlt = coverageRows[0]?.catalog_missing_alt ?? 0;
   }
 
   return json(res, 200, {
@@ -195,6 +209,7 @@ export async function handleListPropertyPageImages(res: any, body: BrowseBody = 
     offset,
     catalog_total: catalogTotal,
     catalog_with_alt: catalogWithAlt,
+    catalog_missing_alt: catalogMissingAlt,
     partners,
   });
 }
