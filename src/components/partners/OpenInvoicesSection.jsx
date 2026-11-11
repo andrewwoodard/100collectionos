@@ -16,24 +16,33 @@ export default function OpenInvoicesSection({ invoices, loading, billingEmail, p
   const [pendingVoid, setPendingVoid] = useState(null);
   const [voidingId, setVoidingId] = useState(null);
   const [sendingReminder, setSendingReminder] = useState(false);
+  const [pendingReminder, setPendingReminder] = useState(null);
+  const [remindingId, setRemindingId] = useState(null);
 
   const openInvoices = (invoices || []).filter(inv => inv.status === "open");
   const totalDue = openInvoices.reduce((sum, inv) => sum + (inv.amount_due ?? inv.total ?? 0), 0);
 
-  const handleSendReminder = async () => {
-    if (!billingEmail || !openInvoices.length) return;
-    setSendingReminder(true);
+  const handleSendReminder = async (invoice = null) => {
+    if (!billingEmail) return;
+    if (!invoice && !openInvoices.length) return;
+    if (invoice) setRemindingId(invoice.id);
+    else setSendingReminder(true);
     try {
       const res = await base44.functions.invoke("sendBillingReminder", {
         email: billingEmail,
         partner_name: partnerName || undefined,
+        ...(invoice?.id ? { invoice_id: invoice.id } : {}),
       });
       if (res.data?.error) {
         toast({ title: "Could not send reminder", description: res.data.error, variant: "destructive" });
       } else {
+        const count = res.data?.open_invoice_count ?? (invoice ? 1 : openInvoices.length);
+        const label = invoice?.number || invoice?.id;
         toast({
           title: "Reminder sent",
-          description: `Payment reminder sent to ${billingEmail} for ${openInvoices.length} open invoice${openInvoices.length === 1 ? "" : "s"}.`,
+          description: invoice
+            ? `Payment reminder sent to ${billingEmail} for ${label}.`
+            : `Payment reminder sent to ${billingEmail} for ${count} open invoice${count === 1 ? "" : "s"}.`,
         });
       }
     } catch (e) {
@@ -41,6 +50,8 @@ export default function OpenInvoicesSection({ invoices, loading, billingEmail, p
       toast({ title: "Could not send reminder", description: msg, variant: "destructive" });
     } finally {
       setSendingReminder(false);
+      setRemindingId(null);
+      setPendingReminder(null);
     }
   };
 
@@ -170,6 +181,16 @@ export default function OpenInvoicesSection({ invoices, loading, billingEmail, p
                       </a>
                     )}
                     <button
+                      onClick={() => setPendingReminder(inv)}
+                      disabled={remindingId === inv.id || sendingReminder}
+                      title="Send invoice reminder"
+                      className="text-gray-400 hover:text-amber-600 disabled:opacity-50"
+                    >
+                      {remindingId === inv.id
+                        ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        : <Mail className="w-3.5 h-3.5" />}
+                    </button>
+                    <button
                       onClick={() => setPendingVoid(inv)}
                       disabled={voidingId === inv.id}
                       title="Void invoice"
@@ -186,6 +207,30 @@ export default function OpenInvoicesSection({ invoices, loading, billingEmail, p
           </TableBody>
         </Table>
       </div>
+
+      {/* Reminder confirm dialog */}
+      <Dialog open={!!pendingReminder} onOpenChange={(o) => !o && !remindingId && setPendingReminder(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Send invoice reminder?</DialogTitle>
+            <DialogDescription>
+              This will email <span className="font-medium text-gray-900">{billingEmail}</span> a payment reminder for invoice{" "}
+              <span className="font-mono font-medium">{pendingReminder?.number || pendingReminder?.id}</span>
+              {pendingReminder?.hosted_invoice_url ? ", including the Stripe pay link." : "."}
+              {" "}Stripe will also attempt to re-send that invoice.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPendingReminder(null)} disabled={!!remindingId}>
+              Cancel
+            </Button>
+            <Button onClick={() => handleSendReminder(pendingReminder)} disabled={!!remindingId}>
+              {remindingId ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Mail className="w-4 h-4 mr-2" />}
+              Send reminder
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Void confirm dialog */}
       <Dialog open={!!pendingVoid} onOpenChange={(o) => !o && setPendingVoid(null)}>

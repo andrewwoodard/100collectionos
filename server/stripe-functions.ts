@@ -507,6 +507,7 @@ async function handleSendBillingReminder(res: any, body: any) {
   const stripe = getStripe();
   const email = String(body?.email || "").trim().toLowerCase();
   const partnerName = String(body?.partner_name || "").trim();
+  const invoiceId = String(body?.invoice_id || "").trim();
   if (!email) return json(res, 400, { error: "email is required" });
 
   const customers = await stripe.customers.list({ email, limit: 1 });
@@ -515,12 +516,25 @@ async function handleSendBillingReminder(res: any, body: any) {
     return json(res, 404, { error: `No Stripe customer found for ${email}` });
   }
 
-  const invoiceList = await stripe.invoices.list({
-    customer: customer.id,
-    status: "open",
-    limit: 20,
-  });
-  const openInvoices = invoiceList.data || [];
+  let openInvoices: any[] = [];
+  if (invoiceId) {
+    const inv = await stripe.invoices.retrieve(invoiceId);
+    const customerId = typeof inv.customer === "string" ? inv.customer : inv.customer?.id;
+    if (customerId !== customer.id) {
+      return json(res, 400, { error: "Invoice does not belong to this billing email." });
+    }
+    if (inv.status !== "open") {
+      return json(res, 400, { error: `Invoice is ${inv.status || "not open"} and cannot be reminded.` });
+    }
+    openInvoices = [inv];
+  } else {
+    const invoiceList = await stripe.invoices.list({
+      customer: customer.id,
+      status: "open",
+      limit: 20,
+    });
+    openInvoices = invoiceList.data || [];
+  }
   if (!openInvoices.length) {
     return json(res, 400, {
       error: "No open invoices to remind about for this Stripe customer.",

@@ -30,6 +30,8 @@ export default function PartnerBillingTab({ billing = [], stripeBillingEmail, st
   const [pausing, setPausing] = useState(false);
   const [sendingReminder, setSendingReminder] = useState(false);
   const [confirmReminder, setConfirmReminder] = useState(false);
+  const [pendingReminder, setPendingReminder] = useState(null);
+  const [remindingId, setRemindingId] = useState(null);
   const queryClient = useQueryClient();
 
   // Group Stripe credit slots by subscription so admins can adjust the
@@ -123,23 +125,28 @@ export default function PartnerBillingTab({ billing = [], stripeBillingEmail, st
 
   const openCount = (stripeInvoices || []).filter(inv => inv.status === "open").length;
 
-  const handleSendReminder = async () => {
+  const handleSendReminder = async (invoice = null) => {
     if (!stripeBillingEmail) return;
-    setSendingReminder(true);
+    if (invoice) setRemindingId(invoice.id);
+    else setSendingReminder(true);
     try {
       const res = await base44.functions.invoke("sendBillingReminder", {
         email: stripeBillingEmail,
         partner_name: partnerName || undefined,
+        ...(invoice?.id ? { invoice_id: invoice.id } : {}),
       });
       if (res.data?.error) {
         toast({ title: "Could not send reminder", description: res.data.error, variant: "destructive" });
       } else {
-        const count = res.data?.open_invoice_count ?? openCount;
+        const count = res.data?.open_invoice_count ?? (invoice ? 1 : openCount);
+        const label = invoice?.number || invoice?.id;
         toast({
           title: "Reminder sent",
           description: res.data?.email_skipped
             ? `Stripe invoice reminder queued for ${stripeBillingEmail} (email provider skipped).`
-            : `Payment reminder sent to ${stripeBillingEmail} for ${count} open invoice${count === 1 ? "" : "s"}.`,
+            : invoice
+              ? `Payment reminder sent to ${stripeBillingEmail} for ${label}.`
+              : `Payment reminder sent to ${stripeBillingEmail} for ${count} open invoice${count === 1 ? "" : "s"}.`,
         });
       }
     } catch (e) {
@@ -147,7 +154,9 @@ export default function PartnerBillingTab({ billing = [], stripeBillingEmail, st
       toast({ title: "Could not send reminder", description: msg, variant: "destructive" });
     } finally {
       setSendingReminder(false);
+      setRemindingId(null);
       setConfirmReminder(false);
+      setPendingReminder(null);
     }
   };
 
@@ -350,16 +359,28 @@ export default function PartnerBillingTab({ billing = [], stripeBillingEmail, st
                             </a>
                           )}
                           {inv.status === "open" && (
-                            <button
-                              onClick={() => setPendingVoid(inv)}
-                              disabled={voidingId === inv.id}
-                              title="Void invoice"
-                              className="text-gray-400 hover:text-red-500 disabled:opacity-50"
-                            >
-                              {voidingId === inv.id
-                                ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                                : <Trash2 className="w-3.5 h-3.5" />}
-                            </button>
+                            <>
+                              <button
+                                onClick={() => setPendingReminder(inv)}
+                                disabled={remindingId === inv.id || sendingReminder}
+                                title="Send invoice reminder"
+                                className="text-gray-400 hover:text-amber-600 disabled:opacity-50"
+                              >
+                                {remindingId === inv.id
+                                  ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                  : <Mail className="w-3.5 h-3.5" />}
+                              </button>
+                              <button
+                                onClick={() => setPendingVoid(inv)}
+                                disabled={voidingId === inv.id}
+                                title="Void invoice"
+                                className="text-gray-400 hover:text-red-500 disabled:opacity-50"
+                              >
+                                {voidingId === inv.id
+                                  ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                  : <Trash2 className="w-3.5 h-3.5" />}
+                              </button>
+                            </>
                           )}
                         </div>
                       </TableCell>
@@ -443,7 +464,7 @@ export default function PartnerBillingTab({ billing = [], stripeBillingEmail, st
         </DialogContent>
       </Dialog>
 
-      {/* Billing reminder confirm */}
+      {/* Billing reminder confirm (all open) */}
       <Dialog open={confirmReminder} onOpenChange={(o) => !o && !sendingReminder && setConfirmReminder(false)}>
         <DialogContent>
           <DialogHeader>
@@ -458,8 +479,32 @@ export default function PartnerBillingTab({ billing = [], stripeBillingEmail, st
             <Button variant="outline" onClick={() => setConfirmReminder(false)} disabled={sendingReminder}>
               Cancel
             </Button>
-            <Button onClick={handleSendReminder} disabled={sendingReminder || openCount === 0}>
+            <Button onClick={() => handleSendReminder()} disabled={sendingReminder || openCount === 0}>
               {sendingReminder ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Mail className="w-4 h-4 mr-2" />}
+              Send reminder
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Single invoice reminder confirm */}
+      <Dialog open={!!pendingReminder} onOpenChange={(o) => !o && !remindingId && setPendingReminder(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Send invoice reminder?</DialogTitle>
+            <DialogDescription>
+              This will email <span className="font-medium text-gray-900">{stripeBillingEmail}</span> a payment reminder for invoice{" "}
+              <span className="font-mono font-medium">{pendingReminder?.number || pendingReminder?.id}</span>
+              {pendingReminder?.hosted_invoice_url ? ", including the Stripe pay link." : "."}
+              {" "}Stripe will also attempt to re-send that invoice.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPendingReminder(null)} disabled={!!remindingId}>
+              Cancel
+            </Button>
+            <Button onClick={() => handleSendReminder(pendingReminder)} disabled={!!remindingId}>
+              {remindingId ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Mail className="w-4 h-4 mr-2" />}
               Send reminder
             </Button>
           </DialogFooter>
