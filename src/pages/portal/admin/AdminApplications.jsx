@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "react-router-dom";
 import { base44 } from "@/api/base44Client";
-import { CheckCircle, XCircle, Mail, Users, Clock, MessageSquare, ChevronLeft, Building2, Home, CalendarClock, LogIn, Link2, AlertTriangle, RotateCcw, Trash2, Archive, ArchiveRestore, UserRound } from "lucide-react";
+import { CheckCircle, XCircle, Mail, Users, Clock, MessageSquare, ChevronLeft, Building2, Home, CalendarClock, LogIn, Link2, AlertTriangle, RotateCcw, Trash2, Archive, ArchiveRestore, UserRound, Pencil, Check, X } from "lucide-react";
 import { useAuth } from "@/lib/AuthContext";
 import { resolveAdminNotificationEmail } from "@/components/apply/ApplyShared";
 import StatusPill from "@/components/shared/StatusPill";
@@ -674,6 +674,10 @@ function CreateNewPartnerDialog({ app, onClose, onSuccess }) {
 }
 
 // ─── Detail View ───────────────────────────────────────────────────────────────
+function isValidEmail(value) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || "").trim());
+}
+
 function ApplicationDetail({ app, onBack, onAction, onRestore, onDelete, onToggleArchive }) {
   const qc = useQueryClient();
   const [dialog, setDialog] = useState(null); // "approve" | "reject" | "more_info" | "interview"
@@ -681,6 +685,9 @@ function ApplicationDetail({ app, onBack, onAction, onRestore, onDelete, onToggl
   const [archiveBusy, setArchiveBusy] = useState(false);
   const [ownerSaving, setOwnerSaving] = useState(false);
   const [ownerUserId, setOwnerUserId] = useState(app.owner_user_id || "");
+  const [editingEmail, setEditingEmail] = useState(false);
+  const [emailValue, setEmailValue] = useState(app.email || "");
+  const [emailSaving, setEmailSaving] = useState(false);
   const [comments, setComments] = useState(() =>
     Array.isArray(app.internal_comments) ? app.internal_comments : []
   );
@@ -692,6 +699,11 @@ function ApplicationDetail({ app, onBack, onAction, onRestore, onDelete, onToggl
   useEffect(() => {
     setOwnerUserId(app.owner_user_id || "");
   }, [app.id, app.owner_user_id]);
+
+  useEffect(() => {
+    setEmailValue(app.email || "");
+    setEditingEmail(false);
+  }, [app.id, app.email]);
 
   const { data: staffUsers = [] } = useQuery({
     queryKey: ["admin-users-light"],
@@ -735,6 +747,30 @@ function ApplicationDetail({ app, onBack, onAction, onRestore, onDelete, onToggl
     }
   };
 
+  const handleSaveEmail = async (e) => {
+    e?.preventDefault?.();
+    const next = String(emailValue || "").trim().toLowerCase();
+    if (!isValidEmail(next)) {
+      showToast("Enter a valid email address");
+      return;
+    }
+    if (next === String(app.email || "").trim().toLowerCase()) {
+      setEditingEmail(false);
+      return;
+    }
+    setEmailSaving(true);
+    try {
+      await base44.entities.PartnerApplication.update(app.id, { email: next });
+      await qc.invalidateQueries({ queryKey: ["partner-applications"] });
+      setEditingEmail(false);
+      showToast(`Email updated to ${next}`);
+    } catch (err) {
+      showToast(err?.message || "Failed to update email");
+    } finally {
+      setEmailSaving(false);
+    }
+  };
+
   const handleArchive = async () => {
     setArchiveBusy(true);
     try {
@@ -775,7 +811,54 @@ function ApplicationDetail({ app, onBack, onAction, onRestore, onDelete, onToggl
                   </span>
                 )}
               </div>
-              <div className="text-sm text-slate-500 mt-0.5">{app.email}</div>
+              {editingEmail ? (
+                <form className="flex items-center gap-1.5 mt-1 max-w-sm" onSubmit={handleSaveEmail}>
+                  <input
+                    autoFocus
+                    type="email"
+                    value={emailValue}
+                    onChange={(e) => setEmailValue(e.target.value)}
+                    disabled={emailSaving}
+                    placeholder="applicant@email.com"
+                    className="flex-1 text-sm border border-slate-200 rounded-lg px-2.5 py-1.5 text-slate-700 focus:outline-none focus:border-slate-400 disabled:opacity-60"
+                  />
+                  <button
+                    type="submit"
+                    disabled={emailSaving}
+                    className="text-emerald-600 hover:text-emerald-800 disabled:opacity-50"
+                    title="Save email"
+                  >
+                    <Check className="w-4 h-4" />
+                  </button>
+                  <button
+                    type="button"
+                    disabled={emailSaving}
+                    onClick={() => {
+                      setEmailValue(app.email || "");
+                      setEditingEmail(false);
+                    }}
+                    className="text-slate-400 hover:text-slate-600 disabled:opacity-50"
+                    title="Cancel"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </form>
+              ) : (
+                <div className="flex items-center gap-1.5 mt-0.5">
+                  <span className="text-sm text-slate-500">{app.email}</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEmailValue(app.email || "");
+                      setEditingEmail(true);
+                    }}
+                    className="text-slate-300 hover:text-[#C9A96E] transition-colors"
+                    title="Edit applicant email"
+                  >
+                    <Pencil className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              )}
               <div className="text-xs text-slate-400 mt-0.5">{new Date(app.created_date).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })}</div>
               {(app.interview_invited_at || app.status === "interview_invited") && (
                 <div className="mt-2 text-xs text-purple-700 bg-purple-50 border border-purple-100 rounded-lg px-2.5 py-1.5 inline-flex items-center gap-1.5">
