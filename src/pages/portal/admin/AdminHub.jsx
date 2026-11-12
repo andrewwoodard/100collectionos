@@ -14,15 +14,17 @@ import AdminOrphanedProperties from "@/components/portal/admin/AdminOrphanedProp
 import AdminPageMeta from "@/components/portal/admin/AdminPageMeta";
 import AdminApplyMedia from "./AdminApplyMedia";
 import AdminUsers from "./AdminUsers";
+import AdminProjects from "./AdminProjects";
 import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
-import { ClipboardList, Users, UserCircle, DollarSign, FileText, Inbox, Edit3, PowerOff, Mail, AlertTriangle, Share2, UserPlus, ImagePlus, UserCog } from "lucide-react";
+import { ClipboardList, Users, UserCircle, DollarSign, FileText, Inbox, Edit3, PowerOff, Mail, AlertTriangle, Share2, UserPlus, ImagePlus, UserCog, FolderKanban } from "lucide-react";
 
 const TABS = [
   { id: "queue",        label: "Submission Queue",  icon: ClipboardList, desc: "Property submissions awaiting review" },
   { id: "access_queue", label: "Access Requests",   icon: UserPlus,      desc: "Unified queue: cold signups, team access requests, new applicants" },
   { id: "users",        label: "Users",             icon: UserCog,       desc: "Accounts, passwords, and password reset emails" },
   { id: "applications", label: "Applications",       icon: Inbox,         desc: "New partner applications" },
+  { id: "projects",     label: "Projects",           icon: FolderKanban,  desc: "Create and manage internal projects through completion" },
   { id: "partners",     label: "Partners",           icon: Users,         desc: "Manage existing partners" },
   { id: "invitations",  label: "Invitations",        icon: Mail,          desc: "Pending & accepted portal invitations" },
   { id: "profiles",     label: "Partner Profiles",  icon: UserCircle,    desc: "Profile submissions for approval" },
@@ -65,6 +67,10 @@ export default function AdminHub() {
     queryKey: ["portal-access-requests"],
     queryFn: () => base44.entities.PortalAccessRequest.list("-created_date", 200),
   });
+  const { data: projects = [] } = useQuery({
+    queryKey: ["admin-projects"],
+    queryFn: () => base44.entities.Project.list("-updated_date", 500),
+  });
 
   const editSubmissions = submissions.filter(s =>
     s.submission_type === "edit" && ["submitted", "needs_revision"].includes(s.status)
@@ -91,6 +97,7 @@ export default function AdminHub() {
     invitations: invitations.filter(
       (i) => i.status === "pending" && !userEmails.has(String(i.email || "").trim().toLowerCase())
     ).length,
+    projects: projects.filter((p) => !p.archived && p.status !== "complete").length,
   };
 
   const handleTab = (id) => {
@@ -104,6 +111,7 @@ export default function AdminHub() {
       case "access_queue": return <AdminAccessQueue embedded applications={applications} />;
       case "users":        return <AdminUsers embedded />;
       case "applications": return <AdminApplications embedded />;
+      case "projects":     return <AdminProjects embedded />;
       case "partners":     return <AdminPartners embedded />;
       case "invitations":  return <AdminInvitations embedded />;
       case "profiles":     return <AdminPartnerProfiles />;

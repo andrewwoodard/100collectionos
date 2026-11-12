@@ -1,0 +1,110 @@
+{
+  "name": "Project",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Project name"
+    },
+    "description": {
+      "type": "string",
+      "description": "Scope / summary"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "not_started",
+        "in_progress",
+        "blocked",
+        "complete"
+      ],
+      "default": "not_started"
+    },
+    "priority": {
+      "type": "string",
+      "enum": [
+        "low",
+        "medium",
+        "high",
+        "urgent"
+      ],
+      "default": "medium"
+    },
+    "owner_name": {
+      "type": "string",
+      "description": "Display name of the admin owner"
+    },
+    "owner_email": {
+      "type": "string",
+      "format": "email",
+      "description": "Email of the admin owner"
+    },
+    "owner_user_id": {
+      "type": "string",
+      "description": "User id of the admin owner"
+    },
+    "partner_id": {
+      "type": "string",
+      "description": "Optional linked partner"
+    },
+    "partner_name": {
+      "type": "string"
+    },
+    "start_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "due_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "completed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "archived": {
+      "type": "boolean",
+      "default": false
+    },
+    "notes": {
+      "type": "array",
+      "description": "Chronological project notes / activity",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "author_email": { "type": "string" },
+          "author_name": { "type": "string" },
+          "content": { "type": "string" },
+          "created_at": { "type": "string", "format": "date-time" }
+        }
+      },
+      "default": []
+    }
+  },
+  "required": [
+    "name"
+  ],
+  "rls": {
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "read": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}
