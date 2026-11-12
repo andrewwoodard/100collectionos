@@ -12,6 +12,7 @@ const MENU_ITEMS = [
   { page: "Onboarding", label: "Onboarding" },
   { page: "PartnerFunnelTracker", label: "Funnel Tracker" },
   { page: "Tasks", label: "Tasks" },
+  { page: "AdminProjects", label: "Projects" },
   { page: "Documents", label: "Documents" },
   { page: "MediaLibrary", label: "Media Library" },
   { page: "Billing", label: "Billing" },

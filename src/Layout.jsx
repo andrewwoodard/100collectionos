@@ -11,6 +11,7 @@ const pageTitles = {
   MediaLibrary: "Media Library",
   Billing: "Billing",
   Tasks: "Tasks",
+  AdminProjects: "Projects",
   ActivityFeed: "Activity Feed",
   Reports: "Reports",
   Settings: "Settings",

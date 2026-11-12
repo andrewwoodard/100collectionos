@@ -34,6 +34,7 @@ import AdminBilling from './pages/portal/admin/AdminBilling';
 import AdminAudit from './pages/portal/admin/AdminAudit';
 import AdminApplications from './pages/portal/admin/AdminApplications';
 import AdminHub from './pages/portal/admin/AdminHub';
+import AdminProjects from './pages/portal/admin/AdminProjects';
 import AdminDestinations from './components/portal/admin/AdminDestinations';
 import AdminEmailPreviews from './pages/portal/admin/AdminEmailPreviews';
 import AdminApplyMedia from './pages/portal/admin/AdminApplyMedia';
@@ -132,6 +133,7 @@ const AuthenticatedApp = () => {
           ))}
           {/* Admin routes with main layout — wrapped in RequireAdmin */}
           <Route path="/admin/hub" element={<RequireAdmin><LayoutWrapper currentPageName="AdminHub"><AdminHub /></LayoutWrapper></RequireAdmin>} />
+          <Route path="/admin/projects" element={<RequireAdmin><LayoutWrapper currentPageName="AdminProjects"><AdminProjects /></LayoutWrapper></RequireAdmin>} />
           <Route path="/admin/destinations" element={<RequireAdmin><LayoutWrapper currentPageName="Destinations"><AdminDestinations /></LayoutWrapper></RequireAdmin>} />
           <Route path="/admin/queue" element={<RequireAdmin><LayoutWrapper currentPageName="AdminQueue"><AdminQueue /></LayoutWrapper></RequireAdmin>} />
           <Route path="/admin/review/:id" element={<RequireAdmin><LayoutWrapper currentPageName="AdminReview"><AdminReview /></LayoutWrapper></RequireAdmin>} />

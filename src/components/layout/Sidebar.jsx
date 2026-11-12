@@ -32,6 +32,7 @@ import {
   Briefcase,
   Mail,
   Quote,
+  FolderKanban,
   X
 } from "lucide-react";
 const navGroups = [
@@ -54,6 +55,7 @@ const navGroups = [
     items: [
       { name: "Partner Funnel", icon: GitMerge, page: "PartnerFunnelTracker" },
       { name: "Tasks", icon: CheckSquare, page: "Tasks" },
+      { name: "Projects", icon: FolderKanban, page: "AdminProjects", path: "/admin/projects", adminOnly: true },
     ],
   },
   {
@@ -117,6 +119,14 @@ export default function Sidebar({ currentPage, mobileOpen, onMobileClose }) {
     enabled: isAdmin,
   });
   const submissionCount = pendingSubmissions.filter(s => s.status === "submitted" || s.status === "under_review").length;
+
+  const { data: openProjects = [] } = useQuery({
+    queryKey: ["admin-projects"],
+    queryFn: () => base44.entities.Project.list("-updated_date", 500),
+    refetchInterval: 60000,
+    enabled: isAdmin,
+  });
+  const openProjectCount = openProjects.filter((p) => !p.archived && p.status !== "complete").length;
 
   // Unreviewed job postings badge
   const { data: jobPostingsBadge = [] } = useQuery({
@@ -204,6 +214,11 @@ export default function Sidebar({ currentPage, mobileOpen, onMobileClose }) {
                     {!collapsed && item.page === "AdminHub" && submissionCount > 0 && (
                       <span className="text-[10px] font-bold bg-[#C9A96E] text-white px-1.5 py-0.5 rounded-full min-w-[18px] text-center leading-tight">
                         {submissionCount}
+                      </span>
+                    )}
+                    {!collapsed && item.page === "AdminProjects" && openProjectCount > 0 && (
+                      <span className="text-[10px] font-bold bg-[#C9A96E] text-white px-1.5 py-0.5 rounded-full min-w-[18px] text-center leading-tight">
+                        {openProjectCount > 99 ? "99+" : openProjectCount}
                       </span>
                     )}
                     {!collapsed && item.page === "JobApplications" && jobPostingBadgeCount > 0 && (
