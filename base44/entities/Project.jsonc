@@ -80,6 +80,24 @@
         }
       },
       "default": []
+    },
+    "subitems": {
+      "type": "array",
+      "description": "Checklist / subitems under the project (Monday-style)",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "title": { "type": "string" },
+          "done": { "type": "boolean", "default": false },
+          "created_at": { "type": "string", "format": "date-time" }
+        }
+      },
+      "default": []
+    },
+    "board_order": {
+      "type": "number",
+      "description": "Sort order within a status group"
     }
   },
   "required": [
