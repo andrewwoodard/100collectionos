@@ -133,7 +133,7 @@ const AuthenticatedApp = () => {
           ))}
           {/* Admin routes with main layout — wrapped in RequireAdmin */}
           <Route path="/admin/hub" element={<RequireAdmin><LayoutWrapper currentPageName="AdminHub"><AdminHub /></LayoutWrapper></RequireAdmin>} />
-          <Route path="/admin/projects" element={<RequireAdmin><LayoutWrapper currentPageName="AdminProjects"><AdminProjects /></LayoutWrapper></RequireAdmin>} />
+          <Route path="/admin/projects" element={<RequireAdmin page="AdminProjects" allowedRoles={rolesForStaffPage("AdminProjects")}><LayoutWrapper currentPageName="AdminProjects"><AdminProjects /></LayoutWrapper></RequireAdmin>} />
           <Route path="/admin/destinations" element={<RequireAdmin><LayoutWrapper currentPageName="Destinations"><AdminDestinations /></LayoutWrapper></RequireAdmin>} />
           <Route path="/admin/queue" element={<RequireAdmin><LayoutWrapper currentPageName="AdminQueue"><AdminQueue /></LayoutWrapper></RequireAdmin>} />
           <Route path="/admin/review/:id" element={<RequireAdmin><LayoutWrapper currentPageName="AdminReview"><AdminReview /></LayoutWrapper></RequireAdmin>} />

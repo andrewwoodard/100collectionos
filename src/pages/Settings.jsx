@@ -127,6 +127,7 @@ export default function Settings() {
               { role: "Finance", desc: "Manage billing, invoices, and financial reports" },
               { role: "Marketing", desc: "Manage media library and brand assets" },
               { role: "Media", desc: "Partner property images, Sanity images, and blog posts in Media Library" },
+              { role: "Projects", desc: "Media Library browse tabs plus Project Management board" },
             ].map(r => (
               <div key={r.role} className="flex items-center justify-between py-2 border-b border-gray-50 last:border-0">
                 <div>

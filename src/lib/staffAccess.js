@@ -10,14 +10,16 @@ export const STAFF_ROLES = [
   "finance",
   "marketing",
   "media",
+  "projects",
 ];
 
 /** Pages each non-admin staff role may open. Admin always has full access. */
 export const STAFF_PAGE_ACCESS = {
   media: ["MediaLibrary"],
+  projects: ["MediaLibrary", "AdminProjects"],
 };
 
-/** Tabs media role may use inside Media Library (brand asset library excluded). */
+/** Tabs media/projects staff may use inside Media Library (brand asset library excluded). */
 export const MEDIA_ROLE_TABS = ["property-images", "sanity-images", "blog-posts"];
 
 export function isStaffRole(role) {
@@ -48,17 +50,27 @@ export function rolesForStaffPage(pageName) {
 
 export function defaultHomeForRole(role) {
   if (isAdminRole(role)) return "/admin/hub";
+  if (role === "projects") return "/admin/projects";
   if (role === "media") return "/MediaLibrary?tab=property-images";
   if (isStaffRole(role)) {
     const first = STAFF_PAGE_ACCESS[role]?.[0];
-    return first ? `/${first}` : "/MediaLibrary";
+    if (!first) return "/MediaLibrary";
+    if (first === "AdminProjects") return "/admin/projects";
+    return `/${first}`;
   }
   return "/portal/dashboard";
 }
 
-/** Media staff: property images + Sanity images/posts — not the brand asset library. */
+/** Staff limited to Media Library browse tabs (not brand asset library). */
 export function isMediaRestrictedRole(role) {
-  return String(role || "") === "media";
+  const r = String(role || "");
+  return r === "media" || r === "projects";
+}
+
+/** Collection OS–only staff (no partner portal). */
+export function isCollectionOsOnlyRole(role) {
+  const r = String(role || "");
+  return r === "media" || r === "projects";
 }
 
 /** @deprecated use isMediaRestrictedRole */

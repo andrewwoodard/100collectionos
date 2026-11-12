@@ -4,7 +4,7 @@ import { createPageUrl } from "@/utils";
 import { useAuth } from "@/lib/AuthContext";
 import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
-import { canAccessStaffPage, isAdminRole, isMediaPropertyImagesOnly } from "@/lib/staffAccess";
+import { canAccessStaffPage, isAdminRole, isMediaRestrictedRole } from "@/lib/staffAccess";
 import {
   LayoutDashboard,
   Users,
@@ -55,7 +55,7 @@ const navGroups = [
     items: [
       { name: "Partner Funnel", icon: GitMerge, page: "PartnerFunnelTracker" },
       { name: "Tasks", icon: CheckSquare, page: "Tasks" },
-      { name: "Projects", icon: FolderKanban, page: "AdminProjects", path: "/admin/projects", adminOnly: true },
+      { name: "Projects", icon: FolderKanban, page: "AdminProjects", path: "/admin/projects" },
     ],
   },
   {
@@ -107,7 +107,8 @@ export default function Sidebar({ currentPage, mobileOpen, onMobileClose }) {
   const [collapsed, setCollapsed] = useState(false);
   const { user } = useAuth();
   const isAdmin = isAdminRole(user?.role);
-  const mediaOnly = isMediaPropertyImagesOnly(user?.role);
+  const mediaOnly = isMediaRestrictedRole(user?.role);
+  const canSeeProjects = canAccessStaffPage(user?.role, "AdminProjects");
 
   const hiddenPages = user?.sidebar_hidden_pages || [];
 
@@ -124,7 +125,7 @@ export default function Sidebar({ currentPage, mobileOpen, onMobileClose }) {
     queryKey: ["admin-projects"],
     queryFn: () => base44.entities.Project.list("-updated_date", 500),
     refetchInterval: 60000,
-    enabled: isAdmin,
+    enabled: canSeeProjects,
   });
   const openProjectCount = openProjects.filter((p) => !p.archived && p.status !== "complete").length;
 
@@ -139,9 +140,11 @@ export default function Sidebar({ currentPage, mobileOpen, onMobileClose }) {
 
   const canSeeNavItem = (item) => {
     if (hiddenPages.includes(item.page)) return false;
-    if (item.adminOnly && !isAdmin) return false;
     if (item.hidden && !isAdmin) return false;
-    return canAccessStaffPage(user?.role, item.page);
+    // Staff page grants (media/projects) override adminOnly for those pages.
+    if (canAccessStaffPage(user?.role, item.page)) return true;
+    if (item.adminOnly && !isAdmin) return false;
+    return false;
   };
 
   return (

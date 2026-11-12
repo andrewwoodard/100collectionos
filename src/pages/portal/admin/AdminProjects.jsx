@@ -1055,7 +1055,7 @@ export default function AdminProjects({ embedded = false }) {
   const admins = useMemo(
     () =>
       staffUsers
-        .filter((u) => ["admin", "operations", "onboarding", "super_admin"].includes(u.role))
+        .filter((u) => ["admin", "super_admin", "projects"].includes(u.role))
         .sort((a, b) => adminLabel(a).localeCompare(adminLabel(b))),
     [staffUsers]
   );

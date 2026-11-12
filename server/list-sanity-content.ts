@@ -39,7 +39,13 @@ async function requireStaff(req: any) {
   if ("error" in gate && gate.error) return gate;
   const user = gate.session.user as { role?: string; email?: string };
   const role = String(user.role || "");
-  if (role === "admin" || role === "media" || role === "super_admin" || process.env.VITE_AUTH_DEV_ADMIN === "true") {
+  if (
+    role === "admin" ||
+    role === "media" ||
+    role === "projects" ||
+    role === "super_admin" ||
+    process.env.VITE_AUTH_DEV_ADMIN === "true"
+  ) {
     return gate;
   }
   const email = String(user.email || "").trim().toLowerCase();
@@ -49,7 +55,7 @@ async function requireStaff(req: any) {
       [email],
     );
     const dbRole = String(rows[0]?.role || "");
-    if (dbRole === "admin" || dbRole === "media") return gate;
+    if (dbRole === "admin" || dbRole === "media" || dbRole === "projects") return gate;
   }
   return { error: 403 as const, message: "Staff access required" };
 }

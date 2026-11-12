@@ -3,7 +3,7 @@ import { Navigate } from "react-router-dom";
 import { useAuth } from "@/lib/AuthContext";
 import { base44 } from "@/api/base44Client";
 import { useQuery } from "@tanstack/react-query";
-import { defaultHomeForRole, isMediaPropertyImagesOnly } from "@/lib/staffAccess";
+import { defaultHomeForRole, isCollectionOsOnlyRole } from "@/lib/staffAccess";
 
 export default function RequirePortalAccess({ children }) {
   const { user, isLoadingAuth } = useAuth();
@@ -59,8 +59,8 @@ export default function RequirePortalAccess({ children }) {
   // Admins can access portal for testing
   if (user.role === "admin") return children;
 
-  // Media role is Collection OS only — never the partner portal
-  if (isMediaPropertyImagesOnly(user.role)) {
+  // Media / Projects staff are Collection OS only — never the partner portal
+  if (isCollectionOsOnlyRole(user.role)) {
     return <Navigate to={defaultHomeForRole(user.role)} replace />;
   }
 

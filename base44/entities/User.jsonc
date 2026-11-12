@@ -11,10 +11,11 @@
         "finance",
         "marketing",
         "media",
+        "projects",
         "partner"
       ],
       "default": "partner",
-      "description": "App role. 'media' is staff access limited to Media Library → Partner Property Images only."
+      "description": "App role. 'media' is Media Library only. 'projects' is Media Library + Project Management."
     },
     "partner_role": {
       "type": "string",

@@ -5,7 +5,7 @@ import { auth } from "./auth.js";
 import { getNeonPool, json, newId, readBody } from "./neon-db.js";
 import { takeResetResult } from "./reset-email.js";
 
-const APP_ROLES = new Set(["admin", "operations", "onboarding", "finance", "marketing", "media", "partner", "user"]);
+const APP_ROLES = new Set(["admin", "operations", "onboarding", "finance", "marketing", "media", "projects", "partner", "user"]);
 const PARTNER_ROLES = new Set(["owner", "marketing", "finance", "operations"]);
 
 function newAuthId() {
