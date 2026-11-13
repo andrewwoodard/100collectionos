@@ -142,23 +142,10 @@ function seoSnapshot(doc: any) {
  * Uses Sanity History + Users APIs with SANITY_API_READ_TOKEN from env.
  */
 export async function handleListSanitySeoActivity(req: any, res: any, body: ActivityBody = {}) {
-  console.info("[listSanitySeoActivity] start", {
-    hasToken: Boolean(sanityToken()),
-    project: PROJECT,
-    dataset: DATASET,
-    limit: body?.limit,
-  });
   const gate = await requireAdmin(req);
-  if ("error" in gate && gate.error) {
-    console.info("[listSanitySeoActivity] gate", gate.error, gate.message);
-    return json(res, gate.error, {
-      error: gate.message,
-      debug: { hasToken: Boolean(sanityToken()), project: PROJECT, dataset: DATASET },
-    });
-  }
+  if ("error" in gate && gate.error) return json(res, gate.error, { error: gate.message });
 
   if (!sanityToken()) {
-    console.error("[listSanitySeoActivity] missing SANITY_API_READ_TOKEN");
     return json(res, 500, { error: "SANITY_API_READ_TOKEN is not configured" });
   }
 

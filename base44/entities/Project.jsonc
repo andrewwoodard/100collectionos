@@ -15,6 +15,7 @@
       "enum": [
         "not_started",
         "in_progress",
+        "ongoing",
         "blocked",
         "complete"
       ],
@@ -32,16 +33,29 @@
     },
     "owner_name": {
       "type": "string",
-      "description": "Display name of the admin owner"
+      "description": "Display name of the primary owner (legacy / first assignee)"
     },
     "owner_email": {
       "type": "string",
       "format": "email",
-      "description": "Email of the admin owner"
+      "description": "Email of the primary owner"
     },
     "owner_user_id": {
       "type": "string",
-      "description": "User id of the admin owner"
+      "description": "User id of the primary owner"
+    },
+    "assignees": {
+      "type": "array",
+      "description": "People tagged on this project",
+      "items": {
+        "type": "object",
+        "properties": {
+          "user_id": { "type": "string" },
+          "name": { "type": "string" },
+          "email": { "type": "string" }
+        }
+      },
+      "default": []
     },
     "partner_id": {
       "type": "string",
@@ -66,6 +80,23 @@
       "type": "boolean",
       "default": false
     },
+    "attachments": {
+      "type": "array",
+      "description": "Files attached to the project (images, docs, spreadsheets)",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "url": { "type": "string" },
+          "name": { "type": "string" },
+          "content_type": { "type": "string" },
+          "size": { "type": "number" },
+          "created_at": { "type": "string", "format": "date-time" },
+          "uploaded_by": { "type": "string" }
+        }
+      },
+      "default": []
+    },
     "notes": {
       "type": "array",
       "description": "Chronological project notes / activity",
@@ -76,7 +107,27 @@
           "author_email": { "type": "string" },
           "author_name": { "type": "string" },
           "content": { "type": "string" },
-          "created_at": { "type": "string", "format": "date-time" }
+          "created_at": { "type": "string", "format": "date-time" },
+          "mentioned_user_ids": {
+            "type": "array",
+            "items": { "type": "string" },
+            "default": []
+          },
+          "attachments": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": { "type": "string" },
+                "url": { "type": "string" },
+                "name": { "type": "string" },
+                "content_type": { "type": "string" },
+                "size": { "type": "number" },
+                "created_at": { "type": "string", "format": "date-time" }
+              }
+            },
+            "default": []
+          }
         }
       },
       "default": []
@@ -90,7 +141,34 @@
           "id": { "type": "string" },
           "title": { "type": "string" },
           "done": { "type": "boolean", "default": false },
-          "created_at": { "type": "string", "format": "date-time" }
+          "created_at": { "type": "string", "format": "date-time" },
+          "assignees": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "user_id": { "type": "string" },
+                "name": { "type": "string" },
+                "email": { "type": "string" }
+              }
+            },
+            "default": []
+          },
+          "attachments": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": { "type": "string" },
+                "url": { "type": "string" },
+                "name": { "type": "string" },
+                "content_type": { "type": "string" },
+                "size": { "type": "number" },
+                "created_at": { "type": "string", "format": "date-time" }
+              }
+            },
+            "default": []
+          }
         }
       },
       "default": []

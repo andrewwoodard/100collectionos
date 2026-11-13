@@ -1,9 +1,10 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { useAuth } from "@/lib/AuthContext";
 import { useToast } from "@/components/ui/use-toast";
 import EmptyState from "@/components/shared/EmptyState";
+import MentionInput from "@/components/admin/MentionInput";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -11,13 +12,15 @@ import {
 } from "@/components/ui/dialog";
 import {
   Archive, ArchiveRestore, Check, CheckCircle2, ChevronDown, ChevronRight,
-  Columns3, FolderKanban, LayoutGrid, List, Loader2, MessageSquare, Plus,
-  Search, Send, Trash2, X,
+  Columns3, FileSpreadsheet, FileText, FolderKanban, Image as ImageIcon,
+  LayoutGrid, List, ListTodo, Loader2, MessageSquare, Paperclip, Plus,
+  Search, Send, Trash2, UserRound, X,
 } from "lucide-react";
 
 const STATUS_GROUPS = [
   { value: "not_started", label: "Not Started", color: "#C4C4C4", soft: "bg-slate-100 text-slate-700", cell: "bg-slate-400" },
   { value: "in_progress", label: "Working on it", color: "#FDAB3D", soft: "bg-amber-50 text-amber-800", cell: "bg-amber-400" },
+  { value: "ongoing", label: "Ongoing", color: "#579BFC", soft: "bg-sky-50 text-sky-800", cell: "bg-sky-500" },
   { value: "blocked", label: "Stuck", color: "#E2445C", soft: "bg-red-50 text-red-700", cell: "bg-red-500" },
   { value: "complete", label: "Done", color: "#00C875", soft: "bg-emerald-50 text-emerald-800", cell: "bg-emerald-500" },
 ];
@@ -28,6 +31,9 @@ const PRIORITY_OPTIONS = [
   { value: "high", label: "High", cell: "bg-orange-400 text-white" },
   { value: "urgent", label: "Critical", cell: "bg-rose-500 text-white" },
 ];
+
+const ATTACH_ACCEPT =
+  "image/*,.png,.jpg,.jpeg,.gif,.webp,.pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.ppt,.pptx";
 
 function statusMeta(status) {
   return STATUS_GROUPS.find((s) => s.value === status) || STATUS_GROUPS[0];
@@ -82,13 +88,126 @@ function subitemProgress(project) {
   return { done, total: items.length, pct: Math.round((done / items.length) * 100) };
 }
 
+function projectAssignees(project) {
+  if (Array.isArray(project?.assignees) && project.assignees.length) {
+    return project.assignees.filter((a) => a?.user_id || a?.email);
+  }
+  if (project?.owner_user_id || project?.owner_email) {
+    return [{
+      user_id: project.owner_user_id || "",
+      name: project.owner_name || "",
+      email: project.owner_email || "",
+    }];
+  }
+  return [];
+}
+
+function assigneePatch(assignees) {
+  const list = Array.isArray(assignees) ? assignees : [];
+  const primary = list[0] || null;
+  return {
+    assignees: list,
+    owner_user_id: primary?.user_id || null,
+    owner_name: primary?.name || null,
+    owner_email: primary?.email || null,
+  };
+}
+
+function isAssignedToUser(project, user) {
+  if (!user) return false;
+  const uid = String(user.id || "");
+  const email = String(user.email || "").toLowerCase();
+  const people = projectAssignees(project);
+  if (people.some((a) => (a.user_id && a.user_id === uid) || (a.email && a.email.toLowerCase() === email))) {
+    return true;
+  }
+  const subs = Array.isArray(project?.subitems) ? project.subitems : [];
+  return subs.some((s) =>
+    Array.isArray(s.assignees) &&
+    s.assignees.some((a) => (a.user_id && a.user_id === uid) || (a.email && a.email.toLowerCase() === email))
+  );
+}
+
+function fileIcon(contentType = "", name = "") {
+  const t = String(contentType).toLowerCase();
+  const n = String(name).toLowerCase();
+  if (t.startsWith("image/") || /\.(png|jpe?g|gif|webp|svg)$/.test(n)) return ImageIcon;
+  if (t.includes("sheet") || t.includes("excel") || /\.(xlsx?|csv)$/.test(n)) return FileSpreadsheet;
+  return FileText;
+}
+
+async function uploadProjectFile(file) {
+  const res = await fetch("/api/blob/upload", {
+    method: "POST",
+    credentials: "include",
+    headers: {
+      "Content-Type": file.type || "application/octet-stream",
+      "X-Filename": file.name || "attachment",
+    },
+    body: file,
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || "Upload failed");
+  return {
+    id: newId("att"),
+    url: data.url,
+    name: file.name || "attachment",
+    content_type: file.type || "application/octet-stream",
+    size: file.size || 0,
+    created_at: new Date().toISOString(),
+  };
+}
+
+function linkifyText(text) {
+  const raw = String(text || "");
+  if (!raw) return null;
+  const parts = [];
+  const re = /(https?:\/\/[^\s<]+[^\s<.,;:!?)]|[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}|@[^\s@]+)/g;
+  let last = 0;
+  let match;
+  let key = 0;
+  while ((match = re.exec(raw)) !== null) {
+    if (match.index > last) {
+      parts.push(<span key={`t${key++}`}>{raw.slice(last, match.index)}</span>);
+    }
+    const token = match[0];
+    if (token.startsWith("http://") || token.startsWith("https://")) {
+      const href = token.replace(/[),.;!?]+$/, "");
+      const trailing = token.slice(href.length);
+      parts.push(
+        <a
+          key={`l${key++}`}
+          href={href}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-sky-700 underline underline-offset-2 break-all hover:text-sky-900"
+        >
+          {href}
+        </a>
+      );
+      if (trailing) parts.push(<span key={`tr${key++}`}>{trailing}</span>);
+    } else if (token.startsWith("@")) {
+      parts.push(
+        <span key={`m${key++}`} className="font-semibold text-[#8B6A2E]">
+          {token}
+        </span>
+      );
+    } else {
+      parts.push(<span key={`e${key++}`}>{token}</span>);
+    }
+    last = match.index + token.length;
+  }
+  if (last < raw.length) parts.push(<span key={`t${key++}`}>{raw.slice(last)}</span>);
+  return parts;
+}
+
 function CellMenu({ open, onClose, children, align = "left" }) {
   if (!open) return null;
   return (
     <>
       <div className="fixed inset-0 z-20" onClick={onClose} />
       <div
-        className={`absolute z-30 mt-1 min-w-[160px] rounded-lg border border-slate-200 bg-white shadow-xl py-1 ${
+        className={`absolute z-30 mt-1 min-w-[180px] max-h-64 overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-xl py-1 ${
           align === "right" ? "right-0" : "left-0"
         }`}
       >
@@ -172,9 +291,47 @@ function PriorityCell({ value, onChange, disabled }) {
   );
 }
 
-function OwnerCell({ project, staffUsers, onChange, disabled }) {
+function AssigneesAvatars({ assignees, max = 3 }) {
+  const list = Array.isArray(assignees) ? assignees : [];
+  if (!list.length) return <span className="text-xs text-slate-300">+</span>;
+  const shown = list.slice(0, max);
+  const extra = list.length - shown.length;
+  return (
+    <div className="flex items-center -space-x-1.5">
+      {shown.map((a) => (
+        <span
+          key={a.user_id || a.email}
+          title={a.name || a.email}
+          className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-[#0D1B2A] text-white text-[10px] font-semibold ring-2 ring-white"
+        >
+          {initials(a.name || a.email)}
+        </span>
+      ))}
+      {extra > 0 && (
+        <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-slate-200 text-slate-600 text-[10px] font-semibold ring-2 ring-white">
+          +{extra}
+        </span>
+      )}
+    </div>
+  );
+}
+
+function AssigneesCell({ assignees, staffUsers, onChange, disabled }) {
   const [open, setOpen] = useState(false);
-  const label = project.owner_name || project.owner_email || "";
+  const selected = Array.isArray(assignees) ? assignees : [];
+  const selectedIds = new Set(selected.map((a) => a.user_id).filter(Boolean));
+
+  const toggle = (user) => {
+    const exists = selectedIds.has(user.id);
+    const next = exists
+      ? selected.filter((a) => a.user_id !== user.id)
+      : [
+          ...selected,
+          { user_id: user.id, name: adminLabel(user), email: user.email || "" },
+        ];
+    onChange(next);
+  };
+
   return (
     <div className="relative">
       <button
@@ -184,47 +341,100 @@ function OwnerCell({ project, staffUsers, onChange, disabled }) {
           e.stopPropagation();
           setOpen((o) => !o);
         }}
-        className="w-full h-9 px-2 flex items-center justify-center gap-1.5 hover:bg-slate-50 disabled:opacity-60"
-        title={label || "Assign owner"}
+        className="w-full h-9 px-2 flex items-center justify-center hover:bg-slate-50 disabled:opacity-60"
+        title={selected.map((a) => a.name || a.email).join(", ") || "Tag people"}
       >
-        {label ? (
-          <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-[#0D1B2A] text-white text-[10px] font-semibold">
-            {initials(label)}
-          </span>
-        ) : (
-          <span className="text-xs text-slate-300">+</span>
-        )}
+        <AssigneesAvatars assignees={selected} />
       </button>
       <CellMenu open={open} onClose={() => setOpen(false)}>
-        <button
-          type="button"
-          className="w-full px-3 py-2 text-left text-xs text-slate-500 hover:bg-slate-50"
-          onClick={(e) => {
-            e.stopPropagation();
-            onChange(null);
-            setOpen(false);
-          }}
-        >
-          Unassigned
-        </button>
-        {staffUsers.map((u) => (
+        <div className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+          Tag people
+        </div>
+        {selected.length > 0 && (
           <button
-            key={u.id}
             type="button"
-            className="w-full flex items-center gap-2 px-3 py-2 text-left text-xs hover:bg-slate-50"
+            className="w-full px-3 py-2 text-left text-xs text-slate-500 hover:bg-slate-50"
             onClick={(e) => {
               e.stopPropagation();
-              onChange(u);
-              setOpen(false);
+              onChange([]);
             }}
           >
-            <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-[#0D1B2A] text-white text-[10px] font-semibold">
-              {initials(adminLabel(u))}
-            </span>
-            <span className="truncate">{adminLabel(u)}</span>
+            Clear all
           </button>
-        ))}
+        )}
+        {staffUsers.map((u) => {
+          const on = selectedIds.has(u.id);
+          return (
+            <button
+              key={u.id}
+              type="button"
+              className="w-full flex items-center gap-2 px-3 py-2 text-left text-xs hover:bg-slate-50"
+              onClick={(e) => {
+                e.stopPropagation();
+                toggle(u);
+              }}
+            >
+              <span className={`w-4 h-4 rounded border flex items-center justify-center ${
+                on ? "bg-[#0D1B2A] border-[#0D1B2A] text-white" : "border-slate-300"
+              }`}>
+                {on && <Check className="w-3 h-3" />}
+              </span>
+              <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-[#0D1B2A] text-white text-[10px] font-semibold">
+                {initials(adminLabel(u))}
+              </span>
+              <span className="truncate">{adminLabel(u)}</span>
+            </button>
+          );
+        })}
       </CellMenu>
+    </div>
+  );
+}
+
+function AssigneesChecklist({ assignees, staffUsers, onChange, disabled, compact }) {
+  const selected = Array.isArray(assignees) ? assignees : [];
+  const selectedIds = new Set(selected.map((a) => a.user_id).filter(Boolean));
+
+  const toggle = (user) => {
+    if (disabled) return;
+    const exists = selectedIds.has(user.id);
+    onChange(
+      exists
+        ? selected.filter((a) => a.user_id !== user.id)
+        : [...selected, { user_id: user.id, name: adminLabel(user), email: user.email || "" }]
+    );
+  };
+
+  return (
+    <div className={compact ? "space-y-1" : "space-y-2"}>
+      {!compact && (
+        <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">People</div>
+      )}
+      <div className="flex flex-wrap gap-1.5">
+        {staffUsers.map((u) => {
+          const on = selectedIds.has(u.id);
+          return (
+            <button
+              key={u.id}
+              type="button"
+              disabled={disabled}
+              onClick={() => toggle(u)}
+              className={`inline-flex items-center gap-1.5 text-[11px] px-2 py-1 rounded-full border transition-colors ${
+                on
+                  ? "bg-[#0D1B2A] text-white border-[#0D1B2A]"
+                  : "bg-white text-slate-600 border-slate-200 hover:border-slate-300"
+              }`}
+            >
+              <span className={`inline-flex items-center justify-center w-5 h-5 rounded-full text-[9px] font-semibold ${
+                on ? "bg-white/15 text-white" : "bg-slate-100 text-slate-600"
+              }`}>
+                {initials(adminLabel(u))}
+              </span>
+              {adminLabel(u)}
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -259,6 +469,115 @@ function ProgressCell({ project }) {
         <div className="h-full bg-emerald-500 transition-all" style={{ width: `${pct}%` }} />
       </div>
       <span className="text-[10px] text-slate-500 tabular-nums w-10 text-right">{done}/{total}</span>
+    </div>
+  );
+}
+
+function AttachmentsBlock({
+  attachments,
+  onChange,
+  disabled,
+  title = "Attachments",
+  compact = false,
+}) {
+  const { toast } = useToast();
+  const inputRef = useRef(null);
+  const [uploading, setUploading] = useState(false);
+  const list = Array.isArray(attachments) ? attachments : [];
+
+  const onPick = async (e) => {
+    const files = Array.from(e.target.files || []);
+    e.target.value = "";
+    if (!files.length) return;
+    setUploading(true);
+    try {
+      const uploaded = [];
+      for (const file of files) {
+        uploaded.push(await uploadProjectFile(file));
+      }
+      onChange([...list, ...uploaded]);
+    } catch (err) {
+      toast({ title: err?.message || "Upload failed", variant: "destructive" });
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const remove = (id) => onChange(list.filter((a) => a.id !== id));
+
+  return (
+    <div className={compact ? "space-y-1.5" : "space-y-2"}>
+      {!compact && (
+        <div className="flex items-center justify-between gap-2">
+          <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">{title}</div>
+          <button
+            type="button"
+            disabled={disabled || uploading}
+            onClick={() => inputRef.current?.click()}
+            className="inline-flex items-center gap-1 text-[11px] text-[#8B6A2E] hover:text-[#0D1B2A] disabled:opacity-50"
+          >
+            {uploading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Paperclip className="w-3 h-3" />}
+            Attach
+          </button>
+        </div>
+      )}
+      <input
+        ref={inputRef}
+        type="file"
+        accept={ATTACH_ACCEPT}
+        multiple
+        className="hidden"
+        onChange={onPick}
+      />
+      {compact && (
+        <button
+          type="button"
+          disabled={disabled || uploading}
+          onClick={() => inputRef.current?.click()}
+          className="inline-flex items-center gap-1 text-[11px] text-slate-500 hover:text-[#0D1B2A] disabled:opacity-50"
+        >
+          {uploading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Paperclip className="w-3 h-3" />}
+          Attach file
+        </button>
+      )}
+      {list.length > 0 && (
+        <div className="space-y-1">
+          {list.map((att) => {
+            const Icon = fileIcon(att.content_type, att.name);
+            const isImage = String(att.content_type || "").startsWith("image/");
+            return (
+              <div
+                key={att.id}
+                className="flex items-center gap-2 rounded-lg border border-slate-100 bg-white px-2 py-1.5"
+              >
+                {isImage ? (
+                  <a href={att.url} target="_blank" rel="noopener noreferrer" className="shrink-0">
+                    <img src={att.url} alt="" className="w-8 h-8 rounded object-cover" />
+                  </a>
+                ) : (
+                  <Icon className="w-4 h-4 text-slate-400 shrink-0" />
+                )}
+                <a
+                  href={att.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex-1 text-xs text-sky-700 hover:underline truncate"
+                >
+                  {att.name || "Attachment"}
+                </a>
+                <button
+                  type="button"
+                  disabled={disabled}
+                  onClick={() => remove(att.id)}
+                  className="text-slate-300 hover:text-red-500"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
@@ -330,6 +649,8 @@ function ProjectBoardRow({
     new Date(project.due_date) < new Date(new Date().toDateString());
   const noteCount = Array.isArray(project.notes) ? project.notes.length : 0;
   const subitems = Array.isArray(project.subitems) ? project.subitems : [];
+  const assignees = projectAssignees(project);
+  const attachCount = Array.isArray(project.attachments) ? project.attachments.length : 0;
 
   return (
     <>
@@ -338,20 +659,33 @@ function ProjectBoardRow({
           <button
             type="button"
             onClick={() => onToggleExpand(project.id)}
-            className="p-1 text-slate-300 hover:text-slate-600"
-            title="Subitems"
+            className="p-1 text-slate-300 hover:text-slate-600 relative"
+            title={`${subitems.length} subtask${subitems.length === 1 ? "" : "s"}`}
           >
             {expanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
           </button>
         </td>
         <td className="min-w-[220px] px-2 py-1.5">
-          <button
-            type="button"
-            onClick={() => onOpenDetail(project.id)}
-            className="text-left w-full"
-          >
-            <div className="text-sm font-medium text-[#0D1B2A] group-hover:text-[#8B6A2E] truncate">
-              {project.name}
+          <button type="button" onClick={() => onOpenDetail(project.id)} className="text-left w-full">
+            <div className="flex items-center gap-2 min-w-0">
+              <div className="text-sm font-medium text-[#0D1B2A] group-hover:text-[#8B6A2E] truncate">
+                {project.name}
+              </div>
+              {subitems.length > 0 && (
+                <span
+                  className="inline-flex items-center gap-0.5 shrink-0 text-[10px] font-medium text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded"
+                  title={`${subitems.length} subtasks`}
+                >
+                  <ListTodo className="w-3 h-3" />
+                  {subitems.length}
+                </span>
+              )}
+              {attachCount > 0 && (
+                <span className="inline-flex items-center gap-0.5 shrink-0 text-[10px] text-slate-400">
+                  <Paperclip className="w-3 h-3" />
+                  {attachCount}
+                </span>
+              )}
             </div>
             {project.partner_name && (
               <div className="text-[11px] text-slate-400 truncate">{project.partner_name}</div>
@@ -377,20 +711,12 @@ function ProjectBoardRow({
             onChange={(priority) => onPatch(project.id, { priority })}
           />
         </td>
-        <td className="w-[72px] p-0">
-          <OwnerCell
-            project={project}
+        <td className="w-[96px] p-0">
+          <AssigneesCell
+            assignees={assignees}
             staffUsers={staffUsers}
             disabled={busy}
-            onChange={(user) =>
-              onPatch(project.id, user
-                ? {
-                    owner_user_id: user.id,
-                    owner_name: adminLabel(user),
-                    owner_email: user.email || null,
-                  }
-                : { owner_user_id: null, owner_name: null, owner_email: null })
-            }
+            onChange={(next) => onPatch(project.id, assigneePatch(next))}
           />
         </td>
         <td className="w-[120px] p-0">
@@ -429,6 +755,7 @@ function ProjectBoardRow({
             <SubitemsEditor
               project={project}
               subitems={subitems}
+              staffUsers={staffUsers}
               busy={busy}
               onChange={(next) => onPatch(project.id, { subitems: next })}
             />
@@ -439,8 +766,10 @@ function ProjectBoardRow({
   );
 }
 
-function SubitemsEditor({ project, subitems, busy, onChange }) {
+function SubitemsEditor({ project, subitems, staffUsers, busy, onChange }) {
   const [draft, setDraft] = useState("");
+  const [editingId, setEditingId] = useState(null);
+  const [editTitle, setEditTitle] = useState("");
 
   const toggle = (id) => {
     onChange(subitems.map((s) => (s.id === id ? { ...s, done: !s.done } : s)));
@@ -456,38 +785,106 @@ function SubitemsEditor({ project, subitems, busy, onChange }) {
     if (!title) return;
     onChange([
       ...subitems,
-      { id: newId("sub"), title, done: false, created_at: new Date().toISOString() },
+      {
+        id: newId("sub"),
+        title,
+        done: false,
+        created_at: new Date().toISOString(),
+        assignees: [],
+        attachments: [],
+      },
     ]);
     setDraft("");
   };
 
+  const commitEdit = (id) => {
+    const title = editTitle.trim();
+    if (!title) {
+      setEditingId(null);
+      return;
+    }
+    onChange(subitems.map((s) => (s.id === id ? { ...s, title } : s)));
+    setEditingId(null);
+  };
+
+  const patchItem = (id, patch) => {
+    onChange(subitems.map((s) => (s.id === id ? { ...s, ...patch } : s)));
+  };
+
   return (
-    <div className="space-y-2 max-w-2xl">
+    <div className="space-y-2 max-w-3xl">
       <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
-        Subitems · {project.name}
+        Subtasks · {project.name}
       </div>
       {subitems.length === 0 && (
         <p className="text-xs text-slate-400">Break this project into checklist items.</p>
       )}
-      <div className="space-y-1">
+      <div className="space-y-2">
         {subitems.map((item) => (
-          <div key={item.id} className="flex items-center gap-2 bg-white border border-slate-100 rounded-lg px-2.5 py-1.5">
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => toggle(item.id)}
-              className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 ${
-                item.done ? "bg-emerald-500 border-emerald-500 text-white" : "border-slate-300"
-              }`}
-            >
-              {item.done && <Check className="w-3 h-3" />}
-            </button>
-            <span className={`flex-1 text-sm ${item.done ? "line-through text-slate-400" : "text-slate-700"}`}>
-              {item.title}
-            </span>
-            <button type="button" disabled={busy} onClick={() => remove(item.id)} className="text-slate-300 hover:text-red-500">
-              <Trash2 className="w-3.5 h-3.5" />
-            </button>
+          <div key={item.id} className="bg-white border border-slate-100 rounded-lg px-2.5 py-2 space-y-2">
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => toggle(item.id)}
+                className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 ${
+                  item.done ? "bg-emerald-500 border-emerald-500 text-white" : "border-slate-300"
+                }`}
+              >
+                {item.done && <Check className="w-3 h-3" />}
+              </button>
+              {editingId === item.id ? (
+                <input
+                  autoFocus
+                  value={editTitle}
+                  disabled={busy}
+                  onChange={(e) => setEditTitle(e.target.value)}
+                  onBlur={() => commitEdit(item.id)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      commitEdit(item.id);
+                    }
+                    if (e.key === "Escape") setEditingId(null);
+                  }}
+                  className="flex-1 text-sm border border-slate-200 rounded px-2 py-1 focus:outline-none focus:border-slate-400"
+                />
+              ) : (
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => {
+                    setEditingId(item.id);
+                    setEditTitle(item.title || "");
+                  }}
+                  className={`flex-1 text-left text-sm ${item.done ? "line-through text-slate-400" : "text-slate-700"}`}
+                  title="Click to edit"
+                >
+                  {item.title || "Untitled"}
+                </button>
+              )}
+              {Array.isArray(item.assignees) && item.assignees.length > 0 && (
+                <AssigneesAvatars assignees={item.assignees} max={2} />
+              )}
+              <button type="button" disabled={busy} onClick={() => remove(item.id)} className="text-slate-300 hover:text-red-500">
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            </div>
+            <div className="pl-6 space-y-2">
+              <AssigneesChecklist
+                compact
+                assignees={item.assignees || []}
+                staffUsers={staffUsers}
+                disabled={busy}
+                onChange={(assignees) => patchItem(item.id, { assignees })}
+              />
+              <AttachmentsBlock
+                compact
+                attachments={item.attachments || []}
+                disabled={busy}
+                onChange={(attachments) => patchItem(item.id, { attachments })}
+              />
+            </div>
           </div>
         ))}
       </div>
@@ -495,7 +892,7 @@ function SubitemsEditor({ project, subitems, busy, onChange }) {
         <Input
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
-          placeholder="Add subitem…"
+          placeholder="Add subtask…"
           className="h-8 text-sm bg-white"
           disabled={busy}
         />
@@ -536,14 +933,14 @@ function BoardGroup({
 
       {!collapsed && (
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[980px] border-t border-slate-100">
+          <table className="w-full min-w-[1000px] border-t border-slate-100">
             <thead>
               <tr className="bg-slate-50/80 text-[10px] uppercase tracking-wider text-slate-400">
                 <th className="w-10" />
                 <th className="text-left px-2 py-2 font-semibold">Item</th>
                 <th className="text-center px-1 py-2 font-semibold w-[140px]">Status</th>
                 <th className="text-center px-1 py-2 font-semibold w-[110px]">Priority</th>
-                <th className="text-center px-1 py-2 font-semibold w-[72px]">Person</th>
+                <th className="text-center px-1 py-2 font-semibold w-[96px]">People</th>
                 <th className="text-center px-1 py-2 font-semibold w-[120px]">Start</th>
                 <th className="text-center px-1 py-2 font-semibold w-[120px]">End</th>
                 <th className="text-center px-1 py-2 font-semibold w-[110px]">Progress</th>
@@ -581,7 +978,7 @@ function BoardGroup({
 
 function KanbanView({ projects, onOpenDetail, onPatch, busyId }) {
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-4">
       {STATUS_GROUPS.map((group) => {
         const items = projects.filter((p) => (p.status || "not_started") === group.value);
         return (
@@ -594,6 +991,7 @@ function KanbanView({ projects, onOpenDetail, onPatch, busyId }) {
             <div className="p-2 space-y-2">
               {items.map((p) => {
                 const progress = subitemProgress(p);
+                const assignees = projectAssignees(p);
                 const overdue =
                   p.due_date &&
                   p.status !== "complete" &&
@@ -604,16 +1002,20 @@ function KanbanView({ projects, onOpenDetail, onPatch, busyId }) {
                     className="rounded-lg border border-slate-100 bg-slate-50/50 p-3 hover:border-slate-200 cursor-pointer"
                     onClick={() => onOpenDetail(p.id)}
                   >
-                    <p className="text-sm font-medium text-[#0D1B2A] mb-2">{p.name}</p>
+                    <div className="flex items-start gap-2 mb-2">
+                      <p className="text-sm font-medium text-[#0D1B2A] flex-1">{p.name}</p>
+                      {progress.total > 0 && (
+                        <span className="inline-flex items-center gap-0.5 text-[10px] text-slate-500 bg-white border border-slate-100 px-1.5 py-0.5 rounded">
+                          <ListTodo className="w-3 h-3" />
+                          {progress.total}
+                        </span>
+                      )}
+                    </div>
                     <div className="flex items-center gap-2 mb-2">
                       <span className={`text-[10px] font-semibold px-2 py-0.5 rounded ${priorityMeta(p.priority).cell}`}>
                         {priorityMeta(p.priority).label}
                       </span>
-                      {p.owner_name && (
-                        <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-[#0D1B2A] text-white text-[9px] font-semibold">
-                          {initials(p.owner_name)}
-                        </span>
-                      )}
+                      <AssigneesAvatars assignees={assignees} max={3} />
                     </div>
                     <div className="flex items-center justify-between text-[11px] text-slate-400">
                       <span className={overdue ? "text-red-600 font-medium" : ""}>
@@ -654,6 +1056,8 @@ function ProjectDetailPanel({ project, staffUsers, partners, onClose, onChanged 
   const qc = useQueryClient();
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState("");
+  const [mentionIds, setMentionIds] = useState([]);
+  const [noteAttachments, setNoteAttachments] = useState([]);
   const [name, setName] = useState(project.name || "");
   const [description, setDescription] = useState(project.description || "");
 
@@ -661,12 +1065,16 @@ function ProjectDetailPanel({ project, staffUsers, partners, onClose, onChanged 
     setName(project.name || "");
     setDescription(project.description || "");
     setNote("");
+    setMentionIds([]);
+    setNoteAttachments([]);
   }, [project.id, project.name, project.description]);
 
   const notes = useMemo(() => {
     const list = Array.isArray(project.notes) ? project.notes : [];
     return [...list].sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
   }, [project.notes]);
+
+  const assignees = projectAssignees(project);
 
   const persist = async (patch, msg) => {
     setBusy(true);
@@ -690,16 +1098,20 @@ function ProjectDetailPanel({ project, staffUsers, partners, onClose, onChanged 
   const addNote = async (e) => {
     e.preventDefault();
     const text = note.trim();
-    if (!text) return;
+    if (!text && !noteAttachments.length) return;
     const entry = {
       id: newId("note"),
       author_email: user?.email || "",
       author_name: adminLabel(user),
       content: text,
       created_at: new Date().toISOString(),
+      mentioned_user_ids: mentionIds,
+      attachments: noteAttachments,
     };
-    await persist({ notes: [...(Array.isArray(project.notes) ? project.notes : []), entry] }, "Note added");
+    await persist({ notes: [...(Array.isArray(project.notes) ? project.notes : []), entry] }, "Update posted");
     setNote("");
+    setMentionIds([]);
+    setNoteAttachments([]);
   };
 
   const deleteNote = async (id) => {
@@ -801,29 +1213,12 @@ function ProjectDetailPanel({ project, staffUsers, partners, onClose, onChanged 
             </div>
           </div>
 
-          <div>
-            <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 mb-1">Owner</div>
-            <select
-              value={project.owner_user_id || ""}
-              disabled={busy}
-              onChange={(e) => {
-                const owner = staffUsers.find((u) => u.id === e.target.value);
-                persist(owner
-                  ? {
-                      owner_user_id: owner.id,
-                      owner_name: adminLabel(owner),
-                      owner_email: owner.email || null,
-                    }
-                  : { owner_user_id: null, owner_name: null, owner_email: null });
-              }}
-              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white"
-            >
-              <option value="">Unassigned</option>
-              {staffUsers.map((u) => (
-                <option key={u.id} value={u.id}>{adminLabel(u)}</option>
-              ))}
-            </select>
-          </div>
+          <AssigneesChecklist
+            assignees={assignees}
+            staffUsers={staffUsers}
+            disabled={busy}
+            onChange={(next) => persist(assigneePatch(next))}
+          />
 
           <div>
             <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 mb-1">Partner</div>
@@ -848,9 +1243,17 @@ function ProjectDetailPanel({ project, staffUsers, partners, onClose, onChanged 
             </select>
           </div>
 
+          <AttachmentsBlock
+            title="Files"
+            attachments={Array.isArray(project.attachments) ? project.attachments : []}
+            disabled={busy}
+            onChange={(attachments) => persist({ attachments })}
+          />
+
           <SubitemsEditor
             project={project}
             subitems={Array.isArray(project.subitems) ? project.subitems : []}
+            staffUsers={staffUsers}
             busy={busy}
             onChange={(subitems) => persist({ subitems })}
           />
@@ -861,15 +1264,29 @@ function ProjectDetailPanel({ project, staffUsers, partners, onClose, onChanged 
               <h3 className="text-sm font-semibold text-[#0D1B2A]">Updates</h3>
             </div>
             <form onSubmit={addNote} className="space-y-2">
-              <textarea
+              <MentionInput
                 value={note}
-                onChange={(e) => setNote(e.target.value)}
+                onChange={setNote}
+                mentionedUserIds={mentionIds}
+                onMentionsChange={setMentionIds}
+                users={staffUsers}
                 rows={3}
-                placeholder="Post an update…"
-                className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 resize-y focus:outline-none focus:border-slate-400"
+                placeholder="Post an update… type @ to tag someone"
+                className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 resize-y focus:outline-none focus:border-slate-400 focus:ring-0"
+              />
+              <AttachmentsBlock
+                compact
+                attachments={noteAttachments}
+                disabled={busy}
+                onChange={setNoteAttachments}
               />
               <div className="flex justify-end">
-                <Button type="submit" size="sm" disabled={busy || !note.trim()} className="gap-1.5">
+                <Button
+                  type="submit"
+                  size="sm"
+                  disabled={busy || (!note.trim() && !noteAttachments.length)}
+                  className="gap-1.5"
+                >
                   {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
                   Post
                 </Button>
@@ -887,7 +1304,33 @@ function ProjectDetailPanel({ project, staffUsers, partners, onClose, onChanged 
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
                   </div>
-                  <p className="text-sm text-slate-600 whitespace-pre-wrap">{n.content}</p>
+                  {n.content && (
+                    <p className="text-sm text-slate-600 whitespace-pre-wrap">{linkifyText(n.content)}</p>
+                  )}
+                  {Array.isArray(n.attachments) && n.attachments.length > 0 && (
+                    <div className="mt-2 space-y-1">
+                      {n.attachments.map((att) => {
+                        const Icon = fileIcon(att.content_type, att.name);
+                        const isImage = String(att.content_type || "").startsWith("image/");
+                        return (
+                          <a
+                            key={att.id}
+                            href={att.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center gap-2 text-xs text-sky-700 hover:underline"
+                          >
+                            {isImage ? (
+                              <img src={att.url} alt="" className="w-8 h-8 rounded object-cover" />
+                            ) : (
+                              <Icon className="w-3.5 h-3.5" />
+                            )}
+                            {att.name || "Attachment"}
+                          </a>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               ))}
               {!notes.length && <p className="text-xs text-slate-400 text-center py-4">No updates yet</p>}
@@ -927,7 +1370,7 @@ function NewProjectDialog({ open, onClose, staffUsers, partners, onSave, saving 
     description: "",
     status: "not_started",
     priority: "medium",
-    owner_user_id: "",
+    assignee_ids: [],
     partner_id: "",
     start_date: "",
     due_date: "",
@@ -940,7 +1383,7 @@ function NewProjectDialog({ open, onClose, staffUsers, partners, onSave, saving 
       description: "",
       status: "not_started",
       priority: "medium",
-      owner_user_id: "",
+      assignee_ids: [],
       partner_id: "",
       start_date: "",
       due_date: "",
@@ -952,22 +1395,23 @@ function NewProjectDialog({ open, onClose, staffUsers, partners, onSave, saving 
   const submit = (e) => {
     e.preventDefault();
     if (!form.name.trim()) return;
-    const owner = staffUsers.find((u) => u.id === form.owner_user_id);
+    const assignees = staffUsers
+      .filter((u) => form.assignee_ids.includes(u.id))
+      .map((u) => ({ user_id: u.id, name: adminLabel(u), email: u.email || "" }));
     const partner = partners.find((p) => p.id === form.partner_id);
     onSave({
       name: form.name.trim(),
       description: form.description.trim(),
       status: form.status,
       priority: form.priority,
-      owner_user_id: owner?.id || null,
-      owner_name: owner ? adminLabel(owner) : null,
-      owner_email: owner?.email || null,
+      ...assigneePatch(assignees),
       partner_id: partner?.id || null,
       partner_name: partner?.partner_name || partner?.company_name || null,
       start_date: form.start_date || null,
       due_date: form.due_date || null,
       notes: [],
       subitems: [],
+      attachments: [],
       archived: false,
       completed_at: form.status === "complete" ? new Date().toISOString() : null,
     });
@@ -975,7 +1419,7 @@ function NewProjectDialog({ open, onClose, staffUsers, partners, onSave, saving 
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && !saving && onClose()}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>New project</DialogTitle>
           <DialogDescription>Add an item to the board and track it through Done.</DialogDescription>
@@ -1001,10 +1445,13 @@ function NewProjectDialog({ open, onClose, staffUsers, partners, onSave, saving 
             <Input type="date" value={form.start_date} onChange={(e) => set("start_date", e.target.value)} />
             <Input type="date" value={form.due_date} onChange={(e) => set("due_date", e.target.value)} />
           </div>
-          <select value={form.owner_user_id} onChange={(e) => set("owner_user_id", e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white">
-            <option value="">Unassigned</option>
-            {staffUsers.map((u) => <option key={u.id} value={u.id}>{adminLabel(u)}</option>)}
-          </select>
+          <AssigneesChecklist
+            assignees={staffUsers
+              .filter((u) => form.assignee_ids.includes(u.id))
+              .map((u) => ({ user_id: u.id, name: adminLabel(u), email: u.email || "" }))}
+            staffUsers={staffUsers}
+            onChange={(next) => set("assignee_ids", next.map((a) => a.user_id))}
+          />
           <select value={form.partner_id} onChange={(e) => set("partner_id", e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white">
             <option value="">No partner</option>
             {partners.map((p) => <option key={p.id} value={p.id}>{p.partner_name || p.company_name || p.id}</option>)}
@@ -1028,6 +1475,7 @@ export default function AdminProjects({ embedded = false }) {
   const qc = useQueryClient();
   const [view, setView] = useState("board");
   const [search, setSearch] = useState("");
+  const [assignedToMe, setAssignedToMe] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
   const [collapsed, setCollapsed] = useState(() => new Set());
   const [expandedIds, setExpandedIds] = useState(() => new Set());
@@ -1074,25 +1522,30 @@ export default function AdminProjects({ embedded = false }) {
     const q = search.trim().toLowerCase();
     return projects.filter((p) => {
       if (showArchived ? !p.archived : p.archived) return false;
+      if (assignedToMe && !isAssignedToUser(p, user)) return false;
       if (!q) return true;
+      const assigneeText = projectAssignees(p).map((a) => `${a.name || ""} ${a.email || ""}`).join(" ");
       return (
         p.name?.toLowerCase().includes(q) ||
         p.description?.toLowerCase().includes(q) ||
         p.owner_name?.toLowerCase().includes(q) ||
-        p.partner_name?.toLowerCase().includes(q)
+        p.partner_name?.toLowerCase().includes(q) ||
+        assigneeText.toLowerCase().includes(q)
       );
     });
-  }, [projects, search, showArchived]);
+  }, [projects, search, showArchived, assignedToMe, user]);
 
   const counts = useMemo(() => {
     const active = projects.filter((p) => !p.archived);
     return {
       open: active.filter((p) => p.status !== "complete").length,
       in_progress: active.filter((p) => p.status === "in_progress").length,
+      ongoing: active.filter((p) => p.status === "ongoing").length,
       blocked: active.filter((p) => p.status === "blocked").length,
       complete: active.filter((p) => p.status === "complete").length,
+      mine: active.filter((p) => isAssignedToUser(p, user)).length,
     };
-  }, [projects]);
+  }, [projects, user]);
 
   const selected = projects.find((p) => p.id === selectedId) || null;
 
@@ -1136,6 +1589,8 @@ export default function AdminProjects({ embedded = false }) {
         priority: "medium",
         notes: [],
         subitems: [],
+        attachments: [],
+        assignees: [],
         archived: false,
         created_by: user?.email || null,
         created_by_id: user?.id || null,
@@ -1173,17 +1628,19 @@ export default function AdminProjects({ embedded = false }) {
           <div className="text-xs font-semibold text-[#C9A96E] uppercase tracking-widest mb-1">Admin</div>
           <h1 className="text-2xl font-light text-[#0D1B2A]">Project Management</h1>
           <p className="text-slate-400 text-sm mt-1">
-            Monday-style board: groups, inline status, people, dates, subitems, and updates.
+            Monday-style board: groups, people, dates, subtasks, files, and updates.
           </p>
         </div>
       )}
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
         {[
           { label: "Open", value: counts.open, color: "#C4C4C4" },
           { label: "Working on it", value: counts.in_progress, color: "#FDAB3D" },
+          { label: "Ongoing", value: counts.ongoing, color: "#579BFC" },
           { label: "Stuck", value: counts.blocked, color: "#E2445C" },
           { label: "Done", value: counts.complete, color: "#00C875" },
+          { label: "Assigned to me", value: counts.mine, color: "#0D1B2A" },
         ].map((s) => (
           <div key={s.label} className="bg-white rounded-2xl border border-slate-100 p-4 shadow-sm">
             <div className="w-2 h-2 rounded-full mb-3" style={{ backgroundColor: s.color }} />
@@ -1194,14 +1651,31 @@ export default function AdminProjects({ embedded = false }) {
       </div>
 
       <div className="flex flex-col lg:flex-row gap-3 lg:items-center justify-between">
-        <div className="relative flex-1 max-w-md">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-          <Input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search board…"
-            className="pl-9 bg-white"
-          />
+        <div className="flex flex-col sm:flex-row gap-2 flex-1">
+          <div className="relative flex-1 max-w-md">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <Input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search board…"
+              className="pl-9 bg-white"
+            />
+          </div>
+          <button
+            type="button"
+            onClick={() => setAssignedToMe((v) => !v)}
+            className={`inline-flex items-center gap-1.5 text-xs px-3 py-2 rounded-lg border whitespace-nowrap ${
+              assignedToMe
+                ? "bg-[#0D1B2A] text-white border-[#0D1B2A]"
+                : "bg-white border-slate-200 text-slate-600 hover:border-slate-300"
+            }`}
+          >
+            <UserRound className="w-3.5 h-3.5" />
+            Assigned to me
+            {assignedToMe && counts.mine > 0 && (
+              <span className="ml-0.5 tabular-nums opacity-80">({counts.mine})</span>
+            )}
+          </button>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <div className="inline-flex rounded-lg border border-slate-200 bg-white p-0.5">
@@ -1247,10 +1721,14 @@ export default function AdminProjects({ embedded = false }) {
       ) : !visible.length && !showArchived ? (
         <EmptyState
           icon={FolderKanban}
-          title="Your board is empty"
-          description="Create a project to start tracking work Monday-style — status groups, people, dates, and subitems."
-          actionLabel="New project"
-          onAction={() => setCreateOpen(true)}
+          title={assignedToMe ? "Nothing assigned to you" : "Your board is empty"}
+          description={
+            assignedToMe
+              ? "Clear the Assigned to me filter or tag yourself on a project."
+              : "Create a project to start tracking work Monday-style — status groups, people, dates, and subtasks."
+          }
+          actionLabel={assignedToMe ? undefined : "New project"}
+          onAction={assignedToMe ? undefined : () => setCreateOpen(true)}
         />
       ) : view === "kanban" ? (
         <KanbanView

@@ -3,7 +3,15 @@ import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { X } from "lucide-react";
 
-const MENTIONABLE_ROLES = ["admin", "operations", "onboarding", "finance", "marketing"];
+const MENTIONABLE_ROLES = [
+  "admin",
+  "super_admin",
+  "projects",
+  "operations",
+  "onboarding",
+  "finance",
+  "marketing",
+];
 
 export default function MentionInput({
   value,
@@ -11,17 +19,22 @@ export default function MentionInput({
   mentionedUserIds = [],
   onMentionsChange,
   placeholder = "Add a note… type @ to mention someone",
+  users: usersProp,
+  className = "",
+  rows = 2,
 }) {
   const textareaRef = useRef(null);
   const [mention, setMention] = useState(null); // { start, query } or null
 
-  const { data: users = [] } = useQuery({
+  const { data: fetchedUsers = [] } = useQuery({
     queryKey: ["mentionable-users"],
     queryFn: async () => {
       const all = await base44.entities.User.list("-created_date", 100);
-      return all.filter(u => MENTIONABLE_ROLES.includes(u.role));
+      return all.filter((u) => MENTIONABLE_ROLES.includes(u.role));
     },
+    enabled: !usersProp,
   });
+  const users = usersProp || fetchedUsers;
 
   const detectMention = (text, cursorPos) => {
     // Look backwards from cursor for @ preceded by start-of-string or whitespace
@@ -88,8 +101,11 @@ export default function MentionInput({
         value={value}
         onChange={handleChange}
         placeholder={placeholder}
-        rows={2}
-        className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-[#C9A96E]/30 resize-none"
+        rows={rows}
+        className={
+          className ||
+          "w-full px-3 py-2 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-[#C9A96E]/30 resize-none"
+        }
       />
 
       {/* Mention typeahead */}
