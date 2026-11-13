@@ -15,9 +15,10 @@ import AdminPageMeta from "@/components/portal/admin/AdminPageMeta";
 import AdminApplyMedia from "./AdminApplyMedia";
 import AdminUsers from "./AdminUsers";
 import AdminProjects from "./AdminProjects";
+import AdminSeoActivity from "./AdminSeoActivity";
 import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
-import { ClipboardList, Users, UserCircle, DollarSign, FileText, Inbox, Edit3, PowerOff, Mail, AlertTriangle, Share2, UserPlus, ImagePlus, UserCog, FolderKanban } from "lucide-react";
+import { ClipboardList, Users, UserCircle, DollarSign, FileText, Inbox, Edit3, PowerOff, Mail, AlertTriangle, Share2, UserPlus, ImagePlus, UserCog, FolderKanban, Activity } from "lucide-react";
 
 const TABS = [
   { id: "queue",        label: "Submission Queue",  icon: ClipboardList, desc: "Property submissions awaiting review" },
@@ -33,6 +34,7 @@ const TABS = [
   { id: "offboarding",  label: "Offboarding",       icon: PowerOff,      desc: "Termination requests & offboarding properties" },
   { id: "orphans",      label: "Orphaned Properties", icon: AlertTriangle, desc: "Active Properties not yet synced to Supabase" },
   { id: "page_meta",    label: "Page Meta",           icon: Share2,         desc: "SEO & social share meta for marketing pages" },
+  { id: "seo_activity", label: "SEO Activity",        icon: Activity,       desc: "Who changed Sanity SEO fields, and when" },
   { id: "apply_media",  label: "Apply Page Media",    icon: ImagePlus,      desc: "Photos and copy on the public /apply landing" },
   { id: "audit",        label: "Audit Log",          icon: FileText,      desc: "System activity log" },
 ];
@@ -120,6 +122,7 @@ export default function AdminHub() {
       case "offboarding": return <AdminOffboarding embedded />;
       case "orphans":     return <AdminOrphanedProperties embedded />;
       case "page_meta":    return <AdminPageMeta />;
+      case "seo_activity": return <AdminSeoActivity embedded />;
       case "apply_media":  return <AdminApplyMedia />;
       case "audit":        return <AdminAudit embedded />;
       default:             return null;

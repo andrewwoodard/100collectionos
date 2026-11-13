@@ -1806,6 +1806,7 @@ export const LOCAL_FUNCTIONS = new Set([
   "backfillFilteredAmenities",
   "listPropertyPageImages",
   "listSanityContent",
+  "listSanitySeoActivity",
   ...STRIPE_FUNCTIONS,
 ]);
 
@@ -1859,6 +1860,9 @@ export async function handleNeonFunction(req: any, res: any, functionName: strin
     } else if (functionName === "listSanityContent") {
       const { handleListSanityContent } = await import("./list-sanity-content.js");
       await handleListSanityContent(req, res, body);
+    } else if (functionName === "listSanitySeoActivity") {
+      const { handleListSanitySeoActivity } = await import("./list-sanity-seo-activity.js");
+      await handleListSanitySeoActivity(req, res, body);
     } else if (functionName === "rewritePropertyText") {
       const { handleRewritePropertyText } = await import("./rewrite-property-text.js");
       await handleRewritePropertyText(req, res, body);
