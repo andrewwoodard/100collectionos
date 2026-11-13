@@ -25,20 +25,33 @@ function typeLabel(type) {
 }
 
 async function fetchActivity({ search, type, seoChangesOnly, offset, limit }) {
-  const res = await base44.functions.invoke("listSanitySeoActivity", {
-    search: search || "",
-    type: type || "",
-    seo_changes_only: seoChangesOnly,
-    limit,
-    offset,
-  });
-  const body = res?.data || res || {};
-  if (body.error) throw new Error(body.error);
-  return {
-    items: Array.isArray(body.items) ? body.items : [],
-    total: Number(body.total) || 0,
-    types: Array.isArray(body.types) ? body.types : [],
-  };
+  try {
+    const res = await base44.functions.invoke("listSanitySeoActivity", {
+      search: search || "",
+      type: type || "",
+      seo_changes_only: seoChangesOnly,
+      limit,
+      offset,
+    });
+    const body = res?.data || res || {};
+    if (body.error) throw new Error(body.error);
+    return {
+      items: Array.isArray(body.items) ? body.items : [],
+      total: Number(body.total) || 0,
+      types: Array.isArray(body.types) ? body.types : [],
+    };
+  } catch (err) {
+    const data = err?.response?.data || err?.data || {};
+    const nested = data?.error;
+    const msg =
+      (typeof nested === "string" ? nested : nested?.message) ||
+      data.message ||
+      data.detail ||
+      (typeof data === "string" ? data : null) ||
+      err?.message ||
+      "Failed to load SEO activity";
+    throw new Error(msg);
+  }
 }
 
 function AuthorChip({ author }) {

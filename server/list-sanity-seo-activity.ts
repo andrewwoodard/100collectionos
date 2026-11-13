@@ -78,9 +78,12 @@ async function sanityQuery(query: string) {
 }
 
 async function listTransactions(documentId: string, limit = 6): Promise<Tx[]> {
-  const { text } = await sanityFetch(
+  const { text, data } = await sanityFetch(
     `/v${API_VERSION}/data/history/${DATASET}/transactions/${encodeURIComponent(documentId)}?excludeContent=true&reverse=true&limit=${limit}`,
   );
+  // Single-transaction responses parse as one JSON object; multi-tx as NDJSON.
+  if (Array.isArray(data)) return data.filter(Boolean).slice(0, limit) as Tx[];
+  if (data && typeof data === "object" && data.id && data.timestamp) return [data as Tx];
   return String(text || "")
     .split("\n")
     .map((line) => line.trim())
@@ -92,7 +95,8 @@ async function listTransactions(documentId: string, limit = 6): Promise<Tx[]> {
         return null;
       }
     })
-    .filter(Boolean) as Tx[];
+    .filter(Boolean)
+    .slice(0, limit) as Tx[];
 }
 
 async function getDocumentAtRevision(documentId: string, revision: string) {
@@ -138,10 +142,23 @@ function seoSnapshot(doc: any) {
  * Uses Sanity History + Users APIs with SANITY_API_READ_TOKEN from env.
  */
 export async function handleListSanitySeoActivity(req: any, res: any, body: ActivityBody = {}) {
+  console.info("[listSanitySeoActivity] start", {
+    hasToken: Boolean(sanityToken()),
+    project: PROJECT,
+    dataset: DATASET,
+    limit: body?.limit,
+  });
   const gate = await requireAdmin(req);
-  if ("error" in gate && gate.error) return json(res, gate.error, { error: gate.message });
+  if ("error" in gate && gate.error) {
+    console.info("[listSanitySeoActivity] gate", gate.error, gate.message);
+    return json(res, gate.error, {
+      error: gate.message,
+      debug: { hasToken: Boolean(sanityToken()), project: PROJECT, dataset: DATASET },
+    });
+  }
 
   if (!sanityToken()) {
+    console.error("[listSanitySeoActivity] missing SANITY_API_READ_TOKEN");
     return json(res, 500, { error: "SANITY_API_READ_TOKEN is not configured" });
   }
 
@@ -272,6 +289,7 @@ export async function handleListSanitySeoActivity(req: any, res: any, body: Acti
       projectId: PROJECT,
     });
   } catch (error: any) {
+    console.error("[listSanitySeoActivity] failed", error);
     return json(res, 500, { error: error?.message || "Failed to load Sanity SEO activity" });
   }
 }

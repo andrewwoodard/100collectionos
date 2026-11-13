@@ -23,7 +23,6 @@ function betterAuthDevPlugin() {
       const { toNodeHandler } = await import("better-auth/node");
       const { auth } = await import("./server/auth.ts");
       const { handleNeonEntity } = await import("./server/neon-entities.ts");
-      const { handleNeonFunction } = await import("./server/neon-functions.ts");
       const { handleAdminUsers } = await import("./server/admin-users.ts");
       const { handleBlobUpload, handleImageIngest } = await import("./server/blob-http.ts");
       const { handlePortalAccess } = await import("./server/portal-access.ts");
@@ -60,8 +59,25 @@ function betterAuthDevPlugin() {
 
         const fnMatch = parsed.pathname.match(/^\/api\/apps\/[^/]+\/functions\/([^/]+)$/);
         if (fnMatch) {
-          const handled = await handleNeonFunction(req, res, decodeURIComponent(fnMatch[1]));
-          if (handled) return;
+          const functionName = decodeURIComponent(fnMatch[1]);
+          try {
+            // Re-import so newly registered LOCAL_FUNCTIONS are picked up without a full
+            // process restart when the neon-functions module is invalidated.
+            const neon = await import("./server/neon-functions.ts");
+            const handled = await neon.handleNeonFunction(req, res, functionName);
+            if (handled) return;
+            console.warn("[vite] local function not handled, proxying:", functionName);
+          } catch (error) {
+            console.error("[vite] local function error", functionName, error);
+            if (!res.headersSent) {
+              res.statusCode = 500;
+              res.setHeader("Content-Type", "application/json");
+              res.end(JSON.stringify({
+                error: error?.message || "Local function failed",
+              }));
+              return;
+            }
+          }
         }
 
         next();
