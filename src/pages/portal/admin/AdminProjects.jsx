@@ -162,7 +162,7 @@ function linkifyText(text) {
   const raw = String(text || "");
   if (!raw) return null;
   const parts = [];
-  const re = /(https?:\/\/[^\s<]+[^\s<.,;:!?)]|[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}|@[^\s@]+)/g;
+  const re = /((?:https?:\/\/|www\.)[^\s<]+|[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}|@[A-Za-z0-9._-]+)/g;
   let last = 0;
   let match;
   let key = 0;
@@ -171,9 +171,10 @@ function linkifyText(text) {
       parts.push(<span key={`t${key++}`}>{raw.slice(last, match.index)}</span>);
     }
     const token = match[0];
-    if (token.startsWith("http://") || token.startsWith("https://")) {
-      const href = token.replace(/[),.;!?]+$/, "");
-      const trailing = token.slice(href.length);
+    if (/^(https?:\/\/|www\.)/i.test(token)) {
+      const hrefRaw = token.replace(/[),.;!?]+$/g, "");
+      const trailing = token.slice(hrefRaw.length);
+      const href = /^www\./i.test(hrefRaw) ? `https://${hrefRaw}` : hrefRaw;
       parts.push(
         <a
           key={`l${key++}`}
@@ -181,8 +182,9 @@ function linkifyText(text) {
           target="_blank"
           rel="noopener noreferrer"
           className="text-sky-700 underline underline-offset-2 break-all hover:text-sky-900"
+          onClick={(e) => e.stopPropagation()}
         >
-          {href}
+          {hrefRaw}
         </a>
       );
       if (trailing) parts.push(<span key={`tr${key++}`}>{trailing}</span>);
