@@ -136,13 +136,20 @@ function fileIcon(contentType = "", name = "") {
   return FileText;
 }
 
+const ATTACH_EXT = /\.(png|jpe?g|gif|webp|pdf|docx?|xlsx?|csv|txt|pptx?)$/i;
+
 async function uploadProjectFile(file) {
+  const name = file?.name || "attachment";
+  if (!ATTACH_EXT.test(name) && !String(file?.type || "").startsWith("image/")) {
+    throw new Error("Attach a photo, Word doc, spreadsheet, PDF, or text file.");
+  }
   const res = await fetch("/api/blob/upload", {
     method: "POST",
     credentials: "include",
     headers: {
       "Content-Type": file.type || "application/octet-stream",
-      "X-Filename": file.name || "attachment",
+      "X-Filename": name,
+      "X-Blob-Folder": "projects",
     },
     body: file,
   });
@@ -393,7 +400,7 @@ function AssigneesCell({ assignees, staffUsers, onChange, disabled }) {
   );
 }
 
-function AssigneesChecklist({ assignees, staffUsers, onChange, disabled, compact }) {
+function AssigneesChecklist({ assignees, staffUsers, onChange, disabled, label = "Tag people" }) {
   const selected = Array.isArray(assignees) ? assignees : [];
   const selectedIds = new Set(selected.map((a) => a.user_id).filter(Boolean));
 
@@ -408,10 +415,11 @@ function AssigneesChecklist({ assignees, staffUsers, onChange, disabled, compact
   };
 
   return (
-    <div className={compact ? "space-y-1" : "space-y-2"}>
-      {!compact && (
-        <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">People</div>
-      )}
+    <div className="space-y-2">
+      <div className="flex items-baseline justify-between gap-2">
+        <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">{label}</div>
+        <div className="text-[10px] text-slate-400">Select one or more</div>
+      </div>
       <div className="flex flex-wrap gap-1.5">
         {staffUsers.map((u) => {
           const on = selectedIds.has(u.id);
@@ -436,6 +444,9 @@ function AssigneesChecklist({ assignees, staffUsers, onChange, disabled, compact
             </button>
           );
         })}
+        {!staffUsers.length && (
+          <p className="text-xs text-slate-400">No admin or projects users to tag.</p>
+        )}
       </div>
     </div>
   );
@@ -481,6 +492,7 @@ function AttachmentsBlock({
   disabled,
   title = "Attachments",
   compact = false,
+  buttonOnly = false,
 }) {
   const { toast } = useToast();
   const inputRef = useRef(null);
@@ -510,16 +522,19 @@ function AttachmentsBlock({
   return (
     <div className={compact ? "space-y-1.5" : "space-y-2"}>
       {!compact && (
-        <div className="flex items-center justify-between gap-2">
+        <div className="space-y-2">
           <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">{title}</div>
           <button
             type="button"
             disabled={disabled || uploading}
             onClick={() => inputRef.current?.click()}
-            className="inline-flex items-center gap-1 text-[11px] text-[#8B6A2E] hover:text-[#0D1B2A] disabled:opacity-50"
+            className="w-full rounded-xl border border-dashed border-slate-200 bg-slate-50 px-3 py-3 text-left hover:border-[#C9A96E] hover:bg-white disabled:opacity-50"
           >
-            {uploading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Paperclip className="w-3 h-3" />}
-            Attach
+            <span className="flex items-center gap-2 text-sm text-[#0D1B2A]">
+              {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Paperclip className="w-4 h-4 text-[#C9A96E]" />}
+              Attach photos, Word docs, or spreadsheets
+            </span>
+            <span className="block text-[11px] text-slate-400 mt-1">PNG, JPG, PDF, DOC, DOCX, XLS, XLSX, CSV</span>
           </button>
         </div>
       )}
@@ -539,10 +554,10 @@ function AttachmentsBlock({
           className="inline-flex items-center gap-1 text-[11px] text-slate-500 hover:text-[#0D1B2A] disabled:opacity-50"
         >
           {uploading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Paperclip className="w-3 h-3" />}
-          Attach file
+          {buttonOnly ? "Attach" : "Photo, doc, or spreadsheet"}
         </button>
       )}
-      {list.length > 0 && (
+      {!buttonOnly && list.length > 0 && (
         <div className="space-y-1">
           {list.map((att) => {
             const Icon = fileIcon(att.content_type, att.name);
@@ -739,16 +754,25 @@ function ProjectBoardRow({
         <td className="w-[110px] p-0">
           <ProgressCell project={project} />
         </td>
-        <td className="w-[56px] text-center">
-          <button
-            type="button"
-            onClick={() => onOpenDetail(project.id)}
-            className="inline-flex items-center gap-1 text-[11px] text-slate-400 hover:text-[#C9A96E]"
-            title="Notes"
-          >
-            <MessageSquare className="w-3.5 h-3.5" />
-            {noteCount || ""}
-          </button>
+        <td className="w-[88px] text-center">
+          <div className="flex items-center justify-center gap-1" onClick={(e) => e.stopPropagation()}>
+            <AttachmentsBlock
+              compact
+              buttonOnly
+              attachments={Array.isArray(project.attachments) ? project.attachments : []}
+              disabled={busy}
+              onChange={(attachments) => onPatch(project.id, { attachments })}
+            />
+            <button
+              type="button"
+              onClick={() => onOpenDetail(project.id)}
+              className="inline-flex items-center gap-1 text-[11px] text-slate-400 hover:text-[#C9A96E]"
+              title="Notes"
+            >
+              <MessageSquare className="w-3.5 h-3.5" />
+              {noteCount || ""}
+            </button>
+          </div>
         </td>
       </tr>
       {expanded && (
@@ -768,10 +792,48 @@ function ProjectBoardRow({
   );
 }
 
+function SubtaskTitleInput({ title, done, disabled, onCommit }) {
+  const [value, setValue] = useState(title || "");
+
+  useEffect(() => {
+    setValue(title || "");
+  }, [title]);
+
+  const save = () => {
+    const next = value.trim();
+    if (!next || next === title) {
+      setValue(title || "");
+      return;
+    }
+    onCommit(next);
+  };
+
+  return (
+    <input
+      value={value}
+      disabled={disabled}
+      aria-label="Subtask title"
+      onChange={(e) => setValue(e.target.value)}
+      onBlur={save}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          e.currentTarget.blur();
+        }
+        if (e.key === "Escape") {
+          setValue(title || "");
+          e.currentTarget.blur();
+        }
+      }}
+      className={`flex-1 min-w-0 text-sm bg-transparent border border-transparent rounded px-2 py-1 hover:border-slate-200 focus:border-slate-300 focus:bg-white focus:outline-none ${
+        done ? "line-through text-slate-400" : "text-slate-700"
+      }`}
+    />
+  );
+}
+
 function SubitemsEditor({ project, subitems, staffUsers, busy, onChange }) {
   const [draft, setDraft] = useState("");
-  const [editingId, setEditingId] = useState(null);
-  const [editTitle, setEditTitle] = useState("");
 
   const toggle = (id) => {
     onChange(subitems.map((s) => (s.id === id ? { ...s, done: !s.done } : s)));
@@ -797,16 +859,6 @@ function SubitemsEditor({ project, subitems, staffUsers, busy, onChange }) {
       },
     ]);
     setDraft("");
-  };
-
-  const commitEdit = (id) => {
-    const title = editTitle.trim();
-    if (!title) {
-      setEditingId(null);
-      return;
-    }
-    onChange(subitems.map((s) => (s.id === id ? { ...s, title } : s)));
-    setEditingId(null);
   };
 
   const patchItem = (id, patch) => {
@@ -835,36 +887,12 @@ function SubitemsEditor({ project, subitems, staffUsers, busy, onChange }) {
               >
                 {item.done && <Check className="w-3 h-3" />}
               </button>
-              {editingId === item.id ? (
-                <input
-                  autoFocus
-                  value={editTitle}
-                  disabled={busy}
-                  onChange={(e) => setEditTitle(e.target.value)}
-                  onBlur={() => commitEdit(item.id)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      e.preventDefault();
-                      commitEdit(item.id);
-                    }
-                    if (e.key === "Escape") setEditingId(null);
-                  }}
-                  className="flex-1 text-sm border border-slate-200 rounded px-2 py-1 focus:outline-none focus:border-slate-400"
-                />
-              ) : (
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={() => {
-                    setEditingId(item.id);
-                    setEditTitle(item.title || "");
-                  }}
-                  className={`flex-1 text-left text-sm ${item.done ? "line-through text-slate-400" : "text-slate-700"}`}
-                  title="Click to edit"
-                >
-                  {item.title || "Untitled"}
-                </button>
-              )}
+              <SubtaskTitleInput
+                title={item.title}
+                done={item.done}
+                disabled={busy}
+                onCommit={(title) => patchItem(item.id, { title })}
+              />
               {Array.isArray(item.assignees) && item.assignees.length > 0 && (
                 <AssigneesAvatars assignees={item.assignees} max={2} />
               )}
@@ -873,13 +901,22 @@ function SubitemsEditor({ project, subitems, staffUsers, busy, onChange }) {
               </button>
             </div>
             <div className="pl-6 space-y-2">
-              <AssigneesChecklist
-                compact
-                assignees={item.assignees || []}
-                staffUsers={staffUsers}
-                disabled={busy}
-                onChange={(assignees) => patchItem(item.id, { assignees })}
-              />
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 shrink-0">
+                  Tag people
+                </span>
+                <div className="w-28">
+                  <AssigneesCell
+                    assignees={item.assignees || []}
+                    staffUsers={staffUsers}
+                    disabled={busy}
+                    onChange={(assignees) => patchItem(item.id, { assignees })}
+                  />
+                </div>
+                <span className="text-[11px] text-slate-400 truncate">
+                  {(item.assignees || []).map((a) => a.name || a.email).filter(Boolean).join(", ") || "None"}
+                </span>
+              </div>
               <AttachmentsBlock
                 compact
                 attachments={item.attachments || []}
@@ -946,7 +983,7 @@ function BoardGroup({
                 <th className="text-center px-1 py-2 font-semibold w-[120px]">Start</th>
                 <th className="text-center px-1 py-2 font-semibold w-[120px]">End</th>
                 <th className="text-center px-1 py-2 font-semibold w-[110px]">Progress</th>
-                <th className="text-center px-1 py-2 font-semibold w-[56px]">Notes</th>
+                <th className="text-center px-1 py-2 font-semibold w-[88px]">Files</th>
               </tr>
             </thead>
             <tbody>
@@ -1216,6 +1253,7 @@ function ProjectDetailPanel({ project, staffUsers, partners, onClose, onChanged 
           </div>
 
           <AssigneesChecklist
+            label="Tag people"
             assignees={assignees}
             staffUsers={staffUsers}
             disabled={busy}
@@ -1246,7 +1284,7 @@ function ProjectDetailPanel({ project, staffUsers, partners, onClose, onChanged 
           </div>
 
           <AttachmentsBlock
-            title="Files"
+            title="Task files"
             attachments={Array.isArray(project.attachments) ? project.attachments : []}
             disabled={busy}
             onChange={(attachments) => persist({ attachments })}
@@ -1428,6 +1466,14 @@ function NewProjectDialog({ open, onClose, staffUsers, partners, onSave, saving 
         </DialogHeader>
         <form onSubmit={submit} className="space-y-3">
           <Input value={form.name} onChange={(e) => set("name", e.target.value)} placeholder="Project name" required />
+          <AssigneesChecklist
+            label="Tag people"
+            assignees={staffUsers
+              .filter((u) => form.assignee_ids.includes(u.id))
+              .map((u) => ({ user_id: u.id, name: adminLabel(u), email: u.email || "" }))}
+            staffUsers={staffUsers}
+            onChange={(next) => set("assignee_ids", next.map((a) => a.user_id))}
+          />
           <textarea
             value={form.description}
             onChange={(e) => set("description", e.target.value)}
@@ -1447,13 +1493,6 @@ function NewProjectDialog({ open, onClose, staffUsers, partners, onSave, saving 
             <Input type="date" value={form.start_date} onChange={(e) => set("start_date", e.target.value)} />
             <Input type="date" value={form.due_date} onChange={(e) => set("due_date", e.target.value)} />
           </div>
-          <AssigneesChecklist
-            assignees={staffUsers
-              .filter((u) => form.assignee_ids.includes(u.id))
-              .map((u) => ({ user_id: u.id, name: adminLabel(u), email: u.email || "" }))}
-            staffUsers={staffUsers}
-            onChange={(next) => set("assignee_ids", next.map((a) => a.user_id))}
-          />
           <select value={form.partner_id} onChange={(e) => set("partner_id", e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white">
             <option value="">No partner</option>
             {partners.map((p) => <option key={p.id} value={p.id}>{p.partner_name || p.company_name || p.id}</option>)}
@@ -1642,7 +1681,6 @@ export default function AdminProjects({ embedded = false }) {
           { label: "Ongoing", value: counts.ongoing, color: "#579BFC" },
           { label: "Stuck", value: counts.blocked, color: "#E2445C" },
           { label: "Done", value: counts.complete, color: "#00C875" },
-          { label: "Assigned to me", value: counts.mine, color: "#0D1B2A" },
         ].map((s) => (
           <div key={s.label} className="bg-white rounded-2xl border border-slate-100 p-4 shadow-sm">
             <div className="w-2 h-2 rounded-full mb-3" style={{ backgroundColor: s.color }} />
@@ -1650,34 +1688,61 @@ export default function AdminProjects({ embedded = false }) {
             <div className="text-xs text-slate-400">{s.label}</div>
           </div>
         ))}
+        <button
+          type="button"
+          onClick={() => setAssignedToMe((v) => !v)}
+          className={`rounded-2xl border p-4 shadow-sm text-left transition-colors ${
+            assignedToMe
+              ? "bg-[#0D1B2A] border-[#0D1B2A] text-white"
+              : "bg-white border-slate-100 hover:border-slate-300"
+          }`}
+        >
+          <div className={`w-2 h-2 rounded-full mb-3 ${assignedToMe ? "bg-[#C9A96E]" : "bg-[#0D1B2A]"}`} />
+          <div className={`text-2xl font-light ${assignedToMe ? "text-white" : "text-[#0D1B2A]"}`}>{counts.mine}</div>
+          <div className={`text-xs ${assignedToMe ? "text-white/70" : "text-slate-400"}`}>Assigned to me</div>
+        </button>
+      </div>
+
+      <div className="bg-white rounded-2xl border border-slate-100 shadow-sm px-4 py-3 flex flex-col sm:flex-row sm:items-center gap-3">
+        <div className="text-[10px] font-semibold uppercase tracking-widest text-slate-400 shrink-0">Filter</div>
+        <div className="relative flex-1 max-w-md">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+          <Input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search board…"
+            className="pl-9 bg-slate-50"
+          />
+        </div>
+        <button
+          type="button"
+          onClick={() => setAssignedToMe((v) => !v)}
+          className={`inline-flex items-center gap-1.5 text-xs px-3 py-2 rounded-lg border whitespace-nowrap ${
+            assignedToMe
+              ? "bg-[#0D1B2A] text-white border-[#0D1B2A]"
+              : "bg-white border-slate-200 text-slate-600 hover:border-slate-300"
+          }`}
+        >
+          <UserRound className="w-3.5 h-3.5" />
+          Only assigned to me
+          <span className="tabular-nums opacity-80">({counts.mine})</span>
+        </button>
+        {assignedToMe && (
+          <button
+            type="button"
+            onClick={() => setAssignedToMe(false)}
+            className="text-xs text-slate-500 hover:text-slate-800 inline-flex items-center gap-1"
+          >
+            <X className="w-3.5 h-3.5" /> Clear
+          </button>
+        )}
       </div>
 
       <div className="flex flex-col lg:flex-row gap-3 lg:items-center justify-between">
-        <div className="flex flex-col sm:flex-row gap-2 flex-1">
-          <div className="relative flex-1 max-w-md">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-            <Input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search board…"
-              className="pl-9 bg-white"
-            />
-          </div>
-          <button
-            type="button"
-            onClick={() => setAssignedToMe((v) => !v)}
-            className={`inline-flex items-center gap-1.5 text-xs px-3 py-2 rounded-lg border whitespace-nowrap ${
-              assignedToMe
-                ? "bg-[#0D1B2A] text-white border-[#0D1B2A]"
-                : "bg-white border-slate-200 text-slate-600 hover:border-slate-300"
-            }`}
-          >
-            <UserRound className="w-3.5 h-3.5" />
-            Assigned to me
-            {assignedToMe && counts.mine > 0 && (
-              <span className="ml-0.5 tabular-nums opacity-80">({counts.mine})</span>
-            )}
-          </button>
+        <div className="text-xs text-slate-400">
+          {assignedToMe
+            ? "Showing projects and subtasks tagged to you."
+            : "Showing every project on the board."}
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <div className="inline-flex rounded-lg border border-slate-200 bg-white p-0.5">

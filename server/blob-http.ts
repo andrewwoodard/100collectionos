@@ -11,8 +11,9 @@ export async function handleBlobUpload(req: any, res: any) {
 
     const filename = String(req.headers["x-filename"] || "image.jpg");
     const contentType = String(req.headers["content-type"] || "application/octet-stream");
+    const folder = String(req.headers["x-blob-folder"] || "properties");
     const buffer = await readBuffer(req);
-    const url = await putImageBuffer(buffer, { filename, contentType });
+    const url = await putImageBuffer(buffer, { filename, contentType, folder });
     return json(res, 200, { url });
   } catch (error: any) {
     console.error("[blob-upload]", error);

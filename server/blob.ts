@@ -20,6 +20,15 @@ const EXT_BY_TYPE: Record<string, string> = {
   "image/webp": "webp",
   "image/gif": "gif",
   "image/avif": "avif",
+  "application/pdf": "pdf",
+  "text/plain": "txt",
+  "text/csv": "csv",
+  "application/msword": "doc",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
+  "application/vnd.ms-excel": "xls",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx",
+  "application/vnd.ms-powerpoint": "ppt",
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation": "pptx",
 };
 
 export function isAlreadyHosted(url: string) {
@@ -45,13 +54,15 @@ export async function putImageBuffer(
   {
     filename = "image.jpg",
     contentType = "image/jpeg",
-  }: { filename?: string; contentType?: string } = {}
+    folder = "properties",
+  }: { filename?: string; contentType?: string; folder?: string } = {}
 ) {
   if (!blobConfigured()) throw new Error("BLOB_READ_WRITE_TOKEN is not set");
-  if (!buffer?.length) throw new Error("Empty image");
-  if (buffer.length > MAX_BYTES) throw new Error("Image is larger than 15MB");
+  if (!buffer?.length) throw new Error("Empty file");
+  if (buffer.length > MAX_BYTES) throw new Error("File is larger than 15MB");
   const ext = extensionFrom(filename, contentType);
-  const pathname = `properties/${Date.now()}-${Math.random().toString(16).slice(2, 10)}.${ext}`;
+  const safeFolder = String(folder || "properties").replace(/[^a-z0-9_-]/gi, "") || "properties";
+  const pathname = `${safeFolder}/${Date.now()}-${Math.random().toString(16).slice(2, 10)}.${ext}`;
   const blob = await put(pathname, buffer, {
     access: "public",
     addRandomSuffix: false,
