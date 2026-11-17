@@ -4,7 +4,7 @@ import { base44 } from "@/api/base44Client";
 import { useAuth } from "@/lib/AuthContext";
 import { useToast } from "@/components/ui/use-toast";
 import EmptyState from "@/components/shared/EmptyState";
-import MentionInput from "@/components/admin/MentionInput";
+import MentionInput, { mentionLabel } from "@/components/admin/MentionInput";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -165,11 +165,33 @@ async function uploadProjectFile(file) {
   };
 }
 
-function linkifyText(text) {
+function escapeRegExp(s) {
+  return String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function noteTagNames(note, staffUsers = []) {
+  const ids = Array.isArray(note?.mentioned_user_ids) ? note.mentioned_user_ids : [];
+  const fromUsers = ids
+    .map((id) => staffUsers.find((u) => u.id === id))
+    .filter(Boolean)
+    .map((u) => mentionLabel(u));
+  const stored = Array.isArray(note?.mentioned_names) ? note.mentioned_names : [];
+  return [...new Set([...fromUsers, ...stored])].filter(Boolean);
+}
+
+function linkifyText(text, names = []) {
   const raw = String(text || "");
   if (!raw) return null;
   const parts = [];
-  const re = /((?:https?:\/\/|www\.)[^\s<]+|[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}|@[A-Za-z0-9._-]+)/g;
+  const nameAlt = [...names]
+    .filter(Boolean)
+    .sort((a, b) => b.length - a.length)
+    .map(escapeRegExp)
+    .join("|");
+  const re = new RegExp(
+    `(${nameAlt ? `@(?:${nameAlt})(?![A-Za-z0-9_])|` : ""}(?:https?:\\/\\/|www\\.)[^\\s<]+|[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}|@[A-Za-z0-9._-]+)`,
+    "g"
+  );
   let last = 0;
   let match;
   let key = 0;
@@ -395,6 +417,77 @@ function AssigneesCell({ assignees, staffUsers, onChange, disabled }) {
             </button>
           );
         })}
+      </CellMenu>
+    </div>
+  );
+}
+
+function AssigneesDropdown({ assignees, staffUsers, onChange, disabled }) {
+  const [open, setOpen] = useState(false);
+  const selected = Array.isArray(assignees) ? assignees : [];
+  const selectedIds = new Set(selected.map((a) => a.user_id).filter(Boolean));
+
+  const toggle = (user) => {
+    onChange(
+      selectedIds.has(user.id)
+        ? selected.filter((a) => a.user_id !== user.id)
+        : [...selected, { user_id: user.id, name: adminLabel(user), email: user.email || "" }]
+    );
+  };
+
+  const summary = selected.length
+    ? selected.map((a) => a.name || a.email).filter(Boolean).join(", ")
+    : "Tag people";
+
+  return (
+    <div className="relative inline-block max-w-full">
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => setOpen((o) => !o)}
+        className={`inline-flex items-center gap-1.5 max-w-[260px] h-7 px-2.5 rounded-md border text-[11px] bg-white hover:border-slate-300 disabled:opacity-60 ${
+          selected.length ? "border-slate-200 text-[#0D1B2A]" : "border-dashed border-slate-300 text-slate-500"
+        }`}
+        title={summary}
+      >
+        <UserRound className="w-3 h-3 shrink-0 text-slate-400" />
+        <span className="truncate">{summary}</span>
+        <ChevronDown className="w-3 h-3 shrink-0 text-slate-400" />
+      </button>
+      <CellMenu open={open} onClose={() => setOpen(false)}>
+        {selected.length > 0 && (
+          <button
+            type="button"
+            className="w-full px-3 py-2 text-left text-xs text-slate-500 hover:bg-slate-50"
+            onClick={() => onChange([])}
+          >
+            Clear all
+          </button>
+        )}
+        {staffUsers.map((u) => {
+          const on = selectedIds.has(u.id);
+          return (
+            <button
+              key={u.id}
+              type="button"
+              className="w-full flex items-center gap-2 px-3 py-2 text-left text-xs hover:bg-slate-50"
+              onClick={() => toggle(u)}
+            >
+              <span
+                className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 ${
+                  on ? "bg-[#0D1B2A] border-[#0D1B2A] text-white" : "border-slate-300"
+                }`}
+              >
+                {on && <Check className="w-3 h-3" />}
+              </span>
+              <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-[#0D1B2A] text-white text-[10px] font-semibold shrink-0">
+                {initials(adminLabel(u))}
+              </span>
+              <span className="truncate">{adminLabel(u)}</span>
+            </button>
+          );
+        })}
+        {!staffUsers.length && <p className="px-3 py-2 text-xs text-slate-400">No users to tag</p>}
       </CellMenu>
     </div>
   );
@@ -688,15 +781,15 @@ function ProjectBoardRow({
               <div className="text-sm font-medium text-[#0D1B2A] group-hover:text-[#8B6A2E] truncate">
                 {project.name}
               </div>
-              {subitems.length > 0 && (
-                <span
-                  className="inline-flex items-center gap-0.5 shrink-0 text-[10px] font-medium text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded"
-                  title={`${subitems.length} subtasks`}
-                >
-                  <ListTodo className="w-3 h-3" />
-                  {subitems.length}
-                </span>
-              )}
+              <span
+                className={`inline-flex items-center gap-1 shrink-0 text-[10px] font-medium px-1.5 py-0.5 rounded ${
+                  subitems.length > 0 ? "text-slate-600 bg-slate-100" : "text-slate-300 bg-transparent"
+                }`}
+                title={`${subitemProgress(project).done} of ${subitems.length} subtask${subitems.length === 1 ? "" : "s"} done`}
+              >
+                <ListTodo className="w-3 h-3" />
+                {subitemProgress(project).done}/{subitems.length}
+              </span>
               {attachCount > 0 && (
                 <span className="inline-flex items-center gap-0.5 shrink-0 text-[10px] text-slate-400">
                   <Paperclip className="w-3 h-3" />
@@ -792,6 +885,157 @@ function ProjectBoardRow({
   );
 }
 
+function NoteEntry({ note: n, staffUsers, onDelete, compact = false }) {
+  const tagNames = noteTagNames(n, staffUsers);
+  return (
+    <div className={`rounded-lg border border-slate-100 ${compact ? "p-2.5 bg-slate-50/60" : "p-3"}`}>
+      <div className="flex items-start justify-between gap-2 mb-1">
+        <div>
+          <p className={`${compact ? "text-xs" : "text-sm"} font-medium text-[#0D1B2A]`}>
+            {n.author_name || n.author_email}
+          </p>
+          <p className="text-[11px] text-slate-400">{timeAgo(n.created_at)}</p>
+        </div>
+        {onDelete && (
+          <button type="button" onClick={() => onDelete(n.id)} className="text-slate-300 hover:text-red-500">
+            <Trash2 className="w-3.5 h-3.5" />
+          </button>
+        )}
+      </div>
+      {n.content && (
+        <p className={`${compact ? "text-xs" : "text-sm"} text-slate-600 whitespace-pre-wrap break-words`}>
+          {linkifyText(n.content, tagNames)}
+        </p>
+      )}
+      {tagNames.length > 0 && (
+        <div className="mt-2 flex flex-wrap items-center gap-1.5">
+          <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Tagged</span>
+          {tagNames.map((name) => (
+            <span
+              key={name}
+              className="text-[10px] px-2 py-0.5 rounded-full bg-[#C9A96E]/15 text-[#0D1B2A] border border-[#C9A96E]/30"
+            >
+              @{name}
+            </span>
+          ))}
+        </div>
+      )}
+      {Array.isArray(n.attachments) && n.attachments.length > 0 && (
+        <div className="mt-2 space-y-1">
+          {n.attachments.map((att) => {
+            const Icon = fileIcon(att.content_type, att.name);
+            const isImage = String(att.content_type || "").startsWith("image/");
+            return (
+              <a
+                key={att.id}
+                href={att.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-2 text-xs text-sky-700 hover:underline"
+              >
+                {isImage ? (
+                  <img src={att.url} alt="" className="w-8 h-8 rounded object-cover" />
+                ) : (
+                  <Icon className="w-3.5 h-3.5" />
+                )}
+                {att.name || "Attachment"}
+              </a>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SubtaskNotes({ item, staffUsers, busy, onChange }) {
+  const { user } = useAuth();
+  const [open, setOpen] = useState(false);
+  const [text, setText] = useState("");
+  const [mentionIds, setMentionIds] = useState([]);
+  const [files, setFiles] = useState([]);
+
+  const notes = useMemo(() => {
+    const list = Array.isArray(item.notes) ? item.notes : [];
+    return [...list].sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+  }, [item.notes]);
+
+  const post = (e) => {
+    e.preventDefault();
+    const content = text.trim();
+    if (!content && !files.length) return;
+    const tagged = staffUsers.filter((u) => mentionIds.includes(u.id) && content.includes(`@${mentionLabel(u)}`));
+    const entry = {
+      id: newId("note"),
+      author_email: user?.email || "",
+      author_name: adminLabel(user),
+      content,
+      created_at: new Date().toISOString(),
+      mentioned_user_ids: tagged.map((u) => u.id),
+      mentioned_names: tagged.map((u) => mentionLabel(u)),
+      mentioned_emails: tagged.map((u) => u.email || ""),
+      attachments: files,
+    };
+    onChange({ notes: [...(Array.isArray(item.notes) ? item.notes : []), entry] });
+    setText("");
+    setMentionIds([]);
+    setFiles([]);
+  };
+
+  const remove = (id) => {
+    if (!confirm("Delete this note?")) return;
+    onChange({ notes: (Array.isArray(item.notes) ? item.notes : []).filter((n) => n.id !== id) });
+  };
+
+  return (
+    <div className="space-y-2">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="inline-flex items-center gap-1.5 text-[11px] font-medium text-slate-500 hover:text-[#0D1B2A]"
+      >
+        <MessageSquare className="w-3.5 h-3.5 text-[#C9A96E]" />
+        Notes &amp; updates{notes.length ? ` (${notes.length})` : ""}
+        {open ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+      </button>
+      {open && (
+        <div className="space-y-2">
+          <form onSubmit={post} className="space-y-2">
+            <MentionInput
+              value={text}
+              onChange={setText}
+              mentionedUserIds={mentionIds}
+              onMentionsChange={setMentionIds}
+              users={staffUsers}
+              rows={2}
+              placeholder="Add a note, update, or link… type @ to tag someone"
+              className="w-full text-xs border border-slate-200 rounded-lg px-3 py-2 resize-y focus:outline-none focus:border-slate-400 focus:ring-0 bg-white"
+            />
+            <AttachmentsBlock compact attachments={files} disabled={busy} onChange={setFiles} />
+            <div className="flex justify-end">
+              <Button
+                type="submit"
+                size="sm"
+                disabled={busy || (!text.trim() && !files.length)}
+                className="h-7 gap-1.5 text-xs"
+              >
+                <Send className="w-3 h-3" />
+                Post
+              </Button>
+            </div>
+          </form>
+          <div className="space-y-2">
+            {notes.map((n) => (
+              <NoteEntry key={n.id} note={n} staffUsers={staffUsers} onDelete={remove} compact />
+            ))}
+            {!notes.length && <p className="text-[11px] text-slate-400">No notes on this subtask yet</p>}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function SubtaskTitleInput({ title, done, disabled, onCommit }) {
   const [value, setValue] = useState(title || "");
 
@@ -856,6 +1100,7 @@ function SubitemsEditor({ project, subitems, staffUsers, busy, onChange }) {
         created_at: new Date().toISOString(),
         assignees: [],
         attachments: [],
+        notes: [],
       },
     ]);
     setDraft("");
@@ -902,26 +1147,24 @@ function SubitemsEditor({ project, subitems, staffUsers, busy, onChange }) {
             </div>
             <div className="pl-6 space-y-2">
               <div className="flex items-center gap-2">
-                <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 shrink-0">
-                  Tag people
-                </span>
-                <div className="w-28">
-                  <AssigneesCell
-                    assignees={item.assignees || []}
-                    staffUsers={staffUsers}
-                    disabled={busy}
-                    onChange={(assignees) => patchItem(item.id, { assignees })}
-                  />
-                </div>
-                <span className="text-[11px] text-slate-400 truncate">
-                  {(item.assignees || []).map((a) => a.name || a.email).filter(Boolean).join(", ") || "None"}
-                </span>
+                <AssigneesDropdown
+                  assignees={item.assignees || []}
+                  staffUsers={staffUsers}
+                  disabled={busy}
+                  onChange={(assignees) => patchItem(item.id, { assignees })}
+                />
               </div>
               <AttachmentsBlock
                 compact
                 attachments={item.attachments || []}
                 disabled={busy}
                 onChange={(attachments) => patchItem(item.id, { attachments })}
+              />
+              <SubtaskNotes
+                item={item}
+                staffUsers={staffUsers}
+                busy={busy}
+                onChange={(patch) => patchItem(item.id, patch)}
               />
             </div>
           </div>
@@ -1043,12 +1286,17 @@ function KanbanView({ projects, onOpenDetail, onPatch, busyId }) {
                   >
                     <div className="flex items-start gap-2 mb-2">
                       <p className="text-sm font-medium text-[#0D1B2A] flex-1">{p.name}</p>
-                      {progress.total > 0 && (
-                        <span className="inline-flex items-center gap-0.5 text-[10px] text-slate-500 bg-white border border-slate-100 px-1.5 py-0.5 rounded">
-                          <ListTodo className="w-3 h-3" />
-                          {progress.total}
-                        </span>
-                      )}
+                      <span
+                        className={`inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded border ${
+                          progress.total > 0
+                            ? "text-slate-600 bg-white border-slate-100"
+                            : "text-slate-300 bg-transparent border-transparent"
+                        }`}
+                        title={`${progress.done} of ${progress.total} subtask${progress.total === 1 ? "" : "s"} done`}
+                      >
+                        <ListTodo className="w-3 h-3" />
+                        {progress.done}/{progress.total}
+                      </span>
                     </div>
                     <div className="flex items-center gap-2 mb-2">
                       <span className={`text-[10px] font-semibold px-2 py-0.5 rounded ${priorityMeta(p.priority).cell}`}>
@@ -1138,13 +1386,17 @@ function ProjectDetailPanel({ project, staffUsers, partners, onClose, onChanged 
     e.preventDefault();
     const text = note.trim();
     if (!text && !noteAttachments.length) return;
+    // Only keep tags whose @name is still in the text.
+    const tagged = staffUsers.filter((u) => mentionIds.includes(u.id) && text.includes(`@${mentionLabel(u)}`));
     const entry = {
       id: newId("note"),
       author_email: user?.email || "",
       author_name: adminLabel(user),
       content: text,
       created_at: new Date().toISOString(),
-      mentioned_user_ids: mentionIds,
+      mentioned_user_ids: tagged.map((u) => u.id),
+      mentioned_names: tagged.map((u) => mentionLabel(u)),
+      mentioned_emails: tagged.map((u) => u.email || ""),
       attachments: noteAttachments,
     };
     await persist({ notes: [...(Array.isArray(project.notes) ? project.notes : []), entry] }, "Update posted");
@@ -1345,7 +1597,22 @@ function ProjectDetailPanel({ project, staffUsers, partners, onClose, onChanged 
                     </button>
                   </div>
                   {n.content && (
-                    <p className="text-sm text-slate-600 whitespace-pre-wrap">{linkifyText(n.content)}</p>
+                    <p className="text-sm text-slate-600 whitespace-pre-wrap">
+                      {linkifyText(n.content, noteTagNames(n, staffUsers))}
+                    </p>
+                  )}
+                  {noteTagNames(n, staffUsers).length > 0 && (
+                    <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                      <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Tagged</span>
+                      {noteTagNames(n, staffUsers).map((name) => (
+                        <span
+                          key={name}
+                          className="text-[10px] px-2 py-0.5 rounded-full bg-[#C9A96E]/15 text-[#0D1B2A] border border-[#C9A96E]/30"
+                        >
+                          @{name}
+                        </span>
+                      ))}
+                    </div>
                   )}
                   {Array.isArray(n.attachments) && n.attachments.length > 0 && (
                     <div className="mt-2 space-y-1">

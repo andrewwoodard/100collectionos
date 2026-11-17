@@ -168,6 +168,38 @@
               }
             },
             "default": []
+          },
+          "notes": {
+            "type": "array",
+            "description": "Notes, updates, and links on this subtask",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": { "type": "string" },
+                "author_email": { "type": "string" },
+                "author_name": { "type": "string" },
+                "content": { "type": "string" },
+                "created_at": { "type": "string", "format": "date-time" },
+                "mentioned_user_ids": { "type": "array", "items": { "type": "string" } },
+                "mentioned_names": { "type": "array", "items": { "type": "string" } },
+                "mentioned_emails": { "type": "array", "items": { "type": "string" } },
+                "attachments": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": { "type": "string" },
+                      "url": { "type": "string" },
+                      "name": { "type": "string" },
+                      "content_type": { "type": "string" },
+                      "size": { "type": "number" },
+                      "created_at": { "type": "string", "format": "date-time" }
+                    }
+                  }
+                }
+              }
+            },
+            "default": []
           }
         }
       },
