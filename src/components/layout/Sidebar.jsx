@@ -4,7 +4,7 @@ import { createPageUrl } from "@/utils";
 import { useAuth } from "@/lib/AuthContext";
 import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
-import { canAccessStaffPage, isAdminRole, isMediaRestrictedRole } from "@/lib/staffAccess";
+import { canAccessStaffPage, isAdminRole, isMediaRestrictedRole, isScopedStaffRole } from "@/lib/staffAccess";
 import {
   LayoutDashboard,
   Users,
@@ -127,7 +127,17 @@ export default function Sidebar({ currentPage, mobileOpen, onMobileClose }) {
     refetchInterval: 60000,
     enabled: canSeeProjects,
   });
-  const openProjectCount = openProjects.filter((p) => !p.archived && p.status !== "complete").length;
+  // Projects / media staff only count their own projects and subtasks.
+  const myProjects = isScopedStaffRole(user?.role)
+    ? openProjects.filter(
+        (p) =>
+          (Array.isArray(p.assignees) && p.assignees.some((a) => a?.user_id === user?.id || (a?.email && a.email.toLowerCase() === String(user?.email || "").toLowerCase()))) ||
+          p.owner_user_id === user?.id ||
+          p.created_by_id === user?.id ||
+          (Array.isArray(p.subitems) && p.subitems.some((s) => Array.isArray(s.assignees) && s.assignees.some((a) => a?.user_id === user?.id)))
+      )
+    : openProjects;
+  const openProjectCount = myProjects.filter((p) => !p.archived && p.status !== "complete").length;
 
   // Unreviewed job postings badge
   const { data: jobPostingsBadge = [] } = useQuery({

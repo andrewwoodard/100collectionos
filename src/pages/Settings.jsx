@@ -126,8 +126,8 @@ export default function Settings() {
               { role: "Onboarding", desc: "Manage onboarding pipeline and related documents" },
               { role: "Finance", desc: "Manage billing, invoices, and financial reports" },
               { role: "Marketing", desc: "Manage media library and brand assets" },
-              { role: "Media", desc: "Partner property images, Sanity images, and blog posts in Media Library" },
-              { role: "Projects", desc: "Media Library browse tabs plus Project Management board" },
+              { role: "Media", desc: "Media Library browse tabs, plus only their own projects and action items on the Project board" },
+              { role: "Projects", desc: "Media Library browse tabs, plus only their own projects and action items on the Project board" },
             ].map(r => (
               <div key={r.role} className="flex items-center justify-between py-2 border-b border-gray-50 last:border-0">
                 <div>

@@ -15,9 +15,18 @@ export const STAFF_ROLES = [
 
 /** Pages each non-admin staff role may open. Admin always has full access. */
 export const STAFF_PAGE_ACCESS = {
-  media: ["MediaLibrary"],
+  media: ["MediaLibrary", "AdminProjects"],
   projects: ["MediaLibrary", "AdminProjects"],
 };
+
+/**
+ * Non-admin staff who only see their own work on the Project board
+ * (projects they own / are tagged on, and subtasks assigned to them).
+ */
+export function isScopedStaffRole(role) {
+  const r = String(role || "");
+  return r === "media" || r === "projects";
+}
 
 /** Tabs media/projects staff may use inside Media Library (brand asset library excluded). */
 export const MEDIA_ROLE_TABS = ["property-images", "sanity-images", "blog-posts"];

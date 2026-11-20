@@ -217,19 +217,22 @@
     "create": {
       "$or": [
         { "user_condition": { "role": "admin" } },
-        { "user_condition": { "role": "projects" } }
+        { "user_condition": { "role": "projects" } },
+        { "user_condition": { "role": "media" } }
       ]
     },
     "read": {
       "$or": [
         { "user_condition": { "role": "admin" } },
-        { "user_condition": { "role": "projects" } }
+        { "user_condition": { "role": "projects" } },
+        { "user_condition": { "role": "media" } }
       ]
     },
     "update": {
       "$or": [
         { "user_condition": { "role": "admin" } },
-        { "user_condition": { "role": "projects" } }
+        { "user_condition": { "role": "projects" } },
+        { "user_condition": { "role": "media" } }
       ]
     },
     "delete": {

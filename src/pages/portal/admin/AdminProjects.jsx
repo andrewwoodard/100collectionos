@@ -5,6 +5,7 @@ import { useAuth } from "@/lib/AuthContext";
 import { useToast } from "@/components/ui/use-toast";
 import EmptyState from "@/components/shared/EmptyState";
 import MentionInput, { mentionLabel } from "@/components/admin/MentionInput";
+import { isScopedStaffRole } from "@/lib/staffAccess";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -126,6 +127,59 @@ function isAssignedToUser(project, user) {
     Array.isArray(s.assignees) &&
     s.assignees.some((a) => (a.user_id && a.user_id === uid) || (a.email && a.email.toLowerCase() === email))
   );
+}
+
+function isSelfAssignee(a, user) {
+  if (!user || !a) return false;
+  const uid = String(user.id || "");
+  const email = String(user.email || "").toLowerCase();
+  return Boolean((a.user_id && a.user_id === uid) || (a.email && email && a.email.toLowerCase() === email));
+}
+
+/** Projects the user owns: tagged on the project, or created it. */
+function isOwnedByUser(project, user) {
+  if (!user) return false;
+  if (projectAssignees(project).some((a) => isSelfAssignee(a, user))) return true;
+  const email = String(user.email || "").toLowerCase();
+  return Boolean(
+    (project?.created_by_id && project.created_by_id === user.id) ||
+      (project?.created_by && email && String(project.created_by).toLowerCase() === email)
+  );
+}
+
+function isSubtaskForUser(subitem, user) {
+  return Array.isArray(subitem?.assignees) && subitem.assignees.some((a) => isSelfAssignee(a, user));
+}
+
+/**
+ * Scoped view for non-admin staff: only projects they own or have subtasks on.
+ * On projects they don't own, only their own subtasks (action items) are shown.
+ */
+function scopeProjectsForUser(projects, user) {
+  return projects
+    .filter((p) => isOwnedByUser(p, user) || (p.subitems || []).some((s) => isSubtaskForUser(s, user)))
+    .map((p) => {
+      if (isOwnedByUser(p, user)) return p;
+      return { ...p, subitems: (p.subitems || []).filter((s) => isSubtaskForUser(s, user)) };
+    });
+}
+
+/** Merge a scoped subtask edit back into the full list so hidden subtasks are never lost. */
+function mergeScopedSubitems(original, next, user, ownsProject) {
+  if (ownsProject) return next;
+  const visibleIds = new Set(original.filter((s) => isSubtaskForUser(s, user)).map((s) => s.id));
+  const nextById = new Map(next.map((s) => [s.id, s]));
+  const out = [];
+  for (const s of original) {
+    if (nextById.has(s.id)) {
+      out.push(nextById.get(s.id));
+      nextById.delete(s.id);
+    } else if (!visibleIds.has(s.id)) {
+      out.push(s);
+    }
+  }
+  out.push(...nextById.values());
+  return out;
 }
 
 function fileIcon(contentType = "", name = "") {
@@ -1337,7 +1391,7 @@ function KanbanView({ projects, onOpenDetail, onPatch, busyId }) {
   );
 }
 
-function ProjectDetailPanel({ project, staffUsers, partners, onClose, onChanged }) {
+function ProjectDetailPanel({ project, staffUsers, partners, onClose, onChanged, transformPatch }) {
   const { user } = useAuth();
   const { toast } = useToast();
   const qc = useQueryClient();
@@ -1366,7 +1420,7 @@ function ProjectDetailPanel({ project, staffUsers, partners, onClose, onChanged 
   const persist = async (patch, msg) => {
     setBusy(true);
     try {
-      await base44.entities.Project.update(project.id, patch);
+      await base44.entities.Project.update(project.id, transformPatch ? transformPatch(patch) : patch);
       await qc.invalidateQueries({ queryKey: ["admin-projects"] });
       onChanged?.();
       if (msg) toast({ title: msg });
@@ -1808,10 +1862,24 @@ export default function AdminProjects({ embedded = false }) {
     queryFn: () => base44.entities.Partner.list("partner_name", 500),
   });
 
+  const scoped = isScopedStaffRole(user?.role);
+
+  // Non-admin staff (projects / media) only see their own projects and subtasks.
+  const scopedProjects = useMemo(
+    () => (scoped ? scopeProjectsForUser(projects, user) : projects),
+    [projects, scoped, user]
+  );
+
+  const selfAssignee = () => ({
+    user_id: user?.id || "",
+    name: adminLabel(user),
+    email: user?.email || "",
+  });
+
   const admins = useMemo(
     () =>
       staffUsers
-        .filter((u) => ["admin", "super_admin", "projects"].includes(u.role))
+        .filter((u) => ["admin", "super_admin", "projects", "media"].includes(u.role))
         .sort((a, b) => adminLabel(a).localeCompare(adminLabel(b))),
     [staffUsers]
   );
@@ -1828,7 +1896,7 @@ export default function AdminProjects({ embedded = false }) {
 
   const visible = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return projects.filter((p) => {
+    return scopedProjects.filter((p) => {
       if (showArchived ? !p.archived : p.archived) return false;
       if (assignedToMe && !isAssignedToUser(p, user)) return false;
       if (!q) return true;
@@ -1841,10 +1909,10 @@ export default function AdminProjects({ embedded = false }) {
         assigneeText.toLowerCase().includes(q)
       );
     });
-  }, [projects, search, showArchived, assignedToMe, user]);
+  }, [scopedProjects, search, showArchived, assignedToMe, user]);
 
   const counts = useMemo(() => {
-    const active = projects.filter((p) => !p.archived);
+    const active = scopedProjects.filter((p) => !p.archived);
     return {
       open: active.filter((p) => p.status !== "complete").length,
       in_progress: active.filter((p) => p.status === "in_progress").length,
@@ -1853,14 +1921,31 @@ export default function AdminProjects({ embedded = false }) {
       complete: active.filter((p) => p.status === "complete").length,
       mine: active.filter((p) => isAssignedToUser(p, user)).length,
     };
-  }, [projects, user]);
+  }, [scopedProjects, user]);
 
-  const selected = projects.find((p) => p.id === selectedId) || null;
+  const selected = scopedProjects.find((p) => p.id === selectedId) || null;
+
+  // For scoped staff, writing back a filtered subtask list must not drop hidden subtasks.
+  const toFullPatch = (id, patch) => {
+    if (!scoped || !patch?.subitems) return patch;
+    const original = projects.find((p) => p.id === id);
+    if (!original) return patch;
+    const originalSubs = Array.isArray(original.subitems) ? original.subitems : [];
+    const knownIds = new Set(originalSubs.map((s) => s.id));
+    // New subtasks added by scoped staff are assigned to them so they stay visible.
+    const next = patch.subitems.map((s) =>
+      !knownIds.has(s.id) && !(s.assignees || []).length ? { ...s, assignees: [selfAssignee()] } : s
+    );
+    return {
+      ...patch,
+      subitems: mergeScopedSubitems(originalSubs, next, user, isOwnedByUser(original, user)),
+    };
+  };
 
   const patchProject = async (id, patch) => {
     setBusyId(id);
     try {
-      await base44.entities.Project.update(id, patch);
+      await base44.entities.Project.update(id, toFullPatch(id, patch));
       await qc.invalidateQueries({ queryKey: ["admin-projects"] });
     } catch (err) {
       toast({ title: err?.message || "Update failed", variant: "destructive" });
@@ -1872,8 +1957,14 @@ export default function AdminProjects({ embedded = false }) {
   const createProject = async (data) => {
     setSaving(true);
     try {
+      // Scoped staff always own what they create, so it stays visible to them.
+      const own =
+        scoped && !projectAssignees(data).some((a) => isSelfAssignee(a, user))
+          ? assigneePatch([...projectAssignees(data), selfAssignee()])
+          : {};
       const created = await base44.entities.Project.create({
         ...data,
+        ...own,
         created_by: user?.email || null,
         created_by_id: user?.id || null,
       });
@@ -1898,7 +1989,7 @@ export default function AdminProjects({ embedded = false }) {
         notes: [],
         subitems: [],
         attachments: [],
-        assignees: [],
+        ...(scoped ? assigneePatch([selfAssignee()]) : { assignees: [] }),
         archived: false,
         created_by: user?.email || null,
         created_by_id: user?.id || null,
@@ -1957,6 +2048,7 @@ export default function AdminProjects({ embedded = false }) {
         ))}
         <button
           type="button"
+          disabled={scoped}
           onClick={() => setAssignedToMe((v) => !v)}
           className={`rounded-2xl border p-4 shadow-sm text-left transition-colors ${
             assignedToMe
@@ -1981,20 +2073,22 @@ export default function AdminProjects({ embedded = false }) {
             className="pl-9 bg-slate-50"
           />
         </div>
-        <button
-          type="button"
-          onClick={() => setAssignedToMe((v) => !v)}
-          className={`inline-flex items-center gap-1.5 text-xs px-3 py-2 rounded-lg border whitespace-nowrap ${
-            assignedToMe
-              ? "bg-[#0D1B2A] text-white border-[#0D1B2A]"
-              : "bg-white border-slate-200 text-slate-600 hover:border-slate-300"
-          }`}
-        >
-          <UserRound className="w-3.5 h-3.5" />
-          Only assigned to me
-          <span className="tabular-nums opacity-80">({counts.mine})</span>
-        </button>
-        {assignedToMe && (
+        {!scoped && (
+          <button
+            type="button"
+            onClick={() => setAssignedToMe((v) => !v)}
+            className={`inline-flex items-center gap-1.5 text-xs px-3 py-2 rounded-lg border whitespace-nowrap ${
+              assignedToMe
+                ? "bg-[#0D1B2A] text-white border-[#0D1B2A]"
+                : "bg-white border-slate-200 text-slate-600 hover:border-slate-300"
+            }`}
+          >
+            <UserRound className="w-3.5 h-3.5" />
+            Only assigned to me
+            <span className="tabular-nums opacity-80">({counts.mine})</span>
+          </button>
+        )}
+        {!scoped && assignedToMe && (
           <button
             type="button"
             onClick={() => setAssignedToMe(false)}
@@ -2007,9 +2101,11 @@ export default function AdminProjects({ embedded = false }) {
 
       <div className="flex flex-col lg:flex-row gap-3 lg:items-center justify-between">
         <div className="text-xs text-slate-400">
-          {assignedToMe
-            ? "Showing projects and subtasks tagged to you."
-            : "Showing every project on the board."}
+          {scoped
+            ? "Showing only your projects and the action items assigned to you."
+            : assignedToMe
+              ? "Showing projects and subtasks tagged to you."
+              : "Showing every project on the board."}
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <div className="inline-flex rounded-lg border border-slate-200 bg-white p-0.5">
@@ -2055,14 +2151,16 @@ export default function AdminProjects({ embedded = false }) {
       ) : !visible.length && !showArchived ? (
         <EmptyState
           icon={FolderKanban}
-          title={assignedToMe ? "Nothing assigned to you" : "Your board is empty"}
+          title={scoped || assignedToMe ? "Nothing assigned to you" : "Your board is empty"}
           description={
-            assignedToMe
-              ? "Clear the Assigned to me filter or tag yourself on a project."
-              : "Create a project to start tracking work Monday-style — status groups, people, dates, and subtasks."
+            scoped
+              ? "Projects and action items you own or are tagged on will show up here. You can also create a project of your own."
+              : assignedToMe
+                ? "Clear the Assigned to me filter or tag yourself on a project."
+                : "Create a project to start tracking work Monday-style — status groups, people, dates, and subtasks."
           }
-          actionLabel={assignedToMe ? undefined : "New project"}
-          onAction={assignedToMe ? undefined : () => setCreateOpen(true)}
+          actionLabel={!scoped && assignedToMe ? undefined : "New project"}
+          onAction={!scoped && assignedToMe ? undefined : () => setCreateOpen(true)}
         />
       ) : view === "kanban" ? (
         <KanbanView
@@ -2106,6 +2204,7 @@ export default function AdminProjects({ embedded = false }) {
           partners={sortedPartners}
           onClose={() => setSelectedId(null)}
           onChanged={() => qc.invalidateQueries({ queryKey: ["admin-projects"] })}
+          transformPatch={(patch) => toFullPatch(selected.id, patch)}
         />
       )}
 
