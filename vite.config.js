@@ -50,6 +50,10 @@ function betterAuthDevPlugin() {
         if (pathname === "/api/webhooks/main-site-application") {
           return handleMainSiteApplicationWebhook(req, res);
         }
+        if (pathname === "/api/webhooks/meta-lead") {
+          const { handleMetaLeadWebhook } = await import("./server/meta-lead-application.ts");
+          return handleMetaLeadWebhook(req, res);
+        }
 
         const parsed = new URL(url, "http://localhost");
         const entityMatch = parsed.pathname.match(/^\/api\/apps\/[^/]+\/entities\/([^/]+)(?:\/(.*))?$/);

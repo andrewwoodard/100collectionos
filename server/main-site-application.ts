@@ -1,7 +1,7 @@
 import { timingSafeEqual } from "node:crypto";
 import { getNeonPool, json, newId, readBody } from "./neon-db.js";
 
-function asString(value: unknown) {
+export function asString(value: unknown) {
   if (value == null) return "";
   return String(value).trim();
 }
@@ -51,7 +51,7 @@ function unwrapPayload(body: any) {
 }
 
 /** First non-empty value for any of the given keys (exact, then space/case-insensitive). */
-function pickField(payload: any, ...keys: string[]) {
+export function pickField(payload: any, ...keys: string[]) {
   for (const key of keys) {
     const direct = asString(payload?.[key]);
     if (direct) return direct;
@@ -244,21 +244,36 @@ export function mapMainSiteApplication(rawBody: any) {
   return { track, application, email, fullName };
 }
 
-function secretsMatch(provided: string, expected: string) {
+export function secretsMatch(provided: string, expected: string) {
   const a = Buffer.from(provided);
   const b = Buffer.from(expected);
   if (a.length !== b.length) return false;
   return timingSafeEqual(a, b);
 }
 
-async function notifyAdmins(pool: ReturnType<typeof getNeonPool>, app: {
-  id: string;
-  full_name: string;
-  email: string;
-  applicant_type: string;
-  property_count?: string | null;
-  property_locations?: string | null;
-}) {
+export type InboundSource = {
+  /** created_by / created_by_id on the records (e.g. "main-site-webhook"). */
+  createdBy: string;
+  /** Human label used in the admin notification ("main site", "Meta instant form"). */
+  sourceName: string;
+  /** dedup_key prefix for the admin notification. */
+  dedupPrefix: string;
+  /** Optional external lead id; used to make retries idempotent. */
+  leadId?: string;
+};
+
+async function notifyAdmins(
+  pool: ReturnType<typeof getNeonPool>,
+  app: {
+    id: string;
+    full_name: string;
+    email: string;
+    applicant_type: string;
+    property_count?: string | null;
+    property_locations?: string | null;
+  },
+  source: InboundSource
+) {
   const typeLabel = app.applicant_type === "property_manager" ? "VRM" : "Homeowner";
   const countInfo = app.property_count ? `${app.property_count} properties` : "";
   const locationInfo = app.property_locations || "";
@@ -270,23 +285,121 @@ async function notifyAdmins(pool: ReturnType<typeof getNeonPool>, app: {
     recipient_email: "admin",
     type: "general",
     title: `New ${typeLabel.toLowerCase()} application from ${app.full_name}`,
-    message: `${typeLabel} application from main site${countInfo ? ` — ${countInfo}` : ""}${locationInfo ? ` in ${locationInfo}` : ""}.`,
+    message: `${typeLabel} application from ${source.sourceName}${countInfo ? ` — ${countInfo}` : ""}${locationInfo ? ` in ${locationInfo}` : ""}.`,
     submission_id: app.id,
     is_read: false,
     link: `/admin/hub?tab=applications&applicationId=${app.id}`,
-    dedup_key: `main_site_application_${app.id}`,
+    dedup_key: `${source.dedupPrefix}_${app.id}`,
     created_date: now,
     updated_date: now,
-    created_by: "main-site-webhook",
-    created_by_id: "main-site-webhook",
+    created_by: source.createdBy,
+    created_by_id: source.createdBy,
     is_sample: false,
   };
   await pool.query(
     `INSERT INTO base44.portal_notification (id, created_date, updated_date, created_by, created_by_id, is_sample, data, imported_at)
      VALUES ($1, now(), now(), $2, $2, false, $3::jsonb, now())
      ON CONFLICT (id) DO NOTHING`,
-    [notifId, "main-site-webhook", JSON.stringify(data)]
+    [notifId, source.createdBy, JSON.stringify(data)]
   );
+}
+
+/**
+ * Create (or enrich) a PartnerApplication from an inbound lead and notify admins.
+ * Shared by the main-site webhook and the Meta instant-form (Zapier) webhook.
+ */
+export async function saveInboundApplication(
+  pool: ReturnType<typeof getNeonPool>,
+  mapped: { track: string; application: any; email: string; fullName: string },
+  source: InboundSource
+) {
+  const { application, email, fullName, track } = mapped;
+  const now = new Date().toISOString();
+
+  // Retries of the same external lead must never create another record.
+  let existing = source.leadId
+    ? await pool.query(
+        `SELECT id, data FROM base44.partner_application
+         WHERE data->'attribution'->'meta'->>'lead_id' = $1
+         LIMIT 1`,
+        [source.leadId]
+      )
+    : { rows: [] as any[] };
+
+  // Otherwise prefer enriching an open application for the same email over creating duplicates.
+  if (!existing.rows[0]) {
+    existing = await pool.query(
+      `SELECT id, data FROM base44.partner_application
+       WHERE lower(data->>'email') = $1
+         AND coalesce(data->>'status', 'pending') IN ('pending', 'interview_invited', 'spam_review')
+       ORDER BY created_date DESC NULLS LAST
+       LIMIT 1`,
+      [email]
+    );
+  }
+
+  let id: string;
+  let created = false;
+
+  if (existing.rows[0]) {
+    id = existing.rows[0].id;
+    const prev = existing.rows[0].data || {};
+    const merged = {
+      ...prev,
+      ...application,
+      id,
+      created_date: prev.created_date || now,
+      updated_date: now,
+      // Keep earlier source_label if present and new one is generic.
+      source_label: application.source_label || prev.source_label || null,
+      attribution: {
+        ...(prev.attribution || {}),
+        ...(application.attribution || {}),
+      },
+    };
+    await pool.query(
+      `UPDATE base44.partner_application
+       SET data = $2::jsonb, updated_date = now()
+       WHERE id = $1`,
+      [id, JSON.stringify(merged)]
+    );
+  } else {
+    id = newId();
+    created = true;
+    const data = {
+      ...application,
+      id,
+      created_date: now,
+      updated_date: now,
+      created_by: source.createdBy,
+      created_by_id: source.createdBy,
+      is_sample: false,
+    };
+    await pool.query(
+      `INSERT INTO base44.partner_application
+        (id, created_date, updated_date, created_by, created_by_id, is_sample, data, imported_at)
+       VALUES ($1, now(), now(), $2, $2, false, $3::jsonb, now())`,
+      [id, source.createdBy, JSON.stringify(data)]
+    );
+    try {
+      await notifyAdmins(
+        pool,
+        {
+          id,
+          full_name: fullName,
+          email,
+          applicant_type: track,
+          property_count: application.property_count,
+          property_locations: application.property_locations,
+        },
+        source
+      );
+    } catch (error) {
+      console.warn(`[${source.createdBy}] admin notify failed`, (error as Error).message);
+    }
+  }
+
+  return { id, created };
 }
 
 export async function handleMainSiteApplicationWebhook(req: any, res: any) {
@@ -332,76 +445,13 @@ export async function handleMainSiteApplicationWebhook(req: any, res: any) {
     const mapped = mapMainSiteApplication(body);
     if ("error" in mapped) return json(res, 400, { error: mapped.error });
 
-    const { application, email, fullName, track } = mapped;
+    const { email, track } = mapped;
     const pool = getNeonPool();
-
-    // Prefer enriching an open application for the same email over creating duplicates.
-    const existing = await pool.query(
-      `SELECT id, data FROM base44.partner_application
-       WHERE lower(data->>'email') = $1
-         AND coalesce(data->>'status', 'pending') IN ('pending', 'interview_invited', 'spam_review')
-       ORDER BY created_date DESC NULLS LAST
-       LIMIT 1`,
-      [email]
-    );
-
-    let id: string;
-    let created = false;
-    const now = new Date().toISOString();
-
-    if (existing.rows[0]) {
-      id = existing.rows[0].id;
-      const prev = existing.rows[0].data || {};
-      const merged = {
-        ...prev,
-        ...application,
-        id,
-        created_date: prev.created_date || now,
-        updated_date: now,
-        // Keep earlier source_label if present and new one is generic.
-        source_label: application.source_label || prev.source_label || null,
-        attribution: {
-          ...(prev.attribution || {}),
-          ...(application.attribution || {}),
-        },
-      };
-      await pool.query(
-        `UPDATE base44.partner_application
-         SET data = $2::jsonb, updated_date = now()
-         WHERE id = $1`,
-        [id, JSON.stringify(merged)]
-      );
-    } else {
-      id = newId();
-      created = true;
-      const data = {
-        ...application,
-        id,
-        created_date: now,
-        updated_date: now,
-        created_by: "main-site-webhook",
-        created_by_id: "main-site-webhook",
-        is_sample: false,
-      };
-      await pool.query(
-        `INSERT INTO base44.partner_application
-          (id, created_date, updated_date, created_by, created_by_id, is_sample, data, imported_at)
-         VALUES ($1, now(), now(), $2, $2, false, $3::jsonb, now())`,
-        [id, "main-site-webhook", JSON.stringify(data)]
-      );
-      try {
-        await notifyAdmins(pool, {
-          id,
-          full_name: fullName,
-          email,
-          applicant_type: track,
-          property_count: application.property_count,
-          property_locations: application.property_locations,
-        });
-      } catch (error) {
-        console.warn("[main-site-application] admin notify failed", (error as Error).message);
-      }
-    }
+    const { id, created } = await saveInboundApplication(pool, mapped, {
+      createdBy: "main-site-webhook",
+      sourceName: "main site",
+      dedupPrefix: "main_site_application",
+    });
 
     return json(res, 200, {
       ok: true,
