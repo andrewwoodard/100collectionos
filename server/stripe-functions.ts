@@ -436,9 +436,34 @@ async function handleCreateSubscriptionInvoice(res: any, body: any) {
     if (periodStartRaw && !periodStart) {
       return json(res, 400, { error: "period_start must be a valid date (YYYY-MM-DD)" });
     }
-    const periodEnd = periodStart ? addServiceInterval(periodStart, interval) : null;
+    // Optional custom end date; otherwise one interval after the start.
+    const periodEndRaw = body?.period_end;
+    let periodEnd: Date | null = periodStart ? addServiceInterval(periodStart, interval) : null;
+    let customPeriod = false;
+    if (periodEndRaw) {
+      if (!periodStart) return json(res, 400, { error: "period_start is required with period_end" });
+      const parsedEnd = parseScheduleDate(periodEndRaw);
+      if (!parsedEnd || parsedEnd.getTime() <= periodStart.getTime()) {
+        return json(res, 400, { error: "period_end must be a valid date after period_start" });
+      }
+      periodEnd = parsedEnd;
+      customPeriod = true;
+    }
     const periodLabel =
       periodStart && periodEnd ? `${fmtServiceDate(periodStart)} – ${fmtServiceDate(periodEnd)}` : "";
+
+    // Prorate the flat price to a custom range (relative to one standard year / month).
+    let invoiceAmount = unitAmount * propertyCount;
+    let invoiceDescription = description;
+    if (customPeriod && periodStart && periodEnd) {
+      const standardEnd = addServiceInterval(periodStart, interval);
+      const fraction = (periodEnd.getTime() - periodStart.getTime()) / (standardEnd.getTime() - periodStart.getTime());
+      if (body?.prorate) {
+        invoiceAmount = Math.round(unitAmount * propertyCount * fraction);
+      }
+      invoiceDescription = `Property License × ${propertyCount} (custom period${body?.prorate ? ", prorated" : ""})`;
+    }
+    if (invoiceAmount < 1) return json(res, 400, { error: "Invoice amount must be greater than zero" });
 
     const draft = await stripe.invoices.create({
       customer: customerId,
@@ -456,8 +481,8 @@ async function handleCreateSubscriptionInvoice(res: any, body: any) {
       customer: customerId,
       invoice: draft.id,
       currency: "usd",
-      amount: unitAmount * propertyCount,
-      description: periodLabel ? `${description} — ${periodLabel}` : description,
+      amount: invoiceAmount,
+      description: periodLabel ? `${invoiceDescription} — ${periodLabel}` : invoiceDescription,
       ...(periodStart && periodEnd
         ? {
             period: {
@@ -489,6 +514,7 @@ async function handleCreateSubscriptionInvoice(res: any, body: any) {
       scheduled: false,
       scheduled_for: null,
       service_period: periodLabel || null,
+      amount: invoiceAmount / 100,
     });
   }
 

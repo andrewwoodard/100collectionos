@@ -3,7 +3,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { Button } from "@/components/ui/button";
 import { Loader2, Send } from "lucide-react";
 import { base44 } from "@/api/base44Client";
-import { servicePeriodLabel } from "@/lib/servicePeriod";
+import { isValidCustomPeriod, servicePeriodFraction, servicePeriodLabel } from "@/lib/servicePeriod";
 
 const fmt = (n) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number(n) || 0);
 
@@ -22,6 +22,8 @@ export default function SendLicenseSubscriptionModal({ open, onClose, partner, s
   const [interval, setInterval] = useState("year");
   const [billingMode, setBillingMode] = useState("subscription");
   const [periodStart, setPeriodStart] = useState("");
+  const [periodEnd, setPeriodEnd] = useState("");
+  const [prorate, setProrate] = useState(true);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
 
@@ -29,7 +31,13 @@ export default function SendLicenseSubscriptionModal({ open, onClose, partner, s
   const canMonthly = count >= 4;
   const totalAnnual = licensePrice * count;
   const totalMonthly = totalAnnual / 12;
-  const chargeAmount = interval === "year" ? totalAnnual : totalMonthly;
+  const baseCharge = interval === "year" ? totalAnnual : totalMonthly;
+  const isInvoice = billingMode === "invoice";
+  const hasCustomEnd = isInvoice && !!periodEnd;
+  const customValid = hasCustomEnd && isValidCustomPeriod(periodStart, periodEnd);
+  const periodInvalid = hasCustomEnd && !customValid;
+  const chargeAmount =
+    customValid && prorate ? baseCharge * servicePeriodFraction(periodStart, periodEnd, interval) : baseCharge;
 
   const handleSend = async () => {
     if (!stripeData?.customer_id) {
@@ -45,7 +53,9 @@ export default function SendLicenseSubscriptionModal({ open, onClose, partner, s
         property_count: count,
         billing_interval: interval,
         billing_mode: billingMode,
-        period_start: billingMode === "invoice" && periodStart ? periodStart : null,
+        period_start: isInvoice && periodStart ? periodStart : null,
+        period_end: customValid ? periodEnd : null,
+        prorate: customValid ? prorate : false,
       });
       const payload = res?.data || res;
       if (payload?.error) throw new Error(payload.error);
@@ -151,18 +161,58 @@ export default function SendLicenseSubscriptionModal({ open, onClose, partner, s
 
           {billingMode === "invoice" && (
             <div>
-              <label className="text-xs font-semibold text-gray-700 mb-1.5 block">Service period starts</label>
-              <input
-                type="date"
-                value={periodStart}
-                onChange={(e) => setPeriodStart(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm text-gray-900 focus:outline-none focus:border-blue-400"
-              />
-              <p className="text-xs text-gray-500 mt-1.5">
-                {periodStart
-                  ? `Invoice is sent now and covers ${servicePeriodLabel(periodStart, interval)}.`
-                  : "Leave blank for a plain invoice with no service dates."}
+              <p className="text-xs font-semibold text-gray-700 mb-1.5">Service period</p>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-[11px] text-gray-500 block mb-1">Starts</label>
+                  <input
+                    type="date"
+                    value={periodStart}
+                    onChange={(e) => setPeriodStart(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm text-gray-900 focus:outline-none focus:border-blue-400"
+                  />
+                </div>
+                <div>
+                  <label className="text-[11px] text-gray-500 block mb-1">
+                    Ends <span className="text-gray-400">(optional)</span>
+                  </label>
+                  <input
+                    type="date"
+                    value={periodEnd}
+                    min={periodStart || undefined}
+                    disabled={!periodStart}
+                    onChange={(e) => setPeriodEnd(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm text-gray-900 focus:outline-none focus:border-blue-400 disabled:bg-gray-50"
+                  />
+                </div>
+              </div>
+              <p className={`text-xs mt-1.5 ${periodInvalid ? "text-red-600" : "text-gray-500"}`}>
+                {periodInvalid
+                  ? "The end date must be after the start date."
+                  : periodStart
+                    ? `Invoice is sent now and covers ${servicePeriodLabel(periodStart, interval, customValid ? periodEnd : "")}${
+                        customValid ? "" : ` (one ${interval}; set an end date for a custom period)`
+                      }.`
+                    : "Leave blank for a plain invoice with no service dates."}
               </p>
+              {customValid && (
+                <label className="flex items-start gap-2 mt-2 text-xs text-gray-700 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={prorate}
+                    onChange={(e) => setProrate(e.target.checked)}
+                    className="accent-blue-600 mt-0.5"
+                  />
+                  <span>
+                    Prorate the price to this period
+                    <span className="block text-gray-500">
+                      {prorate
+                        ? `${fmt(chargeAmount)} (${(servicePeriodFraction(periodStart, periodEnd, interval) * 100).toFixed(1)}% of one ${interval})`
+                        : `Bill the full ${fmt(baseCharge)} for this period`}
+                    </span>
+                  </span>
+                </label>
+              )}
             </div>
           )}
 
@@ -173,7 +223,7 @@ export default function SendLicenseSubscriptionModal({ open, onClose, partner, s
 
         <DialogFooter>
           <Button variant="outline" onClick={onClose} disabled={sending}>Cancel</Button>
-          <Button onClick={handleSend} disabled={sending || count < 1} className="gap-1.5">
+          <Button onClick={handleSend} disabled={sending || count < 1 || periodInvalid} className="gap-1.5">
             {sending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
             {billingMode === "invoice" ? "Send Invoice" : "Send Subscription"}
           </Button>
