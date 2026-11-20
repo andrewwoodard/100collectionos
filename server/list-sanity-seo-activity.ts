@@ -19,6 +19,7 @@ type ActivityBody = {
   search?: string;
   type?: string;
   seo_changes_only?: boolean;
+  change_filter?: "all" | "seo" | "images";
   limit?: number;
   offset?: number;
 };
@@ -137,6 +138,208 @@ function seoSnapshot(doc: any) {
   };
 }
 
+// ---------------------------------------------------------------------------
+// Whole-document diffing (SEO fields, images, body, everything else)
+// ---------------------------------------------------------------------------
+
+type ImageInfo = { ref: string; alt: string; caption: string };
+type Flat = { fields: Map<string, string>; images: Map<string, ImageInfo> };
+
+const SKIP_KEYS = new Set(["_id", "_rev", "_type", "_key", "_system", "_createdAt", "_updatedAt", "_originalId"]);
+
+// Fields shown under "SEO" (path -> label).
+const SEO_FIELD_LABELS: Record<string, string> = {
+  SEOtitle: "SEO title",
+  seoTitle: "SEO title",
+  metaTitle: "SEO title",
+  SEOdescription: "SEO description",
+  seoDescription: "SEO description",
+  metaDescription: "SEO description",
+  noindex: "Hidden from search (noindex)",
+  slug: "URL slug",
+};
+
+const FIELD_LABELS: Record<string, string> = {
+  title: "Title",
+  name: "Name",
+  excerptText: "Excerpt",
+  socialText: "Social text",
+};
+
+function flatten(value: any, path: string, out: Flat) {
+  if (value === null || value === undefined) return;
+  if (Array.isArray(value)) {
+    value.forEach((item, i) => {
+      const key = item && typeof item === "object" && item._key ? String(item._key) : String(i);
+      flatten(item, `${path}[${key}]`, out);
+    });
+    return;
+  }
+  if (typeof value === "object") {
+    const ref = value?.asset?._ref;
+    if (typeof ref === "string" && ref.startsWith("image-")) {
+      out.images.set(path, {
+        ref,
+        alt: String(value.alttext ?? value.alt ?? ""),
+        caption: String(value.caption ?? ""),
+      });
+      return;
+    }
+    if (value._type === "slug") {
+      out.fields.set(path, String(value.current || ""));
+      return;
+    }
+    if (value._type === "block" && Array.isArray(value.children)) {
+      out.fields.set(path, value.children.map((c: any) => c?.text || "").join(""));
+      return;
+    }
+    if (typeof value._ref === "string") {
+      out.fields.set(path, `ref:${value._ref}`);
+      return;
+    }
+    for (const [k, v] of Object.entries(value)) {
+      if (SKIP_KEYS.has(k)) continue;
+      flatten(v, path ? `${path}.${k}` : k, out);
+    }
+    return;
+  }
+  out.fields.set(path, String(value));
+}
+
+function flattenDoc(doc: any): Flat {
+  const out: Flat = { fields: new Map(), images: new Map() };
+  if (doc && typeof doc === "object") {
+    for (const [k, v] of Object.entries(doc)) {
+      if (SKIP_KEYS.has(k)) continue;
+      flatten(v, k, out);
+    }
+  }
+  return out;
+}
+
+function humanize(segment: string) {
+  return segment
+    .replace(/\[[^\]]*\]/g, "")
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .replace(/_/g, " ")
+    .trim()
+    .replace(/^./, (c) => c.toUpperCase());
+}
+
+function pathLabel(path: string) {
+  if (SEO_FIELD_LABELS[path]) return SEO_FIELD_LABELS[path];
+  if (FIELD_LABELS[path]) return FIELD_LABELS[path];
+  return (
+    path
+      .split(".")
+      .map(humanize)
+      .filter(Boolean)
+      .join(" › ") || path
+  );
+}
+
+function sanityImage(ref: string) {
+  const m = /^image-(.+)-(\d+x\d+)-([a-z0-9]+)$/i.exec(ref);
+  if (!m) return { url: "", thumb: "" };
+  const url = `https://cdn.sanity.io/images/${PROJECT}/${DATASET}/${m[1]}-${m[2]}.${m[3]}`;
+  return { url, thumb: `${url}?w=320&h=220&fit=crop&auto=format` };
+}
+
+function imageSide(info: ImageInfo | undefined) {
+  if (!info) return null;
+  const { url, thumb } = sanityImage(info.ref);
+  return { url, thumb, alt: info.alt, caption: info.caption };
+}
+
+function clip(text: string, max = 300) {
+  return text.length > max ? `${text.slice(0, max)}…` : text;
+}
+
+type ImageChange = {
+  path: string;
+  label: string;
+  kind: "added" | "removed" | "replaced" | "alt_changed";
+  before: ReturnType<typeof imageSide>;
+  after: ReturnType<typeof imageSide>;
+};
+
+export function diffDocuments(beforeDoc: any, afterDoc: any) {
+  const a = flattenDoc(beforeDoc);
+  const b = flattenDoc(afterDoc);
+
+  // Images
+  const images: ImageChange[] = [];
+  const imagePaths = new Set([...a.images.keys(), ...b.images.keys()]);
+  for (const path of imagePaths) {
+    const prev = a.images.get(path);
+    const next = b.images.get(path);
+    let kind: ImageChange["kind"] | null = null;
+    if (!prev && next) kind = "added";
+    else if (prev && !next) kind = "removed";
+    else if (prev && next) {
+      if (prev.ref !== next.ref) kind = "replaced";
+      else if (prev.alt !== next.alt || prev.caption !== next.caption) kind = "alt_changed";
+    }
+    if (!kind) continue;
+    images.push({
+      path,
+      label: pathLabel(path),
+      kind,
+      before: imageSide(prev),
+      after: imageSide(next),
+    });
+  }
+  // Drop pure moves (same image removed from one slot and added to another).
+  const removedRefs = new Map<string, number>();
+  images.forEach((img, i) => {
+    if (img.kind === "removed") removedRefs.set(a.images.get(img.path)!.ref, i);
+  });
+  const drop = new Set<number>();
+  images.forEach((img, i) => {
+    if (img.kind !== "added") return;
+    const ref = b.images.get(img.path)!.ref;
+    const j = removedRefs.get(ref);
+    if (j !== undefined && !drop.has(j)) {
+      drop.add(i);
+      drop.add(j);
+    }
+  });
+  const imageChanges = images.filter((_, i) => !drop.has(i));
+
+  // Text / scalar fields
+  const seo: { field: string; label: string; before: string; after: string }[] = [];
+  const other: { field: string; label: string; before: string; after: string }[] = [];
+  const body = { added: 0, removed: 0, changed: 0 };
+  const fieldPaths = new Set([...a.fields.keys(), ...b.fields.keys()]);
+  for (const path of fieldPaths) {
+    const prev = a.fields.get(path);
+    const next = b.fields.get(path);
+    if (prev === next) continue;
+    const top = path.split(/[.[]/)[0];
+    if (SEO_FIELD_LABELS[path]) {
+      seo.push({ field: path, label: SEO_FIELD_LABELS[path], before: clip(prev ?? ""), after: clip(next ?? "") });
+    } else if (top === "body") {
+      if (prev === undefined) body.added++;
+      else if (next === undefined) body.removed++;
+      else body.changed++;
+    } else {
+      other.push({ field: path, label: pathLabel(path), before: clip(prev ?? ""), after: clip(next ?? "") });
+    }
+  }
+  // De-dupe SEO labels that map to several keys (e.g. SEOtitle + seoTitle).
+  const seoSeen = new Set<string>();
+  const seoChanges = seo.filter((c) => (seoSeen.has(c.label) ? false : (seoSeen.add(c.label), true)));
+
+  const bodyTotal = body.added + body.removed + body.changed;
+  return {
+    seo: seoChanges,
+    images: imageChanges,
+    body: bodyTotal ? body : null,
+    other: other.slice(0, 12),
+    otherMore: Math.max(other.length - 12, 0),
+  };
+}
+
 /**
  * Admin feed of Sanity SEO document activity: who changed what, when.
  * Uses Sanity History + Users APIs with SANITY_API_READ_TOKEN from env.
@@ -151,7 +354,12 @@ export async function handleListSanitySeoActivity(req: any, res: any, body: Acti
 
   const search = String(body.search || "").trim();
   const typeFilter = String(body.type || "").trim();
-  const seoChangesOnly = Boolean(body.seo_changes_only);
+  const changeFilter =
+    body.change_filter === "seo" || body.change_filter === "images"
+      ? body.change_filter
+      : body.seo_changes_only
+        ? "seo"
+        : "all";
   const limit = Math.min(Math.max(Number(body.limit) || 40, 1), 100);
   const offset = Math.max(Number(body.offset) || 0, 0);
   const like = search ? sanitizeLike(search).toLowerCase() : "";
@@ -180,19 +388,8 @@ export async function handleListSanitySeoActivity(req: any, res: any, body: Acti
           ${searchClause}
         ]
         | order(_updatedAt desc) [${offset}...${offset + limit}] {
-          _id,
-          _type,
-          _updatedAt,
-          _rev,
-          title,
-          name,
-          "slug": slug.current,
-          SEOtitle,
-          SEOdescription,
-          seoTitle,
-          seoDescription,
-          metaTitle,
-          metaDescription
+          ...,
+          "slug": slug.current
         }
       `),
       sanityQuery(`
@@ -223,14 +420,17 @@ export async function handleListSanitySeoActivity(req: any, res: any, body: Acti
 
         let previousSeo = { seoTitle: "", seoDescription: "" };
         let seoFieldsChanged: boolean | null = null;
+        let imagesChanged: boolean | null = null;
+        let changes: ReturnType<typeof diffDocuments> | null = null;
+        const firstRevision = Boolean(latest && !previous?.id);
         if (previous?.id) {
           try {
             const prevDoc = await getDocumentAtRevision(doc._id, previous.id);
             if (prevDoc) {
               previousSeo = seoSnapshot(prevDoc);
-              seoFieldsChanged =
-                previousSeo.seoTitle !== current.seoTitle ||
-                previousSeo.seoDescription !== current.seoDescription;
+              changes = diffDocuments(prevDoc, doc);
+              seoFieldsChanged = changes.seo.length > 0;
+              imagesChanged = changes.images.length > 0;
             }
           } catch {
             seoFieldsChanged = null;
@@ -238,6 +438,7 @@ export async function handleListSanitySeoActivity(req: any, res: any, body: Acti
         } else if (latest) {
           // First known revision — treat as SEO present if fields exist
           seoFieldsChanged = Boolean(current.seoTitle || current.seoDescription);
+          imagesChanged = false;
         }
 
         const changedAt = latest?.timestamp || doc._updatedAt || null;
@@ -254,6 +455,9 @@ export async function handleListSanitySeoActivity(req: any, res: any, body: Acti
           previousSeoTitle: previousSeo.seoTitle,
           previousSeoDescription: previousSeo.seoDescription,
           seoFieldsChanged,
+          imagesChanged,
+          firstRevision,
+          changes,
           changedAt,
           updatedAt: doc._updatedAt || null,
           transactionId: latest?.id || null,
@@ -262,9 +466,12 @@ export async function handleListSanitySeoActivity(req: any, res: any, body: Acti
       }),
     );
 
-    const filtered = seoChangesOnly
-      ? items.filter((item) => item.seoFieldsChanged === true)
-      : items;
+    const filtered =
+      changeFilter === "seo"
+        ? items.filter((item) => item.seoFieldsChanged === true)
+        : changeFilter === "images"
+          ? items.filter((item) => item.imagesChanged === true)
+          : items;
 
     return json(res, 200, {
       items: filtered,

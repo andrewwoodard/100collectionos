@@ -4,7 +4,7 @@ import { base44 } from "@/api/base44Client";
 import { Input } from "@/components/ui/input";
 import EmptyState from "@/components/shared/EmptyState";
 import {
-  Activity, ArrowRight, Loader2, Search, UserRound, X,
+  Activity, ArrowRight, FileText, Image as ImageIcon, Loader2, Search, UserRound, X,
 } from "lucide-react";
 
 function fmtWhen(value) {
@@ -24,12 +24,12 @@ function typeLabel(type) {
     .replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-async function fetchActivity({ search, type, seoChangesOnly, offset, limit }) {
+async function fetchActivity({ search, type, changeFilter, offset, limit }) {
   try {
     const res = await base44.functions.invoke("listSanitySeoActivity", {
       search: search || "",
       type: type || "",
-      seo_changes_only: seoChangesOnly,
+      change_filter: changeFilter || "all",
       limit,
       offset,
     });
@@ -79,6 +79,128 @@ function AuthorChip({ author }) {
   );
 }
 
+const IMAGE_KIND = {
+  added: { label: "Image added", cls: "bg-emerald-50 text-emerald-700 border-emerald-200" },
+  removed: { label: "Image removed", cls: "bg-red-50 text-red-700 border-red-200" },
+  replaced: { label: "Image replaced", cls: "bg-sky-50 text-sky-700 border-sky-200" },
+  alt_changed: { label: "Alt text / caption", cls: "bg-amber-50 text-amber-700 border-amber-200" },
+};
+
+function Thumb({ side, tone }) {
+  if (!side) {
+    return (
+      <div className="w-28 h-20 rounded-lg border border-dashed border-slate-200 flex items-center justify-center text-[10px] text-slate-300">
+        None
+      </div>
+    );
+  }
+  return (
+    <a
+      href={side.url || undefined}
+      target="_blank"
+      rel="noopener noreferrer"
+      className={`block w-28 h-20 rounded-lg overflow-hidden bg-slate-100 border ${
+        tone === "old" ? "border-red-200 opacity-80" : "border-emerald-200"
+      }`}
+      title="Open full image"
+    >
+      {side.thumb ? (
+        <img src={side.thumb} alt={side.alt || ""} loading="lazy" className="w-full h-full object-cover" />
+      ) : (
+        <span className="w-full h-full flex items-center justify-center text-slate-300">
+          <ImageIcon className="w-5 h-5" />
+        </span>
+      )}
+    </a>
+  );
+}
+
+function ImageChangeRow({ change }) {
+  const meta = IMAGE_KIND[change.kind] || IMAGE_KIND.replaced;
+  const showBefore = change.kind !== "added";
+  const showAfter = change.kind !== "removed";
+  const altBefore = change.before?.alt || "";
+  const altAfter = change.after?.alt || "";
+  const capBefore = change.before?.caption || "";
+  const capAfter = change.after?.caption || "";
+  return (
+    <div className="rounded-xl border border-slate-100 bg-slate-50/50 p-3 space-y-2">
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${meta.cls}`}>{meta.label}</span>
+        <span className="text-xs font-medium text-[#0D1B2A]">{change.label}</span>
+      </div>
+      <div className="flex items-center gap-3 flex-wrap">
+        {showBefore && <Thumb side={change.before} tone="old" />}
+        {showBefore && showAfter && <ArrowRight className="w-4 h-4 text-slate-300 shrink-0" />}
+        {showAfter && <Thumb side={change.after} tone="new" />}
+        <div className="min-w-0 flex-1 space-y-1 text-xs">
+          {(altBefore || altAfter) && altBefore !== altAfter && (
+            <p className="break-words">
+              <span className="text-slate-400">Alt text: </span>
+              {altBefore && <span className="text-slate-400 line-through">{altBefore}</span>}
+              {altBefore && altAfter && " → "}
+              {altAfter && <span className="text-[#0D1B2A] font-medium">{altAfter}</span>}
+              {!altAfter && <span className="text-red-500"> (removed)</span>}
+            </p>
+          )}
+          {(capBefore || capAfter) && capBefore !== capAfter && (
+            <p className="break-words">
+              <span className="text-slate-400">Caption: </span>
+              {capBefore && <span className="text-slate-400 line-through">{capBefore}</span>}
+              {capBefore && capAfter && " → "}
+              {capAfter && <span className="text-[#0D1B2A] font-medium">{capAfter}</span>}
+            </p>
+          )}
+          {change.kind !== "alt_changed" && altAfter === altBefore && altAfter && (
+            <p className="text-slate-400 break-words">Alt text: {altAfter}</p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function BodySummary({ body }) {
+  if (!body) return null;
+  const parts = [];
+  if (body.changed) parts.push(`${body.changed} edited`);
+  if (body.added) parts.push(`${body.added} added`);
+  if (body.removed) parts.push(`${body.removed} removed`);
+  return (
+    <div className="flex items-center gap-2 text-xs text-slate-600">
+      <FileText className="w-3.5 h-3.5 text-slate-400" />
+      <span>
+        <span className="font-medium text-[#0D1B2A]">Body content:</span> {parts.join(", ")} paragraph/block
+        {body.changed + body.added + body.removed === 1 ? "" : "s"}
+      </span>
+    </div>
+  );
+}
+
+function OtherChanges({ changes, more }) {
+  const [open, setOpen] = useState(false);
+  if (!changes?.length) return null;
+  return (
+    <div className="space-y-2">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="text-xs font-medium text-slate-500 hover:text-[#0D1B2A]"
+      >
+        {open ? "Hide" : "Show"} other field changes ({changes.length + (more || 0)})
+      </button>
+      {open && (
+        <div className="space-y-2">
+          {changes.map((c) => (
+            <SeoDiff key={c.field} label={c.label} before={c.before} after={c.after} />
+          ))}
+          {more > 0 && <p className="text-[11px] text-slate-400">+ {more} more</p>}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function SeoDiff({ before, after, label }) {
   if (!after && !before) return null;
   const changed = before !== after;
@@ -102,7 +224,7 @@ export default function AdminSeoActivity({ embedded = false }) {
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
   const [type, setType] = useState("all");
-  const [seoChangesOnly, setSeoChangesOnly] = useState(false);
+  const [changeFilter, setChangeFilter] = useState("all");
   const [offset, setOffset] = useState(0);
   const pageSize = 40;
 
@@ -119,15 +241,15 @@ export default function AdminSeoActivity({ embedded = false }) {
   React.useEffect(() => {
     setAccumulated([]);
     setOffset(0);
-  }, [search, type, seoChangesOnly]);
+  }, [search, type, changeFilter]);
 
   const query = useQuery({
-    queryKey: ["sanity-seo-activity", search, type, seoChangesOnly, offset],
+    queryKey: ["sanity-seo-activity", search, type, changeFilter, offset],
     queryFn: () =>
       fetchActivity({
         search,
         type: type === "all" ? "" : type,
-        seoChangesOnly,
+        changeFilter,
         offset,
         limit: pageSize,
       }),
@@ -207,20 +329,29 @@ export default function AdminSeoActivity({ embedded = false }) {
               <option key={t} value={t}>{typeLabel(t)}</option>
             ))}
           </select>
-          <button
-            type="button"
-            onClick={() => {
-              setSeoChangesOnly((v) => !v);
-              setOffset(0);
-            }}
-            className={`text-xs px-3 py-2 rounded-lg border ${
-              seoChangesOnly
-                ? "bg-[#0D1B2A] text-white border-[#0D1B2A]"
-                : "bg-white text-slate-600 border-slate-200"
-            }`}
-          >
-            SEO field changes only
-          </button>
+          <div className="inline-flex rounded-lg border border-slate-200 bg-white overflow-hidden">
+            {[
+              { value: "all", label: "All changes" },
+              { value: "seo", label: "SEO fields" },
+              { value: "images", label: "Images" },
+            ].map((opt) => (
+              <button
+                key={opt.value}
+                type="button"
+                onClick={() => {
+                  setChangeFilter(opt.value);
+                  setOffset(0);
+                }}
+                className={`text-xs px-3 py-2 ${
+                  changeFilter === opt.value
+                    ? "bg-[#0D1B2A] text-white"
+                    : "bg-white text-slate-600 hover:bg-slate-50"
+                }`}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -238,9 +369,13 @@ export default function AdminSeoActivity({ embedded = false }) {
         <EmptyState
           icon={Activity}
           title="No SEO activity found"
-          description={seoChangesOnly
-            ? "No confirmed SEO title/description diffs in this set."
-            : "No Sanity documents with SEO fields matched your filters."}
+          description={
+            changeFilter === "seo"
+              ? "No confirmed SEO field changes in this set."
+              : changeFilter === "images"
+                ? "No image changes in this set."
+                : "No Sanity documents with SEO fields matched your filters."
+          }
         />
       ) : (
         <>
@@ -261,11 +396,23 @@ export default function AdminSeoActivity({ embedded = false }) {
                           SEO fields changed
                         </span>
                       )}
-                      {item.seoFieldsChanged === false && (
-                        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200">
-                          Other fields updated
+                      {item.imagesChanged === true && (
+                        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-sky-50 text-sky-700 border border-sky-200">
+                          Images changed ({item.changes?.images?.length || 0})
                         </span>
                       )}
+                      {item.changes?.body && (
+                        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-violet-50 text-violet-700 border border-violet-200">
+                          Body edited
+                        </span>
+                      )}
+                      {item.seoFieldsChanged === false &&
+                        item.imagesChanged !== true &&
+                        !item.changes?.body && (
+                          <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200">
+                            Other fields updated
+                          </span>
+                        )}
                     </div>
                     <div>
                       <h3 className="text-sm font-semibold text-[#0D1B2A]">{item.title}</h3>
@@ -282,7 +429,24 @@ export default function AdminSeoActivity({ embedded = false }) {
                         before={item.previousSeoDescription}
                         after={item.seoDescription}
                       />
+                      {(item.changes?.seo || [])
+                        .filter((c) => !/^SEO (title|description)$/.test(c.label))
+                        .map((c) => (
+                          <SeoDiff key={c.field} label={c.label} before={c.before} after={c.after} />
+                        ))}
                     </div>
+                    {item.changes?.images?.length > 0 && (
+                      <div className="space-y-2">
+                        <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                          Image changes
+                        </div>
+                        {item.changes.images.map((img) => (
+                          <ImageChangeRow key={`${img.path}:${img.kind}`} change={img} />
+                        ))}
+                      </div>
+                    )}
+                    <BodySummary body={item.changes?.body} />
+                    <OtherChanges changes={item.changes?.other} more={item.changes?.otherMore} />
                   </div>
                   <div className="shrink-0 space-y-3 lg:text-right lg:min-w-[220px]">
                     <div>
