@@ -23,6 +23,18 @@ function parseScheduleDate(value: unknown) {
   return d;
 }
 
+/** End of a service period: same calendar day one year / one month later (UTC noon). */
+function addServiceInterval(start: Date, interval: "year" | "month") {
+  const end = new Date(start.getTime());
+  if (interval === "year") end.setUTCFullYear(end.getUTCFullYear() + 1);
+  else end.setUTCMonth(end.getUTCMonth() + 1);
+  return end;
+}
+
+function fmtServiceDate(d: Date) {
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
+}
+
 function tsToDate(ts: number | null | undefined) {
   return ts ? new Date(ts * 1000).toISOString().split("T")[0] : null;
 }
@@ -418,11 +430,25 @@ async function handleCreateSubscriptionInvoice(res: any, body: any) {
 
   // One-time invoice: charge once for the selected period amount, then stop.
   if (billingMode === "invoice") {
+    // Optional service period: the invoice is sent now but covers [period_start, +1 year/month].
+    const periodStartRaw = body?.period_start;
+    const periodStart = periodStartRaw ? parseScheduleDate(periodStartRaw) : null;
+    if (periodStartRaw && !periodStart) {
+      return json(res, 400, { error: "period_start must be a valid date (YYYY-MM-DD)" });
+    }
+    const periodEnd = periodStart ? addServiceInterval(periodStart, interval) : null;
+    const periodLabel =
+      periodStart && periodEnd ? `${fmtServiceDate(periodStart)} – ${fmtServiceDate(periodEnd)}` : "";
+
     const draft = await stripe.invoices.create({
       customer: customerId,
       collection_method: "send_invoice",
       days_until_due: 7,
-      metadata: { source: "100c-os-admin", billing_mode: "invoice" },
+      metadata: {
+        source: "100c-os-admin",
+        billing_mode: "invoice",
+        ...(periodLabel ? { service_period: periodLabel } : {}),
+      },
       auto_advance: false,
     });
 
@@ -431,8 +457,20 @@ async function handleCreateSubscriptionInvoice(res: any, body: any) {
       invoice: draft.id,
       currency: "usd",
       amount: unitAmount * propertyCount,
-      description,
-      metadata: { source: "100c-os-admin", billing_mode: "invoice" },
+      description: periodLabel ? `${description} — ${periodLabel}` : description,
+      ...(periodStart && periodEnd
+        ? {
+            period: {
+              start: Math.floor(periodStart.getTime() / 1000),
+              end: Math.floor(periodEnd.getTime() / 1000),
+            },
+          }
+        : {}),
+      metadata: {
+        source: "100c-os-admin",
+        billing_mode: "invoice",
+        ...(periodLabel ? { service_period: periodLabel } : {}),
+      },
     });
 
     let invoiceId = draft.id;
@@ -450,6 +488,7 @@ async function handleCreateSubscriptionInvoice(res: any, body: any) {
       invoice_id: invoiceId,
       scheduled: false,
       scheduled_for: null,
+      service_period: periodLabel || null,
     });
   }
 

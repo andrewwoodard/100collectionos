@@ -3,6 +3,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { Button } from "@/components/ui/button";
 import { Loader2, Send } from "lucide-react";
 import { base44 } from "@/api/base44Client";
+import { servicePeriodLabel } from "@/lib/servicePeriod";
 
 const fmt = (n) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number(n) || 0);
 
@@ -18,11 +19,20 @@ function invokeErrorMessage(error) {
 export default function SendSubscriptionInvoiceModal({ open, onClose, partner, properties, stripeData, onSuccess }) {
   const licensePrice = Number(partner?.license_unit_price) > 0 ? Number(partner.license_unit_price) : 1200;
   const activeProperties = (properties || []).filter(p => p?.status === "active");
-  const propertyCount = activeProperties.length;
-  const canMonthly = propertyCount >= 4;
+  const activeCount = activeProperties.length;
+  // One-time invoices can bill a different number of properties than are active today
+  // (e.g. 40 properties starting on a future date).
+  const [countOverride, setCountOverride] = useState("");
+  const [periodStart, setPeriodStart] = useState("");
 
   const [interval, setInterval] = useState("year");
   const [billingMode, setBillingMode] = useState("subscription");
+  const overrideNum = Math.floor(Number(countOverride));
+  const propertyCount =
+    billingMode === "invoice" && Number.isFinite(overrideNum) && overrideNum >= 1
+      ? Math.min(overrideNum, 500)
+      : activeCount;
+  const canMonthly = propertyCount >= 4;
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
   const [schedule, setSchedule] = useState(false);
@@ -50,6 +60,7 @@ export default function SendSubscriptionInvoiceModal({ open, onClose, partner, p
         billing_interval: interval,
         billing_mode: billingMode,
         send_date: canSchedule && schedule ? sendDate : null,
+        period_start: billingMode === "invoice" && periodStart ? periodStart : null,
       });
       const payload = res?.data || res;
       if (payload?.error) throw new Error(payload.error);
@@ -140,6 +151,39 @@ export default function SendSubscriptionInvoiceModal({ open, onClose, partner, p
             </div>
           </div>
         </div>
+
+        {billingMode === "invoice" && (
+          <div className="space-y-3 mb-3">
+            <div>
+              <label className="text-xs font-semibold text-gray-700 mb-1.5 block">
+                Properties to bill <span className="font-normal text-gray-400">(active today: {activeCount})</span>
+              </label>
+              <input
+                type="number"
+                min={1}
+                max={500}
+                value={countOverride}
+                placeholder={String(activeCount)}
+                onChange={(e) => setCountOverride(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm text-gray-900 focus:outline-none focus:border-blue-400"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-gray-700 mb-1.5 block">Service period starts</label>
+              <input
+                type="date"
+                value={periodStart}
+                onChange={(e) => setPeriodStart(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm text-gray-900 focus:outline-none focus:border-blue-400"
+              />
+              <p className="text-xs text-gray-500 mt-1.5">
+                {periodStart
+                  ? `Invoice is sent now and covers ${servicePeriodLabel(periodStart, interval)}.`
+                  : "Leave blank for a plain invoice with no service dates."}
+              </p>
+            </div>
+          </div>
+        )}
 
         {canSchedule && (
           <div>

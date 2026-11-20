@@ -3,6 +3,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { Button } from "@/components/ui/button";
 import { Loader2, Send } from "lucide-react";
 import { base44 } from "@/api/base44Client";
+import { servicePeriodLabel } from "@/lib/servicePeriod";
 
 const fmt = (n) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number(n) || 0);
 
@@ -20,6 +21,7 @@ export default function SendLicenseSubscriptionModal({ open, onClose, partner, s
   const [licenseCount, setLicenseCount] = useState(1);
   const [interval, setInterval] = useState("year");
   const [billingMode, setBillingMode] = useState("subscription");
+  const [periodStart, setPeriodStart] = useState("");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
 
@@ -43,6 +45,7 @@ export default function SendLicenseSubscriptionModal({ open, onClose, partner, s
         property_count: count,
         billing_interval: interval,
         billing_mode: billingMode,
+        period_start: billingMode === "invoice" && periodStart ? periodStart : null,
       });
       const payload = res?.data || res;
       if (payload?.error) throw new Error(payload.error);
@@ -145,6 +148,23 @@ export default function SendLicenseSubscriptionModal({ open, onClose, partner, s
               </label>
             </div>
           </div>
+
+          {billingMode === "invoice" && (
+            <div>
+              <label className="text-xs font-semibold text-gray-700 mb-1.5 block">Service period starts</label>
+              <input
+                type="date"
+                value={periodStart}
+                onChange={(e) => setPeriodStart(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm text-gray-900 focus:outline-none focus:border-blue-400"
+              />
+              <p className="text-xs text-gray-500 mt-1.5">
+                {periodStart
+                  ? `Invoice is sent now and covers ${servicePeriodLabel(periodStart, interval)}.`
+                  : "Leave blank for a plain invoice with no service dates."}
+              </p>
+            </div>
+          )}
 
           {error && (
             <div className="p-3 rounded-lg bg-red-50 text-red-700 text-sm border border-red-100">{error}</div>
