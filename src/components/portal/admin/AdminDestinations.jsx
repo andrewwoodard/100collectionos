@@ -487,8 +487,8 @@ export default function AdminDestinations() {
         latitude: Number(body.latitude),
         longitude: Number(body.longitude),
       };
-      const res = await cms.update("destinations", id, patch);
-      if (res?.error) throw new Error(res.error);
+      const updateRes = await cms.update("destinations", id, patch);
+      if (updateRes?.error) throw new Error(updateRes.error);
       return { ...patch, display_name: body.display_name, provider: body.provider };
     },
     onSuccess: (result) => {
