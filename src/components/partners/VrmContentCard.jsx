@@ -68,12 +68,14 @@ export default function VrmContentCard({ partnerName }) {
 
   const [bodyText, setBodyText] = useState("");
   const [heroUrl, setHeroUrl] = useState("");
+  const [muxPlaybackId, setMuxPlaybackId] = useState("");
   const [uploadingHero, setUploadingHero] = useState(false);
 
   useEffect(() => {
     if (vrm) {
       setBodyText(vrm.body_text || portableTextToPlainText(vrm.body_json) || "");
       setHeroUrl(vrm.main_image_url || "");
+      setMuxPlaybackId(vrm.mux_playback_id || "");
     }
   }, [vrm]);
 
@@ -113,10 +115,13 @@ export default function VrmContentCard({ partnerName }) {
   };
 
   const handleSave = () => {
+    const muxId = String(muxPlaybackId || "").trim() || null;
     updateMutation.mutate({
       body_text: bodyText || null,
       body_json: plainTextToPortableText(bodyText),
       main_image_url: heroUrl || null,
+      mux_playback_id: muxId,
+      video_json: muxId ? { _type: "mux.video", asset: { playbackId: muxId } } : null,
     });
   };
 
@@ -205,6 +210,29 @@ export default function VrmContentCard({ partnerName }) {
               <p className="text-[10px] text-gray-400">Wide hero at the top of the destination page (16:9 recommended)</p>
             </div>
           </div>
+        </div>
+
+        <div>
+          <Label className="text-xs text-gray-500 mb-1.5 block">Destination Mux video</Label>
+          <input
+            value={muxPlaybackId}
+            onChange={(e) => setMuxPlaybackId(e.target.value)}
+            placeholder="Mux playback ID"
+            className="w-full text-sm border border-gray-200 rounded-md px-3 py-2 focus:outline-none focus:ring-1 focus:ring-[#C9A96E]"
+          />
+          {muxPlaybackId ? (
+            <div className="mt-2 rounded-lg overflow-hidden border border-gray-200 bg-black aspect-video max-w-md">
+              <iframe
+                title="Mux destination video"
+                src={`https://player.mux.com/${encodeURIComponent(String(muxPlaybackId).trim())}`}
+                allow="accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture"
+                allowFullScreen
+                className="w-full h-full"
+              />
+            </div>
+          ) : (
+            <p className="text-[11px] text-gray-400 mt-1">Paste a Mux playback ID to preview the destinations-card video.</p>
+          )}
         </div>
 
         <div>

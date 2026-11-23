@@ -12,7 +12,7 @@ const DEST_COLUMNS = new Set([
   "id", "base44_destination_id", "supabase_destination_id", "name", "slug", "title",
   "is_exclusive", "geocode_query", "latitude", "longitude",
   "seo_title", "seo_description", "short_description", "area_descriptor", "area", "region",
-  "states", "season_info", "months", "temporary_vrm_url", "video_url", "destination_not_on",
+  "states", "season_info", "months", "temporary_vrm_url", "video_url", "mux_playback_id", "destination_not_on",
   "location_lat", "location_lng", "body_json", "body_text",
   "main_image_url", "main_image_alt", "map_image_url", "footer_image_url",
   "main_image_json", "map_image_json", "footer_image_json", "slider_images_json",

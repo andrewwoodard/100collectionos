@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS cms.destinations (
   months                      jsonb,
   temporary_vrm_url           text,
   video_url                   text,
+  mux_playback_id             text,
   destination_not_on          boolean,
   location_lat                double precision,
   location_lng                double precision,

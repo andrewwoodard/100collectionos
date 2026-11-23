@@ -272,6 +272,7 @@ async function main() {
       months: d.months || null,
       temporary_vrm_url: d.temporaryvrmurl || null,
       video_url: d.videoUrl || null,
+      mux_playback_id: d.muxPlaybackId || base.mux_playback_id || null,
       destination_not_on: d.destinationnoton ?? null,
       location_lat: d.location?.lat ?? null,
       location_lng: d.location?.lng ?? null,

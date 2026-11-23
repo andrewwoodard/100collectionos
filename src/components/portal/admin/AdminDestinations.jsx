@@ -11,7 +11,7 @@ import { useToast } from "@/components/ui/use-toast";
 import { useExistingMarkets } from "@/components/shared/MarketSelect";
 import {
   MapPin, ExternalLink, Loader2, RefreshCw, X, Link2, LocateFixed,
-  ChevronDown, ChevronRight, Image as ImageIcon, FileText, Search, Save,
+  ChevronDown, ChevronRight, Image as ImageIcon, FileText, Search, Save, Video,
 } from "lucide-react";
 
 const PUBLIC_SITE = "https://theonehundredcollection.com";
@@ -86,10 +86,59 @@ function EditableField({ label, value, onChange, multiline = false, placeholder 
   );
 }
 
-function DestinationContentPanel({ destination }) {
+function MuxPlaybackPreview({ playbackId }) {
+  const id = String(playbackId || "").trim();
+  if (!id) {
+    return (
+      <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 h-40 flex items-center justify-center text-xs text-slate-400">
+        No Mux playback ID set
+      </div>
+    );
+  }
+  return (
+    <div className="space-y-1.5">
+      <div className="rounded-lg overflow-hidden border border-slate-200 bg-black aspect-video">
+        <iframe
+          title="Mux destination video"
+          src={`https://player.mux.com/${encodeURIComponent(id)}?metadata-video-title=Destination%20video`}
+          allow="accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture"
+          allowFullScreen
+          className="w-full h-full"
+        />
+      </div>
+      <a
+        href={`https://dashboard.mux.com/video?playbackId=${encodeURIComponent(id)}`}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="text-[11px] text-[#C9A96E] hover:underline inline-flex items-center gap-1"
+      >
+        Open in Mux <ExternalLink className="w-3 h-3" />
+      </a>
+    </div>
+  );
+}
+
+function DestinationContentPanel({ destination, linkedPartners = [] }) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [form, setForm] = useState(null);
+
+  const destSlug = destination?.slug || slugify(destination?.name);
+
+  const { data: linkedVrm } = useQuery({
+    queryKey: ["cms-vrm-for-destination", destSlug],
+    queryFn: async () => {
+      const res = await cms.list("vrms", { first_destination_slug: destSlug }, null, 5);
+      if (res?.error) throw new Error(res.error);
+      const items = res?.items || [];
+      return (
+        items.find((v) => v.mux_playback_id) ||
+        items[0] ||
+        null
+      );
+    },
+    enabled: !!destSlug,
+  });
 
   useEffect(() => {
     if (!destination) return;
@@ -111,6 +160,7 @@ function DestinationContentPanel({ destination }) {
       months,
       temporary_vrm_url: destination.temporary_vrm_url || "",
       video_url: destination.video_url || "",
+      mux_playback_id: destination.mux_playback_id || linkedVrm?.mux_playback_id || "",
       destination_not_on: !!destination.destination_not_on,
       location_lat: destination.location_lat ?? "",
       location_lng: destination.location_lng ?? "",
@@ -120,7 +170,7 @@ function DestinationContentPanel({ destination }) {
       footer_image_url: destination.footer_image_url || "",
       body_text: destination.body_text || "",
     });
-  }, [destination]);
+  }, [destination, linkedVrm?.mux_playback_id]);
 
   const saveMutation = useMutation({
     mutationFn: async (payload) => {
@@ -128,18 +178,35 @@ function DestinationContentPanel({ destination }) {
         .split(",")
         .map((m) => m.trim())
         .filter(Boolean);
+      const muxId = String(payload.mux_playback_id || "").trim() || null;
       const res = await cms.update("destinations", destination.id, {
         ...payload,
         months,
+        mux_playback_id: muxId,
         location_lat: payload.location_lat === "" ? null : Number(payload.location_lat),
         location_lng: payload.location_lng === "" ? null : Number(payload.location_lng),
         source: destination.source ? `${destination.source}` : "portal",
       });
       if (res?.error) throw new Error(res.error);
+
+      // Keep linked VRM destination-card videos in sync (public destinations index).
+      if (destSlug) {
+        const vrmRes = await cms.list("vrms", { first_destination_slug: destSlug }, null, 20);
+        for (const vrm of vrmRes?.items || []) {
+          const video_json = muxId
+            ? { _type: "mux.video", asset: { playbackId: muxId } }
+            : null;
+          await cms.update("vrms", vrm.id, {
+            mux_playback_id: muxId,
+            video_json,
+          });
+        }
+      }
       return res?.item || res;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["cms-destinations"] });
+      queryClient.invalidateQueries({ queryKey: ["cms-vrm-for-destination", destSlug] });
       toast({ title: "Destination content saved" });
     },
     onError: (e) =>
@@ -246,6 +313,39 @@ function DestinationContentPanel({ destination }) {
             />
             <span className="text-xs text-slate-600">Hide from destination listings</span>
           </div>
+        </div>
+      </div>
+
+      <div className="rounded-lg border border-slate-200 bg-white p-3 space-y-3">
+        <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500">
+          <Video className="w-3.5 h-3.5" /> Destination Mux video
+        </div>
+        <p className="text-xs text-slate-500">
+          Playback ID used on the public destinations card
+          {linkedPartners?.[0]?.partner_name ? ` (synced to ${linkedPartners[0].partner_name})` : ""}.
+        </p>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+          <div className="space-y-2">
+            <EditableField
+              label="Mux playback ID"
+              value={form.mux_playback_id}
+              onChange={set("mux_playback_id")}
+              placeholder="e.g. zIP9FjW4nIUdmbpkMN2LKe8xPb5J1Inj9ByFtfskuuU"
+            />
+            {linkedVrm?.mux_playback_id &&
+              linkedVrm.mux_playback_id !== String(form.mux_playback_id || "").trim() && (
+                <button
+                  type="button"
+                  className="text-[11px] text-[#C9A96E] hover:underline"
+                  onClick={() =>
+                    setForm((f) => ({ ...f, mux_playback_id: linkedVrm.mux_playback_id }))
+                  }
+                >
+                  Use linked VRM playback ID ({linkedVrm.partner_name || linkedVrm.slug})
+                </button>
+              )}
+          </div>
+          <MuxPlaybackPreview playbackId={form.mux_playback_id} />
         </div>
       </div>
 
@@ -683,7 +783,7 @@ export default function AdminDestinations() {
                       <tr className="bg-slate-50/40">
                         <td colSpan={5} className="px-6 py-4">
                           <div className="flex flex-col gap-5">
-                            <DestinationContentPanel destination={d} />
+                            <DestinationContentPanel destination={d} linkedPartners={linked} />
 
                             <DestinationGeocodeSection
                               destination={d}
