@@ -46,7 +46,7 @@ function MetaField({ label, value, multiline = false }) {
   );
 }
 
-function DestinationImage({ url, label }) {
+function DestinationImage({ url, label, alt }) {
   if (!url) return null;
   return (
     <a
@@ -54,9 +54,9 @@ function DestinationImage({ url, label }) {
       target="_blank"
       rel="noopener noreferrer"
       className="block rounded-lg overflow-hidden border border-slate-200 bg-slate-50 group"
-      title={label}
+      title={alt || label}
     >
-      <img src={url} alt={label || ""} className="w-full h-28 object-cover group-hover:opacity-90" loading="lazy" />
+      <img src={url} alt={alt || label || ""} className="w-full h-28 object-cover group-hover:opacity-90" loading="lazy" />
       <div className="px-2 py-1 text-[10px] font-medium text-slate-500 truncate">{label}</div>
     </a>
   );
@@ -115,6 +115,7 @@ function DestinationContentPanel({ destination }) {
       location_lat: destination.location_lat ?? "",
       location_lng: destination.location_lng ?? "",
       main_image_url: destination.main_image_url || "",
+      main_image_alt: destination.main_image_alt || "",
       map_image_url: destination.map_image_url || "",
       footer_image_url: destination.footer_image_url || "",
       body_text: destination.body_text || "",
@@ -252,13 +253,19 @@ function DestinationContentPanel({ destination }) {
         <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500">
           <ImageIcon className="w-3.5 h-3.5" /> Images
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <EditableField label="Main image URL" value={form.main_image_url} onChange={set("main_image_url")} />
+          <EditableField
+            label="Main image alt text"
+            value={form.main_image_alt}
+            onChange={set("main_image_alt")}
+            placeholder="Describe the destination scene for accessibility / SEO"
+          />
           <EditableField label="Map image URL" value={form.map_image_url} onChange={set("map_image_url")} />
           <EditableField label="Footer image URL" value={form.footer_image_url} onChange={set("footer_image_url")} />
         </div>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-          <DestinationImage url={form.main_image_url} label="Main image" />
+          <DestinationImage url={form.main_image_url} label="Main image" alt={form.main_image_alt} />
           <DestinationImage url={form.map_image_url} label="Map image" />
           <DestinationImage url={form.footer_image_url} label="Footer image" />
           {sliderUrls.slice(0, 5).map((url, i) => (
@@ -482,10 +489,14 @@ export default function AdminDestinations() {
       if (!body?.geocoded || body.latitude == null || body.longitude == null) {
         throw new Error("No match found for that address or place name.");
       }
+      const lat = Number(body.latitude);
+      const lng = Number(body.longitude);
       const patch = {
         geocode_query: q,
-        latitude: Number(body.latitude),
-        longitude: Number(body.longitude),
+        latitude: lat,
+        longitude: lng,
+        location_lat: lat,
+        location_lng: lng,
       };
       const updateRes = await cms.update("destinations", id, patch);
       if (updateRes?.error) throw new Error(updateRes.error);
@@ -509,6 +520,8 @@ export default function AdminDestinations() {
         geocode_query: null,
         latitude: null,
         longitude: null,
+        location_lat: null,
+        location_lng: null,
       });
       if (res?.error) throw new Error(res.error);
     },

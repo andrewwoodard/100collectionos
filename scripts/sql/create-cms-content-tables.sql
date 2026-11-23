@@ -36,6 +36,7 @@ CREATE TABLE IF NOT EXISTS cms.destinations (
   body_text                   text,
   -- Sanity images (resolved URLs + raw refs)
   main_image_url              text,
+  main_image_alt              text,
   map_image_url               text,
   footer_image_url            text,
   main_image_json             jsonb,
@@ -103,6 +104,7 @@ CREATE TABLE IF NOT EXISTS cms.vrms (
   price                       text,
   prop_class                  text,
   video_url                   text,
+  mux_playback_id             text,
   vrm_not_on                  boolean,
   published_at                timestamptz,
   -- portable text / nested
