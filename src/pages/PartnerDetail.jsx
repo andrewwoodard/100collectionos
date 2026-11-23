@@ -528,7 +528,7 @@ export default function PartnerDetail() {
       } else {
         toast({
           title: "Partner marked inactive",
-          description: "Status synced to Supabase so the public site can hide this partner.",
+          description: "Status synced to Neon so the public site can hide this partner.",
         });
       }
     } catch (e) {

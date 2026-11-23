@@ -178,6 +178,22 @@ export async function handleNeonEntity(req: any, res: any, entityName: string, r
           console.warn("[neon-entities] JobPosting create side-effects failed:", error?.message || error);
         }
       }
+      if (entityName === "Property") {
+        try {
+          const { syncPropertyRecordToCms } = await import("./sync-property-to-cms.js");
+          await syncPropertyRecordToCms(record, { base44Id: record.id });
+        } catch (error: any) {
+          console.warn("[neon-entities] Property create → cms sync failed:", error?.message || error);
+        }
+      }
+      if (entityName === "Destination") {
+        try {
+          const { syncDestinationRecordToCms } = await import("./sync-destination-to-cms.js");
+          await syncDestinationRecordToCms(record, { base44Id: record.id });
+        } catch (error: any) {
+          console.warn("[neon-entities] Destination create → cms sync failed:", error?.message || error);
+        }
+      }
       return json(res, 200, record);
     }
 
@@ -214,6 +230,34 @@ export async function handleNeonEntity(req: any, res: any, entityName: string, r
           await syncJobPostingToSupabase(record);
         } catch (error: any) {
           console.warn("[neon-entities] JobPosting update sync failed:", error?.message || error);
+        }
+      }
+      if (entityName === "Property") {
+        try {
+          const { syncPropertyRecordToCms } = await import("./sync-property-to-cms.js");
+          await syncPropertyRecordToCms(record, { base44Id: record.id });
+          const status = String(record.status || "").toLowerCase();
+          const goingOff =
+            (body?.status !== undefined && status !== "active" && status !== "live") ||
+            (body?.active !== undefined && !(record.active === true || record.active === "true"));
+          if (goingOff) {
+            const { removePropertyFromPartnerShowcase } = await import("./showcase-visibility.js");
+            await removePropertyFromPartnerShowcase({
+              partnerName: record.partner_name,
+              propertyName: record.property_name || record.name,
+              listingUrl: record.listing_url || record.vrm_url || record.url,
+            });
+          }
+        } catch (error: any) {
+          console.warn("[neon-entities] Property update → cms sync failed:", error?.message || error);
+        }
+      }
+      if (entityName === "Destination") {
+        try {
+          const { syncDestinationRecordToCms } = await import("./sync-destination-to-cms.js");
+          await syncDestinationRecordToCms(record, { base44Id: record.id });
+        } catch (error: any) {
+          console.warn("[neon-entities] Destination update → cms sync failed:", error?.message || error);
         }
       }
       return json(res, 200, record);

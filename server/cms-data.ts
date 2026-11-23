@@ -65,6 +65,7 @@ const PROP_COLUMNS = new Set([
   "archived_at", "archived_by_user_id", "offboarding_status", "offboarding_reason",
   "offboarding_initiated_at", "offboarding_initiated_by", "offboarding_approved_at",
   "offboarding_approved_by",
+  "partner_sort_order",
   "created_at", "updated_at", "synced_at", "source",
 ]);
 
@@ -306,7 +307,19 @@ export async function handleCmsData(req: any, res: any, body: any = {}) {
       const record = pickColumns(data, allowed);
       delete record.id;
       if (!Object.keys(record).length) return json(res, 400, { error: "No updatable fields" });
-      const update = buildUpdate(tableSql, record, "id = $1", [String(id)]);
+      const idValue = String(id || "");
+      const bareId = idValue.replace(/^(base44|supabase):/, "");
+      let whereSql = "id = $1";
+      const whereParams: any[] = [idValue];
+      if (table === "properties") {
+        whereSql = `id = $1 OR base44_property_id = $2 OR supabase_property_id = $2
+          OR id = 'base44:' || $2 OR id = 'supabase:' || $2`;
+        whereParams.push(bareId);
+      } else if (table === "destinations") {
+        whereSql = `id = $1 OR base44_destination_id = $2 OR id = 'base44:' || $2 OR lower(slug) = lower($2)`;
+        whereParams.push(bareId);
+      }
+      const update = buildUpdate(tableSql, record, whereSql, whereParams);
       const { rows } = await pool.query(update.sql, update.params);
       if (!rows[0]) return json(res, 404, { error: "Not found" });
 
@@ -318,6 +331,26 @@ export async function handleCmsData(req: any, res: any, body: any = {}) {
             [rows[0].id, base44Id]
           );
           return json(res, 200, { item: updated[0] || rows[0] });
+        }
+      }
+
+      // Inactive properties should leave partner destination showcases (cms.vrms).
+      if (table === "properties") {
+        const status = String(rows[0].status || "").toLowerCase();
+        const goingOff =
+          (record.status !== undefined && status !== "active" && status !== "live") ||
+          (record.active !== undefined && rows[0].active === false);
+        if (goingOff) {
+          try {
+            const { removePropertyFromPartnerShowcase } = await import("./showcase-visibility.js");
+            await removePropertyFromPartnerShowcase({
+              partnerName: rows[0].partner_name,
+              propertyName: rows[0].property_name || rows[0].name,
+              listingUrl: rows[0].listing_url || rows[0].vrm_url || rows[0].url,
+            });
+          } catch (error: any) {
+            console.warn("[cmsData] showcase removal failed:", error?.message || error);
+          }
         }
       }
       return json(res, 200, { item: rows[0] });

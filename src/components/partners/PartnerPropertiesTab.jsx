@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
+import { cms } from "@/lib/cms";
 import { Link } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import StatusBadge from "../shared/StatusBadge";
@@ -125,7 +126,32 @@ export default function PartnerPropertiesTab({ properties, partnerId, partner, s
 
       await base44.entities.Property.update(prop.id, patch);
 
-      // Admin Properties table is backed by propertiesbase44 — update status + active there.
+      // Neon cms.properties is the source of truth for public destination pages.
+      const cmsPayload = {
+        status: nextStatus,
+        active: nextStatus === "active",
+        portal_visible: nextStatus === "active",
+        ...(nextStatus === "active"
+          ? { archived_at: null, archived_by_user_id: null }
+          : {
+              archived_at: patch.archived_at || new Date().toISOString(),
+              archived_by_user_id: patch.archived_by_user_id || null,
+            }),
+      };
+      try {
+        const cmsId =
+          prop.id?.startsWith?.("base44:") || prop.id?.startsWith?.("supabase:")
+            ? prop.id
+            : `base44:${prop.id}`;
+        const cmsRes = await cms.update("properties", cmsId, cmsPayload);
+        if (cmsRes?.error) {
+          console.warn("[PartnerPropertiesTab] cms status update:", cmsRes.error);
+        }
+      } catch (e) {
+        console.warn("[PartnerPropertiesTab] cms status update failed", e?.message || e);
+      }
+
+      // Keep propertiesbase44 mirror in sync (admin Properties table + legacy paths).
       const lookupUrl = prop.listing_url || prop.vrm_url || "";
       const sbPayload = {
         status: nextStatus,
@@ -157,6 +183,7 @@ export default function PartnerPropertiesTab({ properties, partnerId, partner, s
         queryClient.invalidateQueries({ queryKey: ["propertiesbase44"] }),
         queryClient.invalidateQueries({ queryKey: ["properties-b44"] }),
         queryClient.invalidateQueries({ queryKey: ["property"] }),
+        queryClient.invalidateQueries({ queryKey: ["cms-properties"] }),
       ]);
       toast({
         title: "Status updated",
@@ -248,17 +275,35 @@ export default function PartnerPropertiesTab({ properties, partnerId, partner, s
   // Drafts stay pinned above; only real properties are reorderable.
   const allRows = [...draftRows, ...orderedProperties];
 
-  const persistPropertyOrder = async (nextList) => {
+  const persistPropertyOrder = async (nextList, previousList) => {
     setReordering(true);
     try {
+      // Compare against the pre-drag order. nextList already has partner_sort_order
+      // rewritten to the new indices, so filtering against nextList would save nothing.
+      const prevById = new Map(
+        (previousList || []).map((p, index) => [
+          String(p.id),
+          Number.isFinite(Number(p.partner_sort_order)) ? Number(p.partner_sort_order) : index,
+        ])
+      );
       const updates = nextList
         .map((prop, index) => ({ prop, index }))
-        .filter(({ prop, index }) => Number(prop.partner_sort_order) !== index);
+        .filter(({ prop, index }) => prevById.get(String(prop.id)) !== index);
+
       await Promise.all(
-        updates.map(({ prop, index }) =>
-          base44.entities.Property.update(prop.id, { partner_sort_order: index })
-        )
+        updates.map(async ({ prop, index }) => {
+          await base44.entities.Property.update(prop.id, { partner_sort_order: index });
+          const cmsId =
+            prop.id?.startsWith?.("base44:") || prop.id?.startsWith?.("supabase:")
+              ? prop.id
+              : `base44:${prop.id}`;
+          const cmsRes = await cms.update("properties", cmsId, { partner_sort_order: index });
+          if (cmsRes?.error) {
+            console.warn("[PartnerPropertiesTab] cms sort update:", cmsRes.error);
+          }
+        })
       );
+      toast({ title: "Property order saved" });
       queryClient.invalidateQueries({ queryKey: ["partner-properties"] });
     } catch (err) {
       setOrderedProperties(sortPartnerProperties(properties || []));
@@ -285,12 +330,13 @@ export default function PartnerPropertiesTab({ properties, partnerId, partner, s
     const from = orderedProperties.findIndex((p) => String(p.id) === String(sourceId));
     const to = orderedProperties.findIndex((p) => String(p.id) === String(dropPropId));
     if (from < 0 || to < 0 || from === to) return;
+    const previousList = orderedProperties;
     const next = Array.from(orderedProperties);
     const [moved] = next.splice(from, 1);
     next.splice(to, 0, moved);
     const withOrder = next.map((p, index) => ({ ...p, partner_sort_order: index }));
     setOrderedProperties(withOrder);
-    persistPropertyOrder(withOrder);
+    persistPropertyOrder(withOrder, previousList);
   };
 
   // All stripe-backed licences (assigned or not)

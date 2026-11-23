@@ -698,6 +698,14 @@ async function handleSupabaseProperties(res: any, body: any) {
     const { rows } = await pool.query(insert.sql, insert.params);
     // Image-heavy creates: don't block the response on remote dual-write.
     await mirrorPublicPropertyRow(rows[0], { wait: !body.skip_image_ingest });
+    try {
+      const { syncPropertyRecordToCms } = await import("./sync-property-to-cms.js");
+      await syncPropertyRecordToCms(fromSupabase(rows[0]), {
+        supabaseId: String(rows[0].id || rows[0].row_id || ""),
+      });
+    } catch (error: any) {
+      console.warn("[supabaseProperties] create → cms sync failed:", error?.message || error);
+    }
     return json(res, 200, { property: fromSupabase(rows[0]) });
   }
 
@@ -722,6 +730,16 @@ async function handleSupabaseProperties(res: any, body: any) {
     if (!rows[0]) return json(res, 404, { error: "Property not found" });
     // Always wait on updates — status/active must hit the public site.
     await mirrorPublicPropertyRow(rows[0], { wait: true });
+
+    // Neon cms.properties is the portal/public source of truth.
+    try {
+      const { syncPropertyRecordToCms } = await import("./sync-property-to-cms.js");
+      await syncPropertyRecordToCms(fromSupabase(rows[0]), {
+        supabaseId: String(rows[0].id || rows[0].row_id || ""),
+      });
+    } catch (error: any) {
+      console.warn("[supabaseProperties] update → cms sync failed:", error?.message || error);
+    }
 
     // Draft/inactive/paused should leave partner destination showcases.
     const statusChangingOff = data?.status !== undefined && data.status !== "active";

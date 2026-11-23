@@ -260,6 +260,7 @@ CREATE TABLE IF NOT EXISTS cms.properties (
   offboarding_initiated_by    text,
   offboarding_approved_at     timestamptz,
   offboarding_approved_by     text,
+  partner_sort_order          integer,
   -- sync meta
   created_at                  timestamptz DEFAULT now(),
   updated_at                  timestamptz DEFAULT now(),

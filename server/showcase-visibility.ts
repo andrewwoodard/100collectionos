@@ -117,7 +117,17 @@ export async function removePropertyFromPartnerShowcase(opts: {
   }
 
   const pool = getNeonPool();
-  const { rows } = await pool.query(
+
+  // Prefer cms.vrms (portal/public SoT), fall back to supabase.vrms mirror.
+  const { rows: cmsRows } = await pool.query(
+    `SELECT id, sanity_id, showcase_json, partner_name
+     FROM cms.vrms
+     WHERE partner_name = $1 OR name = $1 OR title = $1
+     ORDER BY updated_at DESC NULLS LAST
+     LIMIT 3`,
+    [partnerName]
+  );
+  const { rows: sbRows } = await pool.query(
     `SELECT id, sanity_id, showcase_json
      FROM supabase.vrms
      WHERE partner_name = $1 OR name = $1 OR title = $1
@@ -125,42 +135,71 @@ export async function removePropertyFromPartnerShowcase(opts: {
      LIMIT 1`,
     [partnerName]
   );
-  const vrm = rows[0];
-  if (!vrm) return { ok: false, reason: "vrm_not_found" };
 
-  const showcase = parseShowcase(vrm.showcase_json);
-  const keep: any[] = [];
-  const removedKeys: string[] = [];
-  for (const item of showcase) {
-    if (propertyMatchesShowcaseItem(item, propertyName, listingUrl)) {
-      if (item?._key) removedKeys.push(String(item._key));
-      continue;
+  let removedTotal = 0;
+  let remaining = 0;
+  let sanity: any = { skipped: true as const, reason: "no_sanity_id" };
+
+  for (const vrm of cmsRows) {
+    const showcase = parseShowcase(vrm.showcase_json);
+    const keep: any[] = [];
+    const removedKeys: string[] = [];
+    for (const item of showcase) {
+      if (propertyMatchesShowcaseItem(item, propertyName, listingUrl)) {
+        if (item?._key) removedKeys.push(String(item._key));
+        continue;
+      }
+      keep.push(item);
     }
-    keep.push(item);
+    if (!removedKeys.length && keep.length === showcase.length) continue;
+    await pool.query(
+      `UPDATE cms.vrms SET showcase_json = $1::jsonb, updated_at = NOW(), synced_at = NOW() WHERE id = $2`,
+      [JSON.stringify(keep), vrm.id]
+    );
+    removedTotal += removedKeys.length;
+    remaining = keep.length;
+    if (vrm.sanity_id) {
+      sanity = await unsetSanityShowcaseItem(String(vrm.sanity_id), removedKeys);
+    }
   }
 
-  if (removedKeys.length === 0 && keep.length === showcase.length) {
-    return { ok: true, removed: 0, reason: "not_in_showcase" };
+  const sbVrm = sbRows[0];
+  if (sbVrm) {
+    const showcase = parseShowcase(sbVrm.showcase_json);
+    const keep: any[] = [];
+    const removedKeys: string[] = [];
+    for (const item of showcase) {
+      if (propertyMatchesShowcaseItem(item, propertyName, listingUrl)) {
+        if (item?._key) removedKeys.push(String(item._key));
+        continue;
+      }
+      keep.push(item);
+    }
+    if (removedKeys.length || keep.length !== showcase.length) {
+      await pool.query(
+        `UPDATE supabase.vrms SET showcase_json = $1::jsonb, updated_at = NOW() WHERE id = $2`,
+        [JSON.stringify(keep), sbVrm.id]
+      );
+      try {
+        await patchRemoteVrmShowcase(sbVrm.id, keep);
+      } catch (error: any) {
+        console.warn("[showcase-visibility] remote vrms patch failed:", error?.message || error);
+      }
+      removedTotal += removedKeys.length;
+      remaining = keep.length;
+      if (!cmsRows.length && sbVrm.sanity_id) {
+        sanity = await unsetSanityShowcaseItem(String(sbVrm.sanity_id), removedKeys);
+      }
+    }
   }
 
-  await pool.query(
-    `UPDATE supabase.vrms SET showcase_json = $1::jsonb, updated_at = NOW() WHERE id = $2`,
-    [JSON.stringify(keep), vrm.id]
-  );
-  try {
-    await patchRemoteVrmShowcase(vrm.id, keep);
-  } catch (error: any) {
-    console.warn("[showcase-visibility] remote vrms patch failed:", error?.message || error);
-  }
-
-  const sanity = vrm.sanity_id
-    ? await unsetSanityShowcaseItem(String(vrm.sanity_id), removedKeys)
-    : { skipped: true as const, reason: "no_sanity_id" };
+  if (!cmsRows.length && !sbVrm) return { ok: false, reason: "vrm_not_found" };
+  if (removedTotal === 0) return { ok: true, removed: 0, reason: "not_in_showcase" };
 
   return {
     ok: true,
-    removed: removedKeys.length,
-    remaining: keep.length,
+    removed: removedTotal,
+    remaining,
     sanity,
   };
 }
