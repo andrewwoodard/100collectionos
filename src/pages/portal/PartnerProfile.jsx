@@ -258,8 +258,8 @@ export default function PartnerProfile() {
     const setLoading = field === "profile_photo_url" ? setUploadingPhoto : setUploadingLogo;
     setLoading(true);
     try {
-      // Local Vercel Blob upload — Base44 UploadFile is unavailable on the Neon/auth host.
-      const file_url = await uploadPropertyImage(file);
+      // Local Vercel Blob upload — compresses first (phone headshots exceed Vercel’s body limit otherwise).
+      const file_url = await uploadPropertyImage(file, { folder: "partners" });
       if (!file_url) throw new Error("Upload returned no URL");
 
       const next = {

@@ -279,21 +279,21 @@ export default function PartnerProfileAdminCard({ partner, partnerId }) {
   const handleUpload = async (e, field) => {
     const file = e.target?.files?.[0];
     if (!file) return;
-    if (!String(file.type || "").startsWith("image/")) {
-      toast({ variant: "destructive", title: "Please choose an image file" });
-      return;
-    }
     const setLoading = field === "profile_photo_url" ? setUploadingPhoto : setUploadingLogo;
     setLoading(true);
     try {
-      const file_url = await uploadPropertyImage(file);
-      const next = { ...form, [field]: file_url };
+      const email = String(form.partner_email || ownerEmail || "").trim();
+      if (!email) {
+        throw new Error("This partner needs a primary contact email before a headshot can be saved.");
+      }
+      const file_url = await uploadPropertyImage(file, { folder: "partners" });
+      const next = { ...form, [field]: file_url, partner_email: email };
       setForm(next);
 
       // Persist immediately + push to public destination (vrms), same as partner portal upload.
       const payload = {
         ...next,
-        partner_email: next.partner_email || ownerEmail,
+        partner_email: email,
         partner_name: next.partner_name || partner?.partner_name || next.company_name,
         profile_status: next.profile_status || profile?.profile_status || "draft",
       };
