@@ -4,7 +4,8 @@ import { geocodeAddressString } from "./geocode-address.js";
 
 /**
  * Partner-facing direct property content update (no approval queue).
- * Writes Neon base44.property + Neon supabase.propertiesbase44 (+ remote Supabase when configured).
+ * Writes Neon cms.properties (portal SoT) + base44.property.
+ * Still mirrors supabase.propertiesbase44 while public site migrates off it.
  */
 export async function handleUpdatePropertyContent(req: any, res: any, body: any = {}) {
   if (req.method !== "POST") return json(res, 405, { error: "Method not allowed" });
@@ -37,6 +38,7 @@ export async function handleUpdatePropertyContent(req: any, res: any, body: any 
   } = fields;
 
   const results: Record<string, boolean | string | null> = {
+    cms: false,
     base44: false,
     supabase: false,
     geocoded: false,
@@ -247,10 +249,97 @@ export async function handleUpdatePropertyContent(req: any, res: any, body: any 
     }
   }
 
-  if (!results.base44 && !results.supabase) {
+  // 3. Update Neon cms.properties (portal source of truth)
+  const cmsPatch: Record<string, unknown> = {};
+  if (short_summary !== undefined) {
+    cmsPatch.short_summary = short_summary;
+    cmsPatch.excerpt = short_summary;
+  }
+  if (description !== undefined) {
+    cmsPatch.description = description;
+    cmsPatch.text = description;
+  }
+  if (why_100_collection !== undefined) {
+    cmsPatch.why_100_collection = why_100_collection;
+    cmsPatch.why_onehundred = why_100_collection;
+  }
+  if (unique_features !== undefined) {
+    cmsPatch.unique_features = unique_features;
+    cmsPatch.unique_feature = unique_features;
+  }
+  if (amenities !== undefined) {
+    cmsPatch.amenities = JSON.stringify(Array.isArray(amenities) ? amenities : []);
+  }
+  if (filtered_amenities !== undefined) {
+    cmsPatch.filtered_amenities = JSON.stringify(
+      Array.isArray(filtered_amenities) ? filtered_amenities : []
+    );
+  }
+  if (pet_policy_url !== undefined) cmsPatch.pet_policy_url = pet_policy_url || null;
+  if (bedrooms !== undefined) {
+    cmsPatch.bedrooms = bedrooms === "" || bedrooms == null ? null : String(bedrooms);
+  }
+  if (bathrooms !== undefined) {
+    cmsPatch.bathrooms = bathrooms === "" || bathrooms == null ? null : String(bathrooms);
+  }
+  if (half_bathrooms !== undefined) {
+    cmsPatch.half_bathrooms =
+      half_bathrooms === "" || half_bathrooms == null ? null : String(half_bathrooms);
+  }
+  if (sleeps !== undefined) {
+    const s = sleeps === "" || sleeps == null ? null : String(sleeps);
+    cmsPatch.sleeps = s;
+    cmsPatch.occupancy = s;
+  }
+  if (property_type !== undefined) {
+    cmsPatch.property_type = property_type;
+    cmsPatch.house_type = property_type;
+  }
+  if (address !== undefined) cmsPatch.address = address || null;
+  if (location_full !== undefined) cmsPatch.location_full = location_full || null;
+  if (best_fit_guest !== undefined) cmsPatch.best_fit_guest = best_fit_guest;
+  if (design_style_notes !== undefined) cmsPatch.design_style_notes = design_style_notes;
+  if (headline !== undefined) cmsPatch.headline = headline;
+  if (latitude !== undefined) cmsPatch.latitude = latitude;
+  if (longitude !== undefined) cmsPatch.longitude = longitude;
+  cmsPatch.updated_at = new Date().toISOString();
+  cmsPatch.synced_at = new Date().toISOString();
+
+  if (Object.keys(cmsPatch).length > 2) {
+    const cmsKeys = Object.keys(cmsPatch);
+    const jsonCols = new Set(["amenities", "filtered_amenities"]);
+    const setClauses = cmsKeys
+      .map((k, i) =>
+        jsonCols.has(k) ? `${quoteIdentSafe(k)} = $${i + 2}::jsonb` : `${quoteIdentSafe(k)} = $${i + 2}`
+      )
+      .join(", ");
+    const values = Object.values(cmsPatch);
+    const ids = [
+      basePropertyId ? String(basePropertyId) : "",
+      supabaseRowId ? String(supabaseRowId) : "",
+      resolvedListingUrl || "",
+    ].filter(Boolean);
+
+    if (ids.length) {
+      const { rowCount } = await pool.query(
+        `UPDATE cms.properties
+         SET ${setClauses}
+         WHERE id = ANY($1::text[])
+            OR base44_property_id = ANY($1::text[])
+            OR supabase_property_id = ANY($1::text[])
+            OR url = ANY($1::text[])
+            OR vrm_url = ANY($1::text[])
+            OR listing_url = ANY($1::text[])`,
+        [ids, ...values]
+      );
+      results.cms = (rowCount || 0) > 0;
+    }
+  }
+
+  if (!results.cms && !results.base44 && !results.supabase) {
     return json(res, 400, {
       error:
-        "No property record could be updated. Ensure a Base44 property ID or Supabase row ID / URL is provided.",
+        "No property record could be updated. Ensure a Base44 property ID or listing URL is provided.",
     });
   }
 

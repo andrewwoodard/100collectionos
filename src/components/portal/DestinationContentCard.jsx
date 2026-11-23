@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { cms } from "@/lib/cms";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Loader2, Save, FileText, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -51,14 +51,10 @@ export default function DestinationContentCard({ partnerName, market }) {
   const queryClient = useQueryClient();
 
   const { data: vrm, isLoading } = useQuery({
-    queryKey: ["portal-vrm-content", partnerName],
+    queryKey: ["cms-vrm-content", partnerName],
     queryFn: async () => {
-      const res = await base44.functions.invoke("supabaseData", {
-        table: "vrms",
-        action: "list",
-        filters: { partner_name: partnerName },
-        limit: 1,
-      });
+      const res = await cms.list("vrms", { partner_name: partnerName }, null, 1);
+      if (res?.error) throw new Error(res.error);
       return res?.items?.[0] || null;
     },
     enabled: !!partnerName,
@@ -78,27 +74,24 @@ export default function DestinationContentCard({ partnerName, market }) {
         doyen_name: vrm.doyen_name || "",
         doyen_title: vrm.doyen_title || "",
         doyen_short_description: vrm.doyen_short_description || "",
-        doyen_text: vrm.doyen_text || "",
-        body_text: portableTextToPlainText(vrm.body_json),
+        doyen_text: vrm.doyen_text || portableTextToPlainText(vrm.doyentext_json) || "",
+        body_text: vrm.body_text || portableTextToPlainText(vrm.body_json) || "",
       });
     }
   }, [vrm]);
 
   const updateMutation = useMutation({
     mutationFn: async (data) => {
-      await base44.functions.invoke("supabaseData", {
-        table: "vrms",
-        action: "update",
-        id: vrm.id,
-        data,
-      });
+      const res = await cms.update("vrms", vrm.id, data);
+      if (res?.error) throw new Error(res.error);
+      return res;
     },
     onSuccess: () => {
-      toast.success("Destination page content saved. Changes appear on the live site within 24 hours.");
-      queryClient.invalidateQueries({ queryKey: ["portal-vrm-content", partnerName] });
+      toast.success("Destination page content saved to Neon.");
+      queryClient.invalidateQueries({ queryKey: ["cms-vrm-content", partnerName] });
     },
-    onError: () => {
-      toast.error("Failed to update content.");
+    onError: (e) => {
+      toast.error(e?.message || "Failed to update content.");
     },
   });
 
@@ -108,8 +101,9 @@ export default function DestinationContentCard({ partnerName, market }) {
       doyen_title: form.doyen_title || null,
       doyen_short_description: form.doyen_short_description || null,
       doyen_text: form.doyen_text || null,
-      doyentext_json: JSON.stringify(plainTextToPortableText(form.doyen_text)),
-      body_json: JSON.stringify(plainTextToPortableText(form.body_text)),
+      doyentext_json: plainTextToPortableText(form.doyen_text),
+      body_text: form.body_text || null,
+      body_json: plainTextToPortableText(form.body_text),
     });
   };
 

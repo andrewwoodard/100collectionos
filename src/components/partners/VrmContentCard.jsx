@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { sb } from "@/lib/supabase";
+import { cms } from "@/lib/cms";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Loader2, Save, FileText, ExternalLink, Upload, ImagePlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -57,9 +57,10 @@ export default function VrmContentCard({ partnerName }) {
   const queryClient = useQueryClient();
 
   const { data: vrm, isLoading } = useQuery({
-    queryKey: ["vrm-content", partnerName],
+    queryKey: ["cms-vrm-content", partnerName],
     queryFn: async () => {
-      const res = await sb.list("vrms", { partner_name: partnerName });
+      const res = await cms.list("vrms", { partner_name: partnerName }, null, 1);
+      if (res?.error) throw new Error(res.error);
       return res?.items?.[0] || null;
     },
     enabled: !!partnerName,
@@ -71,21 +72,23 @@ export default function VrmContentCard({ partnerName }) {
 
   useEffect(() => {
     if (vrm) {
-      setBodyText(portableTextToPlainText(vrm.body_json));
+      setBodyText(vrm.body_text || portableTextToPlainText(vrm.body_json) || "");
       setHeroUrl(vrm.main_image_url || "");
     }
   }, [vrm]);
 
   const updateMutation = useMutation({
     mutationFn: async (data) => {
-      await sb.update("vrms", vrm.id, data);
+      const res = await cms.update("vrms", vrm.id, data);
+      if (res?.error) throw new Error(res.error);
+      return res;
     },
     onSuccess: () => {
-      toast({ title: "Destination page content updated." });
-      queryClient.invalidateQueries({ queryKey: ["vrm-content", partnerName] });
+      toast({ title: "Destination page content saved to Neon." });
+      queryClient.invalidateQueries({ queryKey: ["cms-vrm-content", partnerName] });
     },
-    onError: () => {
-      toast({ title: "Failed to update content.", variant: "destructive" });
+    onError: (e) => {
+      toast({ title: "Failed to update content.", description: e?.message, variant: "destructive" });
     },
   });
 
@@ -111,7 +114,8 @@ export default function VrmContentCard({ partnerName }) {
 
   const handleSave = () => {
     updateMutation.mutate({
-      body_json: JSON.stringify(plainTextToPortableText(bodyText)),
+      body_text: bodyText || null,
+      body_json: plainTextToPortableText(bodyText),
       main_image_url: heroUrl || null,
     });
   };

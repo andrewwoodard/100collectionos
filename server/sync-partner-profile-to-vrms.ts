@@ -1,10 +1,10 @@
 /**
- * Push PartnerProfile branding + owner favorites onto supabase.vrms
- * (Neon mirror + classic Supabase for the public destination page).
+ * Push PartnerProfile branding + owner favorites onto Neon cms.vrms
+ * (portal source of truth). Optionally mirrors to supabase.vrms for
+ * transitional readers still on the old Neon mirror.
  */
-import { getNeonPool, json } from "./neon-db.js";
+import { getNeonPool, json, newId } from "./neon-db.js";
 import { requireSession } from "./require-session.js";
-import { hasRemoteSupabase, supabaseRest } from "./supabase-remote.js";
 
 function slugify(name: string) {
   return (name || "")
@@ -138,10 +138,10 @@ async function loadProfileAndPartner(body: any) {
   return { profile, partner };
 }
 
-async function upsertNeonVrms(payload: Record<string, any>) {
+async function upsertCmsVrms(payload: Record<string, any>) {
   const pool = getNeonPool();
   const { rows: existing } = await pool.query(
-    `SELECT id FROM supabase.vrms
+    `SELECT id FROM cms.vrms
      WHERE partner_name = $1 OR slug = $2
      ORDER BY CASE WHEN partner_name = $1 THEN 0 ELSE 1 END
      LIMIT 1`,
@@ -169,14 +169,21 @@ async function upsertNeonVrms(payload: Record<string, any>) {
     "first_destination_slug",
     "destination_slugs",
     "favorites_json",
-    "showproperties",
+    "show_properties",
     "onboarded",
     "is_onboarded",
     "source",
     "updated_at",
+    "synced_at",
   ];
 
-  // Skip main_image_url on update when unset so Destination About hero isn't wiped.
+  // Map legacy showproperties → cms.show_properties
+  const row = {
+    ...payload,
+    show_properties: payload.showproperties ?? payload.show_properties ?? true,
+    synced_at: new Date().toISOString(),
+  };
+
   const updateCols = cols.filter(
     (col) => col !== "main_image_url" || Object.prototype.hasOwnProperty.call(payload, "main_image_url")
   );
@@ -184,9 +191,9 @@ async function upsertNeonVrms(payload: Record<string, any>) {
   const valuesFor = (useCols: string[]) =>
     useCols.map((col) => {
       if (col === "destination_slugs" || col === "favorites_json") {
-        return payload[col] == null ? null : JSON.stringify(payload[col]);
+        return row[col] == null ? null : JSON.stringify(row[col]);
       }
-      return payload[col] ?? null;
+      return row[col] ?? null;
     });
 
   if (existing[0]?.id) {
@@ -198,66 +205,26 @@ async function upsertNeonVrms(payload: Record<string, any>) {
       return `${col} = $${i + 1}`;
     });
     const { rows } = await pool.query(
-      `UPDATE supabase.vrms SET ${sets.join(", ")} WHERE id = $${updateCols.length + 1}
+      `UPDATE cms.vrms SET ${sets.join(", ")} WHERE id = $${updateCols.length + 1}
        RETURNING id`,
       [...values, existing[0].id]
     );
     return { action: "updated" as const, vrms_id: rows[0]?.id };
   }
 
-  const { rows: maxRows } = await pool.query(
-    `SELECT COALESCE(MAX(id::bigint), 0)::bigint + 1 AS next_id FROM supabase.vrms`
-  );
-  const nextId = String(maxRows[0]?.next_id || Date.now());
+  const nextId = `vrm:${newId()}`;
   const insertCols = updateCols;
   const insertValues = valuesFor(insertCols);
   const placeholders = insertCols.map((col, i) =>
     col === "destination_slugs" || col === "favorites_json" ? `$${i + 2}::jsonb` : `$${i + 2}`
   );
   const { rows } = await pool.query(
-    `INSERT INTO supabase.vrms (id, ${insertCols.join(", ")}, created_at, imported_at)
-     VALUES ($1, ${placeholders.join(", ")}, NOW(), NOW())
+    `INSERT INTO cms.vrms (id, ${insertCols.join(", ")}, created_at)
+     VALUES ($1, ${placeholders.join(", ")}, NOW())
      RETURNING id`,
     [nextId, ...insertValues]
   );
   return { action: "created" as const, vrms_id: rows[0]?.id };
-}
-
-async function upsertRemoteVrms(payload: Record<string, any>, neonId?: string | number) {
-  if (!hasRemoteSupabase()) {
-    return { skipped: true as const, reason: "no remote supabase" };
-  }
-
-  const remotePayload = {
-    ...payload,
-    destination_slugs: payload.destination_slugs
-      ? JSON.stringify(payload.destination_slugs)
-      : null,
-    favorites_json: payload.favorites_json ?? null,
-  };
-
-  const existing = await supabaseRest(
-    `vrms?or=(partner_name.eq.${encodeURIComponent(payload.partner_name)},slug.eq.${encodeURIComponent(payload.slug)})&select=id&limit=5`
-  );
-  const match = Array.isArray(existing) ? existing[0] : null;
-  if (match?.id != null) {
-    const patched = await supabaseRest(`vrms?id=eq.${encodeURIComponent(String(match.id))}`, {
-      method: "PATCH",
-      body: JSON.stringify(remotePayload),
-    });
-    return { skipped: false as const, action: "updated" as const, id: match.id, row: patched };
-  }
-
-  const id = neonId != null ? Number(neonId) || neonId : undefined;
-  const created = await supabaseRest("vrms", {
-    method: "POST",
-    body: JSON.stringify({
-      ...(id != null ? { id } : {}),
-      ...remotePayload,
-      created_at: new Date().toISOString(),
-    }),
-  });
-  return { skipped: false as const, action: "created" as const, row: created };
 }
 
 export async function handleSyncPartnerProfileToVrms(req: any, res: any, body: any) {
@@ -280,20 +247,13 @@ export async function handleSyncPartnerProfileToVrms(req: any, res: any, body: a
     return;
   }
 
-  const neon = await upsertNeonVrms(payload);
-  let remote: any = { skipped: true };
-  try {
-    remote = await upsertRemoteVrms(payload, neon.vrms_id);
-  } catch (error: any) {
-    console.warn("[syncPartnerProfileToVrms] remote failed:", error?.message || error);
-    remote = { skipped: false, error: error?.message || String(error) };
-  }
+  const neon = await upsertCmsVrms(payload);
 
   json(res, 200, {
     action: neon.action,
     vrms_id: neon.vrms_id,
     favorites: Boolean(payload.favorites_json),
     destination_slug: payload.first_destination_slug,
-    remote,
+    store: "cms.vrms",
   });
 }

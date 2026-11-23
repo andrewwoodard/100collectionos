@@ -1808,6 +1808,7 @@ export const LOCAL_FUNCTIONS = new Set([
   "listSanityContent",
   "listSanitySeoActivity",
   "getSanityDestination",
+  "cmsData",
   ...STRIPE_FUNCTIONS,
 ]);
 
@@ -1867,6 +1868,9 @@ export async function handleNeonFunction(req: any, res: any, functionName: strin
     } else if (functionName === "getSanityDestination") {
       const { handleGetSanityDestination } = await import("./get-sanity-destination.js");
       await handleGetSanityDestination(req, res, body);
+    } else if (functionName === "cmsData") {
+      const { handleCmsData } = await import("./cms-data.js");
+      await handleCmsData(req, res, body);
     } else if (functionName === "rewritePropertyText") {
       const { handleRewritePropertyText } = await import("./rewrite-property-text.js");
       await handleRewritePropertyText(req, res, body);

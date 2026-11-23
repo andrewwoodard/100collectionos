@@ -70,25 +70,28 @@ export default function MyProperties() {
     enabled: !!user?.email,
   });
 
-  // Fetch Properties across all visible partners (parent + sub-brands)
-  // from the propertiesbase44 Supabase table (single source of truth).
+  // Fetch Properties across all visible partners from Neon cms.properties.
   const { data: linkedProperties = [], isLoading: loadingProperties } = useQuery({
-    queryKey: ["my-linked-properties", visiblePartnerNames.join(",")],
+    queryKey: ["my-linked-properties-cms", visiblePartnerNames.join(",")],
     queryFn: async () => {
       if (visiblePartnerNames.length === 0) return [];
+      const { cms } = await import("@/lib/cms");
       const results = await Promise.all(
-        visiblePartnerNames.map(name =>
-          base44.functions.invoke("supabaseProperties", {
-            action: "list",
-            filters: { partner_name: name },
-            limit: 1000,
-          }).then(res => res.data?.properties || []).catch(() => [])
+        visiblePartnerNames.map((name) =>
+          cms.list("properties", { partner_name: name }, null, 1000)
+            .then((res) => res?.items || [])
+            .catch(() => [])
         )
       );
       return results.flat()
-        .filter(p => !p.archived_at)
-        .map(p => ({
+        .filter((p) => !p.archived_at)
+        .map((p) => ({
           ...p,
+          // Compat aliases used by existing portal UI
+          property_name: p.property_name || p.name,
+          market: p.market || p.destination,
+          listing_url: p.listing_url || p.url || p.vrm_url,
+          sleeps: p.sleeps || p.occupancy,
           brand_partner_id: partnerNameToId[p.partner_name] || null,
           brand_partner_name: p.partner_name || null,
           _isSubBrandProperty: partnerNameToId[p.partner_name] !== primaryPartnerId,

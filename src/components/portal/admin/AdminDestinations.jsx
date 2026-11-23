@@ -1,12 +1,17 @@
 import React, { useMemo, useEffect, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
+import { cms } from "@/lib/cms";
 import { Switch } from "@/components/ui/switch";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
+import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/use-toast";
 import { useExistingMarkets } from "@/components/shared/MarketSelect";
 import {
   MapPin, ExternalLink, Loader2, RefreshCw, X, Link2, LocateFixed,
-  ChevronDown, ChevronRight, Image as ImageIcon, FileText, Search,
+  ChevronDown, ChevronRight, Image as ImageIcon, FileText, Search, Save,
 } from "lucide-react";
 
 const PUBLIC_SITE = "https://theonehundredcollection.com";
@@ -57,112 +62,126 @@ function DestinationImage({ url, label }) {
   );
 }
 
-function DestinationContentPanel({ destination }) {
-  const slug = destination?.slug || slugify(destination?.name);
-  const { data, isLoading, isError, error, refetch, isFetching } = useQuery({
-    queryKey: ["sanity-destination", slug, destination?.name],
-    queryFn: async () => {
-      const res = await base44.functions.invoke("getSanityDestination", {
-        slug,
-        name: destination?.name,
-      });
-      const body = res?.data || res || {};
-      if (body.error) throw new Error(body.error);
-      return body;
-    },
-    enabled: !!destination?.id,
-    staleTime: 60_000,
-  });
-
-  const content = data?.destination;
-
-  const directoryMeta = (
-    <div className="rounded-lg border border-slate-200 bg-white p-3 grid grid-cols-2 md:grid-cols-4 gap-3">
-      <MetaField label="Directory name" value={destination?.name} />
-      <MetaField label="Directory slug" value={destination?.slug || slug} />
-      <MetaField label="Exclusive" value={destination?.is_exclusive ? "Yes" : "No"} />
-      <MetaField
-        label="Coordinates"
-        value={
-          destination?.latitude != null && destination?.longitude != null
-            ? `${Number(destination.latitude).toFixed(5)}, ${Number(destination.longitude).toFixed(5)}`
-            : ""
-        }
-      />
+function EditableField({ label, value, onChange, multiline = false, placeholder = "" }) {
+  return (
+    <div className="space-y-1">
+      <Label className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">{label}</Label>
+      {multiline ? (
+        <Textarea
+          value={value || ""}
+          onChange={(e) => onChange(e.target.value)}
+          rows={3}
+          placeholder={placeholder}
+          className="text-sm"
+        />
+      ) : (
+        <Input
+          value={value || ""}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={placeholder}
+          className="text-sm"
+        />
+      )}
     </div>
   );
+}
 
-  if (isLoading) {
+function DestinationContentPanel({ destination }) {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const [form, setForm] = useState(null);
+
+  useEffect(() => {
+    if (!destination) return;
+    const months = Array.isArray(destination.months)
+      ? destination.months.join(", ")
+      : typeof destination.months === "string"
+        ? destination.months
+        : "";
+    setForm({
+      title: destination.title || destination.name || "",
+      seo_title: destination.seo_title || "",
+      seo_description: destination.seo_description || "",
+      short_description: destination.short_description || "",
+      area_descriptor: destination.area_descriptor || "",
+      area: destination.area || "",
+      region: destination.region || "",
+      states: destination.states || "",
+      season_info: destination.season_info || "",
+      months,
+      temporary_vrm_url: destination.temporary_vrm_url || "",
+      video_url: destination.video_url || "",
+      destination_not_on: !!destination.destination_not_on,
+      location_lat: destination.location_lat ?? "",
+      location_lng: destination.location_lng ?? "",
+      main_image_url: destination.main_image_url || "",
+      map_image_url: destination.map_image_url || "",
+      footer_image_url: destination.footer_image_url || "",
+      body_text: destination.body_text || "",
+    });
+  }, [destination]);
+
+  const saveMutation = useMutation({
+    mutationFn: async (payload) => {
+      const months = String(payload.months || "")
+        .split(",")
+        .map((m) => m.trim())
+        .filter(Boolean);
+      const res = await cms.update("destinations", destination.id, {
+        ...payload,
+        months,
+        location_lat: payload.location_lat === "" ? null : Number(payload.location_lat),
+        location_lng: payload.location_lng === "" ? null : Number(payload.location_lng),
+        source: destination.source ? `${destination.source}` : "portal",
+      });
+      if (res?.error) throw new Error(res.error);
+      return res?.item || res;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["cms-destinations"] });
+      toast({ title: "Destination content saved" });
+    },
+    onError: (e) =>
+      toast({ variant: "destructive", title: "Save failed", description: e?.message || "Try again." }),
+  });
+
+  if (!form) {
     return (
-      <div className="space-y-4">
-        {directoryMeta}
-        <div className="flex items-center gap-2 text-sm text-slate-400 py-2">
-          <Loader2 className="w-4 h-4 animate-spin" /> Loading Sanity content &amp; meta…
-        </div>
+      <div className="flex items-center gap-2 text-sm text-slate-400 py-2">
+        <Loader2 className="w-4 h-4 animate-spin" /> Loading content…
       </div>
     );
   }
 
-  if (isError) {
-    return (
-      <div className="space-y-4">
-        {directoryMeta}
-        <div className="rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-sm text-red-700 flex items-center justify-between gap-2">
-          <span>{error?.message || "Couldn’t load destination content"}</span>
-          <button type="button" onClick={() => refetch()} className="text-xs font-medium underline">
-            Retry
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  if (!content) {
-    return (
-      <div className="space-y-4">
-        {directoryMeta}
-        <div className="rounded-lg border border-dashed border-slate-200 bg-white px-3 py-4 text-sm text-slate-400">
-          No Sanity destination document matched “{destination?.name}”
-          {slug ? ` (slug: ${slug})` : ""}. Create or rename it in Sanity to edit SEO and page content.
-        </div>
-      </div>
-    );
-  }
+  const set = (key) => (value) => setForm((f) => ({ ...f, [key]: value }));
+  const sliderUrls = Array.isArray(destination.slider_images_json)
+    ? destination.slider_images_json.map((s) => (typeof s === "string" ? s : s?.url)).filter(Boolean)
+    : [];
 
   return (
     <div className="space-y-4">
-      {directoryMeta}
-
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div>
           <div className="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-1">
-            Public content &amp; meta
+            Content &amp; meta
           </div>
           <p className="text-sm text-slate-600">
-            From Sanity · last updated {content.updatedAt ? new Date(content.updatedAt).toLocaleString() : "—"}
+            Neon cms.destinations · updated{" "}
+            {destination.updated_at ? new Date(destination.updated_at).toLocaleString() : "—"}
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => refetch()}
-            disabled={isFetching}
-            className="inline-flex items-center gap-1 text-xs text-slate-500 hover:text-slate-800"
-          >
-            {isFetching ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
-            Refresh
-          </button>
-          {content.studioUrl && (
-            <a
-              href={content.studioUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 text-xs text-[#A68B4B] hover:underline"
-            >
-              Edit in Sanity <ExternalLink className="w-3 h-3" />
-            </a>
+        <Button
+          size="sm"
+          onClick={() => saveMutation.mutate(form)}
+          disabled={saveMutation.isPending}
+        >
+          {saveMutation.isPending ? (
+            <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" />
+          ) : (
+            <Save className="w-3.5 h-3.5 mr-1" />
           )}
-        </div>
+          Save content
+        </Button>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -170,86 +189,94 @@ function DestinationContentPanel({ destination }) {
           <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500">
             <Search className="w-3.5 h-3.5" /> SEO meta
           </div>
-          <MetaField label="SEO title" value={content.seoTitle} />
-          <MetaField label="SEO description" value={content.seoDescription} multiline />
-          <MetaField label="Canonical slug" value={content.slug} />
+          <EditableField label="SEO title" value={form.seo_title} onChange={set("seo_title")} />
+          <EditableField
+            label="SEO description"
+            value={form.seo_description}
+            onChange={set("seo_description")}
+            multiline
+          />
         </div>
 
         <div className="rounded-lg border border-slate-200 bg-white p-3 space-y-3">
           <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500">
             <FileText className="w-3.5 h-3.5" /> Page copy
           </div>
-          <MetaField label="Title" value={content.title} />
-          <MetaField label="Short description" value={content.shortDescription} multiline />
-          <MetaField label="Area descriptor" value={content.areaDescriptor} multiline />
-          <MetaField label="Area / region" value={[content.area, content.region].filter(Boolean).join(" · ")} />
-          <MetaField label="Location" value={content.location} />
-          <MetaField label="Season info" value={content.seasonInfo} multiline />
-          <MetaField
-            label="Months"
-            value={Array.isArray(content.months) && content.months.length ? content.months.join(", ") : ""}
+          <EditableField label="Title" value={form.title} onChange={set("title")} />
+          <EditableField
+            label="Short description"
+            value={form.short_description}
+            onChange={set("short_description")}
+            multiline
           />
-          <MetaField label="Not on destination" value={content.notOnDestination} multiline />
-          <MetaField label="Temporary VRM URL" value={content.temporaryVrmUrl} />
+          <EditableField
+            label="Area descriptor"
+            value={form.area_descriptor}
+            onChange={set("area_descriptor")}
+            multiline
+          />
+          <div className="grid grid-cols-2 gap-2">
+            <EditableField label="Area" value={form.area} onChange={set("area")} />
+            <EditableField label="Region" value={form.region} onChange={set("region")} />
+          </div>
+          <EditableField label="States" value={form.states} onChange={set("states")} />
+          <EditableField
+            label="Season info"
+            value={form.season_info}
+            onChange={set("season_info")}
+            multiline
+          />
+          <EditableField
+            label="Months"
+            value={form.months}
+            onChange={set("months")}
+            placeholder="June, July, August"
+          />
+          <EditableField
+            label="Temporary VRM URL"
+            value={form.temporary_vrm_url}
+            onChange={set("temporary_vrm_url")}
+          />
+          <EditableField label="Video URL" value={form.video_url} onChange={set("video_url")} />
+          <div className="flex items-center gap-2 pt-1">
+            <Switch
+              checked={!!form.destination_not_on}
+              onCheckedChange={(v) => setForm((f) => ({ ...f, destination_not_on: v }))}
+            />
+            <span className="text-xs text-slate-600">Hide from destination listings</span>
+          </div>
         </div>
       </div>
 
-      {(content.categoryTitles?.length > 0 || content.typeTitles?.length > 0 || content.experienceTitles?.length > 0) && (
-        <div className="rounded-lg border border-slate-200 bg-white p-3 space-y-2">
-          <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Taxonomy</div>
-          {content.typeTitles?.length > 0 && (
-            <div className="flex flex-wrap gap-1.5">
-              <span className="text-[10px] uppercase text-slate-400 self-center mr-1">Types</span>
-              {content.typeTitles.map((t) => (
-                <span key={t} className="text-[11px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">{t}</span>
-              ))}
-            </div>
-          )}
-          {content.categoryTitles?.length > 0 && (
-            <div className="flex flex-wrap gap-1.5">
-              <span className="text-[10px] uppercase text-slate-400 self-center mr-1">Categories</span>
-              {content.categoryTitles.map((t) => (
-                <span key={t} className="text-[11px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">{t}</span>
-              ))}
-            </div>
-          )}
-          {content.experienceTitles?.length > 0 && (
-            <div className="flex flex-wrap gap-1.5">
-              <span className="text-[10px] uppercase text-slate-400 self-center mr-1">Experiences</span>
-              {content.experienceTitles.map((t) => (
-                <span key={t} className="text-[11px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">{t}</span>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
-      <div className="rounded-lg border border-slate-200 bg-white p-3 space-y-2">
+      <div className="rounded-lg border border-slate-200 bg-white p-3 space-y-3">
         <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500">
           <ImageIcon className="w-3.5 h-3.5" /> Images
         </div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <EditableField label="Main image URL" value={form.main_image_url} onChange={set("main_image_url")} />
+          <EditableField label="Map image URL" value={form.map_image_url} onChange={set("map_image_url")} />
+          <EditableField label="Footer image URL" value={form.footer_image_url} onChange={set("footer_image_url")} />
+        </div>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-          <DestinationImage url={content.mainImageUrl} label="Main image" />
-          <DestinationImage url={content.mapImageUrl} label="Map image" />
-          <DestinationImage url={content.footerImageUrl} label="Footer image" />
-          {(content.sliderImages || []).slice(0, 5).map((url, i) => (
+          <DestinationImage url={form.main_image_url} label="Main image" />
+          <DestinationImage url={form.map_image_url} label="Map image" />
+          <DestinationImage url={form.footer_image_url} label="Footer image" />
+          {sliderUrls.slice(0, 5).map((url, i) => (
             <DestinationImage key={url} url={url} label={`Slider ${i + 1}`} />
           ))}
         </div>
-        {!content.mainImageUrl && !content.mapImageUrl && !(content.sliderImages || []).length && (
-          <p className="text-sm text-slate-300 italic">No images on this destination document.</p>
-        )}
       </div>
 
       <div className="rounded-lg border border-slate-200 bg-white p-3 space-y-2">
-        <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Body content</div>
-        {content.bodyText ? (
-          <p className="text-sm text-slate-700 whitespace-pre-wrap break-words max-h-64 overflow-y-auto">
-            {content.bodyText}
-          </p>
-        ) : (
-          <p className="text-sm text-slate-300 italic">No body copy.</p>
-        )}
+        <Label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Body content</Label>
+        <Textarea
+          value={form.body_text}
+          onChange={(e) => setForm((f) => ({ ...f, body_text: e.target.value }))}
+          rows={8}
+          placeholder="Destination page body copy"
+          className="text-sm"
+        />
+        <p className="text-xs text-slate-400">Separate paragraphs with a blank line.</p>
       </div>
     </div>
   );
@@ -339,8 +366,12 @@ export default function AdminDestinations() {
   const markets = useExistingMarkets();
 
   const { data: destinations = [], isLoading } = useQuery({
-    queryKey: ["destinations"],
-    queryFn: () => base44.entities.Destination.list("-created_date", 500),
+    queryKey: ["cms-destinations"],
+    queryFn: async () => {
+      const res = await cms.list("destinations", null, null, 500);
+      if (res?.error) throw new Error(res.error);
+      return res?.items || [];
+    },
     staleTime: 30 * 1000,
   });
 
@@ -377,10 +408,12 @@ export default function AdminDestinations() {
     if (missingMarkets.length === 0) return;
     setSyncing(true);
     try {
-      await base44.entities.Destination.bulkCreate(
-        missingMarkets.map((name) => ({ name, slug: slugify(name), is_exclusive: false }))
+      const res = await cms.bulkCreate(
+        "destinations",
+        missingMarkets.map((name) => ({ name, slug: slugify(name), is_exclusive: false, source: "portal" }))
       );
-      await queryClient.invalidateQueries({ queryKey: ["destinations"] });
+      if (res?.error) throw new Error(res.error);
+      await queryClient.invalidateQueries({ queryKey: ["cms-destinations"] });
       toast({ title: `Created ${missingMarkets.length} destination${missingMarkets.length !== 1 ? "s" : ""}.` });
     } catch (e) {
       toast({ variant: "destructive", title: "Sync failed", description: e?.message || "Try again." });
@@ -398,17 +431,19 @@ export default function AdminDestinations() {
 
   const toggleMutation = useMutation({
     mutationFn: async ({ id, value }) => {
-      await base44.entities.Destination.update(id, { is_exclusive: value });
+      const res = await cms.update("destinations", id, { is_exclusive: value });
+      if (res?.error) throw new Error(res.error);
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["destinations"] }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["cms-destinations"] }),
     onError: (e) => toast({ variant: "destructive", title: "Update failed", description: e?.message || "Try again." }),
   });
 
   const updateSlugMutation = useMutation({
     mutationFn: async ({ id, slug }) => {
-      await base44.entities.Destination.update(id, { slug });
+      const res = await cms.update("destinations", id, { slug });
+      if (res?.error) throw new Error(res.error);
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["destinations"] }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["cms-destinations"] }),
     onError: (e) => toast({ variant: "destructive", title: "Update failed", description: e?.message || "Try again." }),
   });
 
@@ -452,26 +487,12 @@ export default function AdminDestinations() {
         latitude: Number(body.latitude),
         longitude: Number(body.longitude),
       };
-      await base44.entities.Destination.update(id, patch);
-      try {
-        await base44.functions.invoke("syncDestinationToSupabase", {
-          action: "sync",
-          destinationId: id,
-          data: {
-            id,
-            name: destination?.name,
-            slug: destination?.slug,
-            is_exclusive: destination?.is_exclusive,
-            ...patch,
-          },
-        });
-      } catch (syncErr) {
-        console.warn("[AdminDestinations] syncDestinationToSupabase failed:", syncErr?.message || syncErr);
-      }
+      const res = await cms.update("destinations", id, patch);
+      if (res?.error) throw new Error(res.error);
       return { ...patch, display_name: body.display_name, provider: body.provider };
     },
     onSuccess: (result) => {
-      queryClient.invalidateQueries({ queryKey: ["destinations"] });
+      queryClient.invalidateQueries({ queryKey: ["cms-destinations"] });
       const via = result?.provider ? ` via ${result.provider}` : "";
       toast({
         title: "Coordinates saved",
@@ -484,18 +505,15 @@ export default function AdminDestinations() {
 
   const clearCoordsMutation = useMutation({
     mutationFn: async ({ id }) => {
-      const patch = { geocode_query: null, latitude: null, longitude: null };
-      await base44.entities.Destination.update(id, patch);
-      try {
-        await base44.functions.invoke("syncDestinationToSupabase", {
-          action: "sync",
-          destinationId: id,
-          data: { id, ...patch },
-        });
-      } catch (_) { /* non-fatal */ }
+      const res = await cms.update("destinations", id, {
+        geocode_query: null,
+        latitude: null,
+        longitude: null,
+      });
+      if (res?.error) throw new Error(res.error);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["destinations"] });
+      queryClient.invalidateQueries({ queryKey: ["cms-destinations"] });
       toast({ title: "Coordinates cleared" });
     },
     onError: (e) =>
@@ -514,7 +532,7 @@ export default function AdminDestinations() {
         <div>
           <h2 className="text-lg font-medium text-[#0D1B2A]">Destinations</h2>
           <p className="text-sm text-slate-500">
-            Markets with a public destination page, exclusivity flag, and partner linkage.
+            Neon-backed destination directory, content, exclusivity, and partner linkage.
           </p>
         </div>
         <button
