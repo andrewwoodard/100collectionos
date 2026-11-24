@@ -183,6 +183,7 @@ function DestinationContentPanel({ destination, linkedPartners = [] }) {
         ...payload,
         months,
         mux_playback_id: muxId,
+        main_image_alt: String(payload.main_image_alt || "").trim() || null,
         location_lat: payload.location_lat === "" ? null : Number(payload.location_lat),
         location_lng: payload.location_lng === "" ? null : Number(payload.location_lng),
         source: destination.source ? `${destination.source}` : "portal",
@@ -359,8 +360,11 @@ function DestinationContentPanel({ destination, linkedPartners = [] }) {
             label="Main image alt text"
             value={form.main_image_alt}
             onChange={set("main_image_alt")}
-            placeholder="Describe the destination scene for accessibility / SEO"
+            placeholder={`${(form.title || destination?.name || "Destination").trim()} Vacation Rentals`}
           />
+          <p className="text-[11px] text-slate-400 md:col-span-2 -mt-1">
+            Leave blank to use the image’s existing alt text, or “{(form.title || destination?.name || "Destination").trim()} Vacation Rentals”.
+          </p>
           <EditableField label="Map image URL" value={form.map_image_url} onChange={set("map_image_url")} />
           <EditableField label="Footer image URL" value={form.footer_image_url} onChange={set("footer_image_url")} />
         </div>

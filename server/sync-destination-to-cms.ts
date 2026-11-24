@@ -47,7 +47,10 @@ export async function syncDestinationRecordToCms(
   if (source.longitude != null && source.longitude !== "") patch.longitude = Number(source.longitude);
   if (asString(source.mux_playback_id)) patch.mux_playback_id = asString(source.mux_playback_id);
   if (asString(source.main_image_url)) patch.main_image_url = asString(source.main_image_url);
-  if (asString(source.main_image_alt)) patch.main_image_alt = asString(source.main_image_alt);
+  // Allow clearing hero alt so public pages fall back to image alt / "{Name} Vacation Rentals".
+  if (source.main_image_alt !== undefined) {
+    patch.main_image_alt = asString(source.main_image_alt);
+  }
 
   const pool = getNeonPool();
   const { rows: existing } = await pool.query(
