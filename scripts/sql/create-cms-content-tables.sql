@@ -206,6 +206,8 @@ CREATE TABLE IF NOT EXISTS cms.properties (
   last_scan                   timestamptz,
   -- content
   headline                    text,
+  seo_title                   text,
+  seo_description             text,
   excerpt                     text,
   short_summary               text,
   text                        text,

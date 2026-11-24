@@ -33,6 +33,8 @@ export async function handleUpdatePropertyContent(req: any, res: any, body: any 
     best_fit_guest,
     design_style_notes,
     headline,
+    seo_title,
+    seo_description,
     latitude: latIn,
     longitude: lonIn,
   } = fields;
@@ -105,6 +107,8 @@ export async function handleUpdatePropertyContent(req: any, res: any, body: any 
     if (best_fit_guest !== undefined) patch.best_fit_guest = best_fit_guest;
     if (design_style_notes !== undefined) patch.design_style_notes = design_style_notes;
     if (headline !== undefined) patch.headline = headline;
+    if (seo_title !== undefined) patch.seo_title = seo_title || null;
+    if (seo_description !== undefined) patch.seo_description = seo_description || null;
     if (latitude !== undefined) patch.latitude = latitude;
     if (longitude !== undefined) patch.longitude = longitude;
     patch.updated_date = new Date().toISOString();
@@ -158,6 +162,8 @@ export async function handleUpdatePropertyContent(req: any, res: any, body: any 
   if (best_fit_guest !== undefined) sbClean.best_fit_guest = best_fit_guest;
   if (design_style_notes !== undefined) sbClean.design_style_notes = design_style_notes;
   if (headline !== undefined) sbClean.headline = headline;
+  if (seo_title !== undefined) sbClean.seo_title = seo_title || null;
+  if (seo_description !== undefined) sbClean.seo_description = seo_description || null;
   if (latitude !== undefined) sbClean.latitude = latitude;
   if (longitude !== undefined) sbClean.longitude = longitude;
 
@@ -300,6 +306,8 @@ export async function handleUpdatePropertyContent(req: any, res: any, body: any 
   if (best_fit_guest !== undefined) cmsPatch.best_fit_guest = best_fit_guest;
   if (design_style_notes !== undefined) cmsPatch.design_style_notes = design_style_notes;
   if (headline !== undefined) cmsPatch.headline = headline;
+  if (seo_title !== undefined) cmsPatch.seo_title = seo_title || null;
+  if (seo_description !== undefined) cmsPatch.seo_description = seo_description || null;
   if (latitude !== undefined) cmsPatch.latitude = latitude;
   if (longitude !== undefined) cmsPatch.longitude = longitude;
   cmsPatch.updated_at = new Date().toISOString();

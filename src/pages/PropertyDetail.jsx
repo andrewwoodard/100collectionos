@@ -117,13 +117,14 @@ function AddressGeocodeField({ value, latitude, longitude, saving, onSave }) {
 }
 
 // Inline editable field component
-function EditableField({ label, value, onSave, type = "text", options = null, multiline = false, rows = 6, className = "" }) {
+function EditableField({ label, value, onSave, type = "text", options = null, multiline = false, rows = 6, className = "", placeholder = "" }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value ?? "");
 
   const start = () => { setDraft(value ?? ""); setEditing(true); };
   const cancel = () => setEditing(false);
   const save = () => { onSave(draft === "" ? null : draft); setEditing(false); };
+  const emptyDisplay = placeholder || "—";
 
   if (editing) {
     return (
@@ -137,6 +138,7 @@ function EditableField({ label, value, onSave, type = "text", options = null, mu
               onChange={e => setDraft(e.target.value)}
               onKeyDown={e => { if (e.key === "Escape") cancel(); }}
               rows={rows}
+              placeholder={placeholder || undefined}
               className="text-sm py-1.5 px-2 resize-y"
             />
             <div className="flex items-center gap-1">
@@ -165,6 +167,7 @@ function EditableField({ label, value, onSave, type = "text", options = null, mu
                   value={draft}
                   onChange={e => setDraft(e.target.value)}
                   onKeyDown={e => { if (e.key === "Enter") save(); if (e.key === "Escape") cancel(); }}
+                  placeholder={placeholder || undefined}
                   className="h-7 text-sm py-0 px-2"
                 />
                 <button onClick={save} className="p-1 text-green-600 hover:text-green-700"><Check className="w-3.5 h-3.5" /></button>
@@ -181,7 +184,7 @@ function EditableField({ label, value, onSave, type = "text", options = null, mu
     <div className={`group cursor-pointer ${className}`} onClick={start}>
       {label && <p className="text-xs text-gray-500 mb-0.5">{label}</p>}
       <p className={`text-sm font-medium mt-0.5 border-b border-transparent group-hover:border-dashed group-hover:border-gray-300 transition-all ${value ? "text-gray-900" : "text-gray-300 italic"} ${multiline ? "whitespace-pre-wrap" : ""}`}>
-        {options ? (options.find(o => o.value === value)?.label ?? value ?? "—") : (value || "—")}
+        {options ? (options.find(o => o.value === value)?.label ?? value ?? "—") : (value || emptyDisplay)}
       </p>
     </div>
   );
@@ -283,6 +286,7 @@ const MIRROR_FIELDS = new Set([
   "property_name", "market", "address", "property_type", "bedrooms",
   "bathrooms", "half_bathrooms", "sleeps", "status", "onboarding_status", "photography_status",
   "launch_date", "vrm_url", "portal_visible", "excerpt", "text",
+  "seo_title", "seo_description",
   "unique_feature", "internal_notes", "partner_name", "partner_id",
 ]);
 
@@ -738,15 +742,33 @@ export default function PropertyDetail() {
   const whyOnehundredValue = typeof property.why_onehundred === "string" ? property.why_onehundred : null;
   const textValue = typeof property.text === "string" ? property.text : null;
 
-  const onehundredDestination = (property.market || "")
+  const storedHundredPath = (() => {
+    const candidates = [
+      property.hundred_collection_url,
+      property.onehundred_url,
+      typeof property.url === "string" && property.url.includes("/destinations/")
+        ? property.url
+        : null,
+    ];
+    for (const candidate of candidates) {
+      const value = String(candidate || "").trim();
+      if (!value) continue;
+      const pathMatch = value.match(/\/destinations\/[^?#]+/i);
+      if (pathMatch) return pathMatch[0].replace(/\/+$/, "");
+    }
+    return null;
+  })();
+  const onehundredDestination = (property.destination || property.market || "")
     .toLowerCase()
     .replace(/&/g, "and")
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
   const onehundredPrefix = onehundredDestination ? `/destinations/${onehundredDestination}/` : "/destinations/";
   const propertySlug = (property.property_name || "").toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
-  const onehundredUrlValue = propertySlug ? `${onehundredPrefix}${propertySlug}` : null;
-  const onehundredFullUrl = onehundredUrlValue ? `https://theonehundredcollection.com${onehundredUrlValue}` : null;
+  const onehundredUrlValue = storedHundredPath || (propertySlug ? `${onehundredPrefix}${propertySlug}` : null);
+  const onehundredFullUrl = onehundredUrlValue
+    ? `https://the100collection.com${onehundredUrlValue.startsWith("/") ? onehundredUrlValue : `/${onehundredUrlValue}`}`
+    : null;
 
 
 
@@ -1067,6 +1089,29 @@ export default function PropertyDetail() {
           </div>
           <div className="col-span-2">
             <EditableField label="Excerpt" value={excerptValue} onSave={save("excerpt")} />
+          </div>
+          <div className="col-span-3 mt-2 pt-4 border-t border-gray-50 space-y-3">
+            <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">SEO meta</p>
+            <EditableField
+              label="SEO title"
+              value={typeof property.seo_title === "string" ? property.seo_title : null}
+              onSave={save("seo_title")}
+              placeholder={`${property.property_name || property.name || "Property"} | ${(property.market || property.destination || "Destination").toString()} Vacation Rental | The 100 Collection™`}
+            />
+            <p className="text-[11px] text-gray-400 -mt-2">
+              Leave blank to use the default page title above.
+            </p>
+            <EditableField
+              label="SEO description"
+              value={typeof property.seo_description === "string" ? property.seo_description : null}
+              onSave={save("seo_description")}
+              multiline
+              rows={3}
+              placeholder={excerptValue || "Defaults to the property excerpt"}
+            />
+            <p className="text-[11px] text-gray-400 -mt-2">
+              Leave blank to use the excerpt as the meta description.
+            </p>
           </div>
           <div className="col-span-3">
             <EditableField label="Unique Feature" value={typeof property.unique_feature === "string" ? property.unique_feature : null} onSave={save("unique_feature")} />

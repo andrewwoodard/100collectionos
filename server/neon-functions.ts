@@ -46,7 +46,8 @@ const PROP_COLUMNS = new Set([
   "partner_id", "address", "bedrooms", "bathrooms", "half_bathrooms", "occupancy", "house_type", "status",
   "active", "portal_visible", "onboarding_status", "photography_status", "launch_date",
   "removal_date", "last_scan", "latitude", "longitude", "pet_friendly", "unique_feature",
-  "why_onehundred", "excerpt", "text", "headline", "property_image", "video_url",
+  "why_onehundred", "excerpt", "text", "headline", "seo_title", "seo_description",
+  "property_image", "video_url",
   "designed_by", "designer_name", "design_style_notes", "location_city", "location_state",
   "location_country", "property_source", "property_html", "ai_search", "ai_fit_score",
   "best_fit_guest", "photo_count", "last_page_check_at", "last_page_check_ok",
@@ -190,6 +191,8 @@ function fromSupabase(row: any) {
     why_onehundred: source.why_onehundred,
     excerpt: source.excerpt,
     text: source.text,
+    seo_title: source.seo_title ?? null,
+    seo_description: source.seo_description ?? null,
     property_image: source.property_image,
     images: parseImages(source.images),
     vrm_url: source.vrm_url,
@@ -650,11 +653,24 @@ async function handleSupabaseProperties(res: any, body: any) {
   }
 
   if (action === "get") {
-    const { rows } = await pool.query(
-      `${rowSql} WHERE id = $1 OR row_id::text = $1 OR source_id = $1 LIMIT 1`,
-      [String(id)]
+    // Prefer exact id/row_id matches. Falling through to source_id without ranking
+    // can return a different property (e.g. 21 Shell Ring.source_id=680 winning
+    // over Seascape Villa id=680) and corrupt PropertyDetail merges.
+    const idValue = String(id);
+    const { rows: exactRows } = await pool.query(
+      `${rowSql} WHERE id = $1 OR row_id::text = $1 LIMIT 1`,
+      [idValue]
     );
-    return json(res, 200, { property: rows[0] ? fromSupabase(rows[0]) : null });
+    if (exactRows[0]) {
+      return json(res, 200, { property: fromSupabase(exactRows[0]) });
+    }
+    const { rows: sourceRows } = await pool.query(
+      `${rowSql} WHERE source_id::text = $1 LIMIT 1`,
+      [idValue]
+    );
+    return json(res, 200, {
+      property: sourceRows[0] ? fromSupabase(sourceRows[0]) : null,
+    });
   }
 
   if (action === "get_by_url") {

@@ -100,6 +100,12 @@ export async function syncPropertyRecordToCms(
   if (asString(source.location_full)) patch.location_full = asString(source.location_full);
   if (asString(source.location_city)) patch.location_city = asString(source.location_city);
   if (asString(source.location_state)) patch.location_state = asString(source.location_state);
+  // Allow clearing SEO overrides with empty string → null
+  if (source.seo_title !== undefined) patch.seo_title = asString(source.seo_title);
+  if (source.seo_description !== undefined) patch.seo_description = asString(source.seo_description);
+  if (source.excerpt !== undefined) patch.excerpt = asString(source.excerpt);
+  if (source.text !== undefined) patch.text = asString(source.text);
+  if (source.headline !== undefined) patch.headline = asString(source.headline);
   if (source.latitude != null && source.latitude !== "") patch.latitude = Number(source.latitude);
   if (source.longitude != null && source.longitude !== "") patch.longitude = Number(source.longitude);
   if (source.bedrooms != null) patch.bedrooms = String(source.bedrooms);

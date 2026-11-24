@@ -184,16 +184,37 @@ export default function PropertyDetail() {
     return null;
   };
 
-  // Compute 100 Collection URL
-  const hundredUrl = property?.hundred_collection_url || (() => {
-    const destination = (val("market", "location_city") || "")
+  // Compute 100 Collection URL (always absolute on the public site)
+  const hundredUrl = (() => {
+    const toPublicUrl = (raw) => {
+      const value = String(raw || "").trim();
+      if (!value) return null;
+      if (/^https?:\/\//i.test(value)) {
+        return value
+          .replace(/^https?:\/\/(www\.)?theonehundredcollection\.com/i, "https://the100collection.com")
+          .replace(/^https?:\/\/(www\.)?the100collection\.com/i, "https://the100collection.com");
+      }
+      if (value.startsWith("/destinations/")) {
+        return `https://the100collection.com${value}`;
+      }
+      return null;
+    };
+    const fromStored =
+      toPublicUrl(property?.hundred_collection_url) ||
+      toPublicUrl(property?.url?.startsWith?.("/destinations/") ? property.url : null);
+    if (fromStored) return fromStored;
+    const destination = (val("destination", "market", "location_city") || "")
       .toLowerCase()
       .replace(/&/g, "and")
       .replace(/[^a-z0-9]+/g, "-")
       .replace(/^-+|-+$/g, "");
     const prefix = destination ? `/destinations/${destination}/` : "/destinations/";
-    const slug = (val("property_name") || "").toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
-    return slug ? `https://theonehundredcollection.com${prefix}${slug}` : null;
+    const slug = (val("property_name") || "")
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "");
+    return slug ? `https://the100collection.com${prefix}${slug}` : null;
   })();
 
   // Status for banner
