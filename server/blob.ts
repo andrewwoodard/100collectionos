@@ -7,7 +7,7 @@ const CONCURRENCY = 4;
 const HOSTED_HINTS = [
   "blob.vercel-storage.com",
   "supabase.co/storage",
-  "cdn.sanity.io",
+  // Sanity CDN is NOT treated as final hosting — ingest re-uploads to Blob.
   "media.base44.com",
   "base44.app",
   "base44.com",
